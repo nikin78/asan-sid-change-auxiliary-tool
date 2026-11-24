@@ -1,0 +1,7 @@
+# Keep Windows CRLF line endings for scripts on every PC (required by HANDOVER.md rule #1).
+# Without this, a PC with different Git settings could convert .bat to LF and break the CMD parser.
+* text=auto
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.md  text eol=crlf
