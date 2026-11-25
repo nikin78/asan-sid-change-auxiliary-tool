@@ -1,10 +1,41 @@
 # [인수인계서] SID 변경 사전·사후 보조 툴 (`SID_Change_Aux_Tool.bat`)
 
 > [!IMPORTANT]
-> **현재 버전: `v2.2.0` (2026-11-26 기준 — 아산병원 데스크톱 디자인 시스템(`asan-desktop-ui`) 전면 적용 + 초보자 친화 워크플로 + 상용 UX 라이팅 + 152개 자동/레이아웃/시각 감사 통과):**
-> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **아산병원 현장 데스크톱 디자인 시스템(`asan-desktop-ui`) 기반 WinForms GUI(`06_Gui_WinForms.ps1`, 콘솔 `--cli` 폴백 지원), 다중 신호 BIOS 교차 검증 엔진, 비동기 프린터 스풀러 초기화, 3종 실행 환경 하드닝, 체계적 SemVer 버저닝(`VERSION` + `CHANGELOG.md` + `Build-Tool.ps1 -Bump`) 및 152개 자동 테스트(실제 GUI `1040×720`/`960×640` 레이아웃 감사·클릭·X 닫기·픽셀 시각 감사 포함)**까지 완료했습니다.
-> 변경 이력은 [CHANGELOG.md](CHANGELOG.md), 상세 의사결정 배경 및 진행 표는 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
-> 다음 단계는 **5단계 실장비 검증(Samsung S8, HP G9, Dell, 실제 WinPE, 메인/클라이언트 공유 프린터, 3종 실행 매체)**입니다.
+> **현재 버전: `v2.2.0` (2026-11-26 작업 마감 기준 — 다른 PC AI 에이전트 즉시 이어받기용 최신 상태):**
+> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **아산병원 현장 데스크톱 디자인 시스템(`asan-desktop-ui`) 기반 WinForms GUI 전면 개편, 상용 UX 라이팅, 다중 신호 BIOS 교차 검증 엔진, 비동기 프린터 스풀러 초기화, 3종 실행 환경 하드닝, 체계적 SemVer 버저닝(`VERSION` + `CHANGELOG.md` + `Build-Tool.ps1 -Bump`), GitHub 사용자용 `README.md`(시각자료 포함) 작성 및 152개 자동/레이아웃/시각 감사**까지 완료했습니다.
+> 사용자 안내서는 [README.md](README.md), 변경 이력은 [CHANGELOG.md](CHANGELOG.md), 상세 의사결정 배경은 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
+> **다음에 해야 할 일:** **5단계 실장비 검증(Samsung S8, HP G9, Dell, 실제 WinPE, 메인/클라이언트 공유 프린터, 쓰기 금지 USB/로컬/공유폴더 3종 매체)** 후 현장 피드백 반영 및 6단계 최종 확정.
+
+---
+
+## 0. 최근 작업 세션 인수인계 요약 (2026-11-26 완료)
+
+다른 PC의 AI 에이전트가 이전 채팅 기록 없이 바로 이어받을 수 있도록 오늘 완료한 작업과 수정된 파일을 요약합니다.
+
+### 오늘 완료한 작업 (`v2.1.0` → `v2.1.1` → `v2.2.0`)
+1. **WinForms GUI 최초 구현 + 다중 신호 BIOS 교차 검증 엔진 구축 (`v2.1.0`):**
+   * 순수 GAC WinForms GUI(`modules/06_Gui_WinForms.ps1`) + 콘솔 `--cli`/WinPE 폴백(`modules/07_Main_Entry.ps1`) 도입.
+   * 부팅 모드 3중 신호(`bcdedit` + 레지스트리 + 부팅 디스크 GPT/MBR), Secure Boot 3중 신호, HP Primary/Legacy 분리(`Legacy USB Boot=Disable` 오탐 제거), Dell 숫자 열거형/`biosattributes` 지원, WMI vs NVRAM `Conflict` 감지 엔진 구현.
+2. **체계적 SemVer 버저닝 도입 및 `X` 버튼 종료 예외 수정 (`v2.1.1`):**
+   * `VERSION` 단일 원본 + `CHANGELOG.md` + `tools/Build-Tool.ps1 -Bump Major|Minor|Patch` 자동 버전 주입·검증 체계 구축.
+   * `New-SidAuxMainForm` 반환 후 동적 스코프 소멸로 `Form.OnFormClosed`에서 발생하던 `null 값 식에서 메서드를 호출할 수 없습니다` 예외를 단일 `$ui` 컨텍스트(`$form.Tag`) + `.GetNewClosure()` + Null-Safe `Dispose()`로 근본 해결.
+3. **아산병원 데스크톱 디자인 시스템(`asan-desktop-ui`) 전면 적용 + 재귀 코드/시각 감사 (`v2.2.0`):**
+   * 4영역 고정 셸(`#005658`/`#006769`/`#F68B1F`/`#0B4F51`), 순수 GDI+ 자체 벡터 심볼·창 아이콘(저작권 로고 없음·HICON 누수 없음), `OwnerDrawFixed` 번호형 탭(`Alt+1`/`Alt+2`/`F5`), 단일 통합 USB `DataGridView`, 비활성 점선 버튼 + 부모 라우팅 사유 툴팁, 비동기 Runspace 프린터 스풀러 초기화, 오류 자동 진단 리포트 저장(민감정보 `[REDACTED]` 마스킹) 적용.
+   * 상용 데스크톱 UX 라이팅 기준으로 전 모듈 GUI 문구·버튼에서 `[대괄호]`, `(부가 괄호)`, `!`, `->` 제거.
+   * 자동 레이아웃 감사(`1040×720` / `960×640` + 확장 로그 포함 **152/152 PASS**) 및 `DrawToBitmap` 실제 렌더링 PNG 픽셀 육안 감사로 발견한 7건(Tab 2 하단 버튼 잘림, `NVRAM 미등록` 잘림, 내장 디스크 오름차순 정렬, 선택된 충돌 행 적색 유지, 모달 아이콘 통일, 비-OEM 보드사명 표시, 리포트 원본 폴더 쓰기 차단) 모두 수정 완료.
+4. **GitHub 사용자용 `README.md` 및 비식별 시각자료 제작:**
+   * 실장비 개인정보가 없는 비식별 예시 화면 3종(`docs/images/01_pre_sid_ready.png`, `02_pre_sid_conflict.png`, `03_post_sid_spooler.png`)과 Mermaid 워크플로 다이어그램, 매체별 실행 방법, 제조사별 BIOS 단축키 표를 포함한 [`README.md`](README.md) 작성.
+
+### 오늘 생성·수정된 파일 전체 목록
+* **신규 생성:** `README.md`, `VERSION` (`2.2.0`), `CHANGELOG.md`, `modules/06_Gui_WinForms.ps1`, `modules/07_Main_Entry.ps1`, `docs/images/01_pre_sid_ready.png`, `docs/images/02_pre_sid_conflict.png`, `docs/images/03_post_sid_spooler.png`
+* **삭제:** `modules/06_Main_Entry.ps1` (`modules/07_Main_Entry.ps1`로 승격·교체)
+* **수정:** `SID_Change_Aux_Tool.bat`, `modules/01_Bootstrap_And_Helpers.bat`, `modules/02_Bootloader_Conflict_Module.ps1`, `modules/03_Vendor_Bios_Diagnostics.ps1`, `modules/04_Usb_Matching_And_Reboot.ps1`, `modules/05_PostSid_Spooler_Module.ps1`, `tools/Build-Tool.ps1`, `tools/Test-Tool.ps1`, `HANDOVER.md`, `docs/DIRECTION_AND_DECISIONS.md`
+
+### 다음 AI 에이전트가 이어서 할 일 (5~6단계)
+1. 작업 시작 전 `git pull origin main`으로 최신 동기화 확인.
+2. 사용자가 **5단계 실장비 테스트** 결과(아래 4절 체크리스트)나 UI/UX 추가 개선 요청을 전달하면, 반드시 **`modules/*.{bat,ps1}`만 수정**하고 `tools\Build-Tool.ps1 -Bump Patch`(또는 `Minor`)로 `SID_Change_Aux_Tool.bat`를 재생성할 것.
+3. UI 변경이 포함되면 전역 스킬 `asan-desktop-ui` 기준에 따라 `tools\Test-Tool.ps1`(152개+ 레이아웃 감사) 통과 및 실제 렌더링 스크린샷 시각 검수를 반드시 수행할 것.
+4. 실장비 검증이 완료되면 `CHANGELOG.md`, `README.md`, `HANDOVER.md`를 최종 확정하고 태그(`v2.2.x` / `v2.3.0`)와 함께 푸시하여 6단계 마무리.
 
 ---
 
@@ -85,6 +116,7 @@
 
 ```text
 SID_Change_Aux_Tool.bat                  # 최종 단일 배포 파일 (100% 순수 ASCII, CRLF)
+README.md                                # GitHub 사용자용 프로그램 명세 및 사용 가이드 (시각자료 포함)
 VERSION                                  # 단일 버전 원본 (SemVer MAJOR.MINOR.PATCH, 순수 ASCII)
 CHANGELOG.md                             # 버전별 변경 이력 (Keep a Changelog 형식)
 modules/
@@ -93,13 +125,14 @@ modules/
   03_Vendor_Bios_Diagnostics.ps1         # 벤더 식별, 3중 신호 BootMode/SecureBoot, HP/Dell 교차 검증, 사전 안내 엔진
   04_Usb_Matching_And_Reboot.ps1         # 물리 USB 스캔, 4단계 NVRAM 매칭, Gate 2, 확인 후 일회성 재부팅
   05_PostSid_Spooler_Module.ps1          # 사후 프린터 스풀러 리셋, 호스트/클라이언트 상태 진단 및 사후 안내 엔진
-  06_Gui_WinForms.ps1                    # 순수 GAC WinForms GUI (사전/사후 탭, BIOS 교차 검증 창, WinPE 비상 창)
+  06_Gui_WinForms.ps1                    # 아산병원 디자인 시스템 기반 순수 GAC WinForms GUI (사전/사후/진단/WinPE)
   07_Main_Entry.ps1                      # WinPE 자동 분기, GUI 우선 실행 + 콘솔 TUI 폴백(--cli)
 tools/
   Build-Tool.ps1                         # VERSION 기반 버전 주입(-Bump 지원), modules/ -> .bat 빌드 및 자동 검증
   Test-Tool.ps1                          # 빌드된 .bat 대상 152개 자동 단위/GUI 레이아웃/버전 정합성 테스트
 docs/
   DIRECTION_AND_DECISIONS.md             # 방향 전환 결정 사항 및 단계별 진행 현황
+  images/                                # README.md용 비식별 GUI 미리보기 PNG (01~03)
 HANDOVER.md                              # 본 인수인계서
 ```
 

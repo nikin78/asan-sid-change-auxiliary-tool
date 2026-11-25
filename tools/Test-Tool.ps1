@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Automated Unit & Smoke Test Suite for SID_Change_Aux_Tool.bat
 # Loads the actual built deliverable with SID_TOOL_TEST_MODE=1 and tests
 # pure helpers, parsers, media guards, non-destructive renames, and live
