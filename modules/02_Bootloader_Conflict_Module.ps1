@@ -55,8 +55,11 @@ function Parse-DiskpartDetailDisk([array]$lines) {
  $model = "Disk"
  $busType = "Unknown"
  $partStyle = ""
+ $isReadOnly = $false
  $reTypeLine = "^(Type|" + (U "\uC720\uD615") + ")\s*:\s*(.+)$"
  $reDiskIdLine = "^(Disk ID|" + (U "\uB514\uC2A4\uD06C") + "\s*ID)\s*:\s*(.+)$"
+ $reRoLine = "^(Current Read-only State|Read-only|" + (U "\uD604\uC7AC \uC77D\uAE30 \uC804\uC6A9 \uC0C1\uD0DC") + "|" + (U "\uC77D\uAE30 \uC804\uC6A9") + ")\s*:\s*(Yes|" + (U "\uC608") + ")$"
+ $reSkipHeader = "^(Microsoft DiskPart|Copyright|On computer|DISKPART>|Disk \d+ is now|\d+\s*" + (U "\uB514\uC2A4\uD06C") + "|" + (U "\uCEF4\uD4E8\uD130") + "|" + (U "\uB514\uC2A4\uD06C") + "\s+\d+)"
  $foundDiskId = $false
 
  foreach ($line in $lines) {
@@ -69,8 +72,10 @@ function Parse-DiskpartDetailDisk([array]$lines) {
    $foundDiskId = $true
   } elseif ($t -match $reTypeLine) {
    $busType = $matches[2].Trim()
+  } elseif ($t -match $reRoLine) {
+   $isReadOnly = $true
   } elseif (-not $foundDiskId -and $model -eq "Disk") {
-   if ($t -notmatch "^(Microsoft DiskPart|Copyright|On computer|DISKPART>|Disk \d+ is now|" + (U "\uCEF4\uD4E8\uD130") + "|" + (U "\uB514\uC2A4\uD06C") + "\s+\d+)") {
+   if ($t -notmatch $reSkipHeader) {
     $model = $t
    }
   }
@@ -79,7 +84,8 @@ function Parse-DiskpartDetailDisk([array]$lines) {
  return [PSCustomObject]@{
   FriendlyName = $model
   BusType = $busType
-  IsUsb = ($busType -match "USB")
+  IsUsb = ($busType -match "USB|SD|MMC")
+  IsReadOnly = $isReadOnly
   PartitionStyle = $partStyle
  }
 }
@@ -93,7 +99,7 @@ function Parse-DiskpartListPartition([array]$lines) {
 
  foreach ($line in $lines) {
   $s = [string]$line
-  if ($s -match ("^\s*" + $rePartWord + "\s+(\d+)\s+(\S+)\s+(\d+\s*[KMGT]?B)\s+(\d+\s*[KMGT]?B)")) {
+  if ($s -match ("^\s*" + $rePartWord + "\s+(\d+)\s+(.+?)\s+(\d+\s*[KMGT]?B)\s+(\d+\s*[KMGT]?B)")) {
    $pNum = [int]$matches[1]
    $pType = $matches[2].Trim()
    $pSize = $matches[3].Trim()
@@ -129,21 +135,23 @@ function Parse-DiskpartDetailPartition([array]$lines) {
  $ltrColIdx = -1
  $reActive = "^(Active|" + (U "\uD65C\uC131") + ")\s*:\s*(Yes|" + (U "\uC608") + ")$"
  $reVolLine = "^\*?\s*(Volume|" + (U "\uBCFC\uB968") + ")\s+\d+"
+ $reLtrHdr = "\b(Ltr|" + (U "\uBB38\uC790") + ")\b"
 
  foreach ($line in $lines) {
   $s = [string]$line
   $t = $s.Trim()
   if ($t -match $reActive) { $isActive = $true }
   if ($t -match "c12a7328-f81f-11d2-ba4b-00a0c93ec93b") { $isEspGuid = $true }
-  if ($ltrColIdx -lt 0 -and $s -match "\bLtr\b") {
-   $ltrColIdx = $s.IndexOf("Ltr")
+  if ($ltrColIdx -lt 0 -and $s -match $reLtrHdr) {
+   $ltrColIdx = $s.IndexOf($matches[1])
   }
   if ($s -match $reVolLine) {
-   if ($ltrColIdx -ge 0 -and $s.Length -gt ($ltrColIdx + 1)) {
+   # Primary regex works reliably across both English and wide-char Korean volume rows
+   if ($s -match ("^\*?\s*(?:Volume|" + (U "\uBCFC\uB968") + ")\s+\d+\s{1,6}([A-Z])\s{2,}")) {
+    $driveLetter = $matches[1]
+   } elseif ($ltrColIdx -ge 0 -and $s.Length -gt $ltrColIdx) {
     $seg = $s.Substring($ltrColIdx, [Math]::Min(3, $s.Length - $ltrColIdx)).Trim()
     if ($seg -match "^[A-Z]$") { $driveLetter = $seg }
-   } elseif ($s -match ("^\*?\s*(?:Volume|" + (U "\uBCFC\uB968") + ")\s+\d+\s+([A-Z])\s{2,}")) {
-    $driveLetter = $matches[1]
    }
   }
  }
@@ -161,10 +169,10 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
  $internalDisks = @()
 
  if (Test-StorageCmdletsAvailable) {
-  $allDisks = @(Get-Disk | Where-Object { $_.OperationalStatus -eq 'Online' })
+  $allDisks = @(Get-Disk | Where-Object { ([string]$_.OperationalStatus) -match "\bOnline\b" })
   $usbDisks = @($allDisks | Where-Object {
    -not $_.IsBoot -and -not $_.IsSystem -and
-   ($_.BusType -eq 'USB' -or $_.IsRemovable -or [string]$_.Path -match "USBSTOR|UASP")
+   ($_.BusType -in @('USB','SD','MMC') -or $_.IsRemovable -or [string]$_.Path -match "USBSTOR|UASP")
   })
   $usbNums = @($usbDisks | Select-Object -ExpandProperty Number)
   $internalDisks = @($allDisks | Where-Object { $usbNums -notcontains $_.Number })
@@ -192,6 +200,7 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
    IsBoot = $false
    IsSystem = $false
    IsRemovable = $det.IsUsb
+   IsReadOnly = $det.IsReadOnly
    Path = ""
   }
   if ($det.IsUsb) { $usbDisks += $obj } else { $internalDisks += $obj }
@@ -204,23 +213,88 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
  }
 }
 
-# Helper: Mount partition temporarily via diskpart, run scriptblock, always unmount
+# Gather all drive letters in use (including mapped network drives across UAC split tokens)
+function Get-BusyDriveLetters {
+ $busy = @{}
+ try {
+  foreach ($di in [System.IO.DriveInfo]::GetDrives()) {
+   if ($di.Name -match "^([A-Za-z]):") { $busy[$matches[1].ToUpper()] = $true }
+  }
+ } catch {}
+ try {
+  foreach ($pd in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+   if ($pd.Name -match "^[A-Za-z]$") { $busy[$pd.Name.ToUpper()] = $true }
+  }
+ } catch {}
+ # Check HKCU and all loaded HKU hives for mapped network drives (e.g. Z:\ mapped in non-elevated session)
+ try {
+  if (Test-Path "HKCU:\Network") {
+   foreach ($nk in @(Get-ChildItem "HKCU:\Network" -ErrorAction SilentlyContinue)) {
+    if ($nk.PSChildName -match "^[A-Za-z]$") { $busy[$nk.PSChildName.ToUpper()] = $true }
+   }
+  }
+ } catch {}
+ try {
+  foreach ($uh in @(Get-ChildItem "Registry::HKEY_USERS" -ErrorAction SilentlyContinue)) {
+   $netPath = Join-Path $uh.PSPath "Network"
+   if (Test-Path $netPath) {
+    foreach ($nk in @(Get-ChildItem $netPath -ErrorAction SilentlyContinue)) {
+     if ($nk.PSChildName -match "^[A-Za-z]$") { $busy[$nk.PSChildName.ToUpper()] = $true }
+    }
+   }
+  }
+ } catch {}
+ try {
+  foreach ($md in @(Get-CimInstance -ClassName Win32_MappedLogicalDisk -ErrorAction SilentlyContinue)) {
+   if ($md.Name -match "^([A-Za-z]):") { $busy[$matches[1].ToUpper()] = $true }
+  }
+ } catch {}
+ try {
+  if (Test-StorageCmdletsAvailable) {
+   foreach ($p in @(Get-Partition -ErrorAction SilentlyContinue)) {
+    if ($p.DriveLetter -and ([string]$p.DriveLetter) -match "^[A-Za-z]$") {
+     $busy[([string]$p.DriveLetter).ToUpper()] = $true
+    }
+   }
+  }
+ } catch {}
+ return $busy
+}
+
+# Helper: Mount partition temporarily via diskpart, run scriptblock, always unmount safely
 function Invoke-WithEspMount([int]$diskNum, [int]$partNum, [string]$existingLetter, [scriptblock]$action) {
  $workDrv = ""
  $tempMounted = $false
- if ($existingLetter -and (Test-Path "$($existingLetter):\")) {
-  $workDrv = $existingLetter
+ if ($existingLetter) {
+  # Never reassign/overwrite a partition that already has a drive letter
+  if (Test-Path "$($existingLetter):\") {
+   $workDrv = $existingLetter
+  } else {
+   return "MOUNT_FAIL"
+  }
  } else {
-  $candidates = @("Z","W","V","U","T","S","R","Q","P","O","N","M")
+  $busy = Get-BusyDriveLetters
+  # Avoid Z: first since Z: is the most common mapped network drive letter
+  $candidates = @("W","V","U","T","S","R","Q","P","O","N","M","Z")
   foreach ($l in $candidates) {
-   if (-not (Test-Path "$($l):\")) {
-    $dpScript = "select disk $diskNum`r`nselect part $partNum`r`nassign letter=$l`r`nexit`r`n"
-    $null = Invoke-NativeOem "diskpart.exe" "" $dpScript
-    if (Test-Path "$($l):\") {
-     $workDrv = $l
-     $tempMounted = $true
-     break
-    }
+   if ($busy.ContainsKey($l) -or (Test-Path "$($l):\")) { continue }
+   $dpScript = "select disk $diskNum`r`nselect part $partNum`r`nassign letter=$l`r`nexit`r`n"
+   $dpAssign = Invoke-NativeOem "diskpart.exe" "" $dpScript
+   if ($dpAssign.ExitCode -ne 0) { continue }
+   $mountedOk = $false
+   for ($w = 0; $w -lt 8; $w++) {
+    if (Test-Path "$($l):\") { $mountedOk = $true; break }
+    Start-Sleep -Milliseconds 150
+   }
+   if ($mountedOk) {
+    $workDrv = $l
+    $tempMounted = $true
+    break
+   } else {
+    # Prevent leaking a temporary drive letter if volume is RAW/inaccessible
+    $dpUndo = "select disk $diskNum`r`nselect part $partNum`r`nremove letter=$l`r`nexit`r`n"
+    $null = Invoke-NativeOem "diskpart.exe" "" $dpUndo
+    if (Test-Path "$($l):\") { $null = Invoke-NativeOem "mountvol.exe" "$($l): /d" }
    }
   }
  }
@@ -250,7 +324,7 @@ function Test-PartitionMediaGuard([string]$rootPath) {
  if ((Test-Path "$root\sources\boot.wim") -or (Test-Path "$root\sources\install.wim") -or (Test-Path "$root\sources\install.esd")) {
   $hasWinPE = $true
   $reason = "sources\boot.wim/install"
- } elseif ((Test-Path "$root\ventoy\ventoy.json") -or (Test-Path "$root\PhoenixPE.cfg")) {
+ } elseif ((Test-Path "$root\ventoy\ventoy.json") -or (Test-Path "$root\PhoenixPE.cfg") -or (Test-Path "$root\HBCD_PE.ini")) {
   $hasWinPE = $true
   $reason = "WinPE/Ventoy marker"
  } elseif ((Test-Path "$root\boot\boot.sdi") -and (Test-Path "$root\sources")) {
@@ -323,9 +397,15 @@ function Invoke-BootloaderRenameInRoot([string]$rootPath, [string]$bootType, [st
  if ($bootType -eq "GPT_EFI") {
   try {
    if ($mode -eq "DISABLE") {
+    if ((Test-Path "$root\EFI_OLD") -or -not (Test-Path "$root\EFI")) {
+     return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Error = "TARGET_STATE_CONFLICT" }
+    }
     Clear-SpecialAttributes "$root\EFI"
     Rename-Item -LiteralPath "$root\EFI" -NewName "EFI_OLD" -Force -ErrorAction Stop
    } else {
+    if ((Test-Path "$root\EFI") -or -not (Test-Path "$root\EFI_OLD")) {
+     return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Error = "TARGET_STATE_CONFLICT" }
+    }
     Clear-SpecialAttributes "$root\EFI_OLD"
     Rename-Item -LiteralPath "$root\EFI_OLD" -NewName "EFI" -Force -ErrorAction Stop
    }
@@ -339,6 +419,9 @@ function Invoke-BootloaderRenameInRoot([string]$rootPath, [string]$bootType, [st
   $renamedBootmgr = $false
   try {
    if ($mode -eq "DISABLE") {
+    if ((Test-Path "$root\bootmgr_OLD") -or (Test-Path "$root\Boot_OLD")) {
+     return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Error = "TARGET_STATE_CONFLICT" }
+    }
     if (Test-Path "$root\bootmgr") {
      Clear-SpecialAttributes "$root\bootmgr"
      Rename-Item -LiteralPath "$root\bootmgr" -NewName "bootmgr_OLD" -Force -ErrorAction Stop
@@ -349,6 +432,9 @@ function Invoke-BootloaderRenameInRoot([string]$rootPath, [string]$bootType, [st
      Rename-Item -LiteralPath "$root\Boot" -NewName "Boot_OLD" -Force -ErrorAction Stop
     }
    } else {
+    if ((Test-Path "$root\bootmgr") -or (Test-Path "$root\Boot\BCD")) {
+     return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Error = "TARGET_STATE_CONFLICT" }
+    }
     if (Test-Path "$root\bootmgr_OLD") {
      Clear-SpecialAttributes "$root\bootmgr_OLD"
      Rename-Item -LiteralPath "$root\bootmgr_OLD" -NewName "bootmgr" -Force -ErrorAction Stop
@@ -420,9 +506,15 @@ function Test-SiblingPartitionsForWinPE([array]$parts) {
  foreach ($p in $parts) {
   if ($p.DriveLetter -and (Test-Path "$($p.DriveLetter):\")) {
    $drv = "$($p.DriveLetter):"
-   if ((Test-Path "$drv\sources\boot.wim") -or (Test-Path "$drv\sources\install.wim") -or (Test-Path "$drv\sources\install.esd") -or (Test-Path "$drv\ventoy\ventoy.json") -or (Test-Path "$drv\PhoenixPE.cfg")) {
+   if ((Test-Path "$drv\sources\boot.wim") -or (Test-Path "$drv\sources\install.wim") -or (Test-Path "$drv\sources\install.esd") -or (Test-Path "$drv\ventoy\ventoy.json") -or (Test-Path "$drv\PhoenixPE.cfg") -or (Test-Path "$drv\HBCD_PE.ini") -or ((Test-Path "$drv\boot\boot.sdi") -and (Test-Path "$drv\sources"))) {
     return $true
    }
+   try {
+    $di = New-Object System.IO.DriveInfo ($p.DriveLetter)
+    if ($di.IsReady -and $di.VolumeLabel -match "^(VTOYEFI|VENTOY|PHOENIXPE|WINPE|ESD-USB)$") {
+     return $true
+    }
+   } catch {}
   }
  }
  return $false
@@ -437,19 +529,42 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
  $bootDisk = $null
  $sysDisk = $null
  $protected = @()
+ $sysDrvLetter = if ($env:SystemDrive -and $env:SystemDrive -match "^([A-Za-z]):") { $matches[1].ToUpper() } else { "C" }
  if (-not $isWinPE -and -not $useFallback) {
   $allParts = @(Get-Partition -ErrorAction SilentlyContinue)
   foreach ($p in $allParts) {
    if ($p.IsBoot) { $bootDisk = $p.DiskNumber; if ($protected -notcontains $p.DiskNumber) { $protected += $p.DiskNumber } }
    if ($p.IsSystem) { $sysDisk = $p.DiskNumber; if ($protected -notcontains $p.DiskNumber) { $protected += $p.DiskNumber } }
+   if ($p.DriveLetter -and ([string]$p.DriveLetter).ToUpper() -eq $sysDrvLetter) {
+    if ($null -eq $bootDisk) { $bootDisk = $p.DiskNumber }
+    if ($protected -notcontains $p.DiskNumber) { $protected += $p.DiskNumber }
+   }
   }
  }
+
+ $diskPartsMap = @{}
+ foreach ($d in $internalDisks) {
+  $parts = @(Get-DiskPartitionsNormalized $d.Number $useFallback)
+  $diskPartsMap[$d.Number] = $parts
+  # Defense-in-depth: even in fallback mode on normal Windows, protect the SystemDrive disk
+  if (-not $isWinPE -and ($protected -notcontains $d.Number)) {
+   foreach ($p in $parts) {
+    if ($p.DriveLetter -and $p.DriveLetter.ToUpper() -eq $sysDrvLetter) {
+     if ($null -eq $bootDisk) { $bootDisk = $d.Number }
+     $protected += $d.Number
+     break
+    }
+   }
+  }
+ }
+
  $splitBoot = (-not $isWinPE -and $null -ne $bootDisk -and $null -ne $sysDisk -and $bootDisk -ne $sysDisk)
  $items = @()
 
  foreach ($d in $internalDisks) {
-  $parts = @(Get-DiskPartitionsNormalized $d.Number $useFallback)
+  $parts = @($diskPartsMap[$d.Number])
   $isProt = ($protected -contains $d.Number)
+  $isDiskReadOnly = [bool]$d.IsReadOnly
   $isWinPEMediaDisk = (-not $isProt) -and (Test-SiblingPartitionsForWinPE $parts)
   $style = if ($d.PartitionStyle) { [string]$d.PartitionStyle } else { "Unknown" }
 
@@ -460,18 +575,30 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
 
   if ($isWinPEMediaDisk) {
    $state = "WINPE_MEDIA"
+  } elseif ($isDiskReadOnly -and -not $isProt) {
+   $state = "READONLY_PROTECTED"
   } else {
-   $espPart = $parts | Where-Object { $_.IsEsp } | Select-Object -First 1
-   if ($espPart) {
-    $bootType = "GPT_EFI"
-    $targetPartNum = $espPart.PartitionNumber
-    $targetLtr = $espPart.DriveLetter
+   $espParts = @($parts | Where-Object { $_.IsEsp })
+   if ($espParts.Count -gt 0) {
     if ($isProt) {
+     $bootType = "GPT_EFI"
+     $targetPartNum = $espParts[0].PartitionNumber
+     $targetLtr = $espParts[0].DriveLetter
      $state = "PROTECTED"
     } else {
-     $state = Invoke-WithEspMount $d.Number $targetPartNum $targetLtr {
-      param($drv)
-      return (Inspect-BootloaderPartition "$($drv):\" "GPT_EFI" $false)
+     # Check all ESP partitions on the disk, prioritizing actionable conflicts over empty ESPs
+     foreach ($ep in $espParts) {
+      $probeState = Invoke-WithEspMount $d.Number $ep.PartitionNumber $ep.DriveLetter {
+       param($drv)
+       return (Inspect-BootloaderPartition "$($drv):\" "GPT_EFI" $false)
+      }
+      if ($targetPartNum -eq 0 -or $probeState -in @("ACTIVE","BOTH","WINPE_BLOCKED","OS_BLOCKED") -or ($state -eq "EMPTY" -and $probeState -eq "DISABLED")) {
+       $bootType = "GPT_EFI"
+       $targetPartNum = $ep.PartitionNumber
+       $targetLtr = $ep.DriveLetter
+       $state = $probeState
+      }
+      if ($state -in @("ACTIVE","BOTH","WINPE_BLOCKED")) { break }
      }
     }
    } elseif ($style -eq "MBR" -and -not $isProt) {
@@ -511,8 +638,9 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
    Model = $d.FriendlyName
    SizeGB = $sizeGB
    PartitionStyle = $style
-   IsProtected = ($isProt -or $isWinPEMediaDisk)
+   IsProtected = ($isProt -or $isWinPEMediaDisk -or $isDiskReadOnly)
    IsWinPEMedia = $isWinPEMediaDisk
+   IsReadOnly = $isDiskReadOnly
    BootType = $bootType
    TargetPart = $targetPartNum
    TargetLetter = $targetLtr
@@ -539,9 +667,10 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
 
 function Format-BootloaderStateText($item) {
  switch ($item.State) {
-  "PROTECTED"      { return (U "[\uBCF4\uD638\uB428: \uD604\uC7AC OS/\uBD80\uD305 EFI]") }
-  "PROTECTED_OS"   { return (U "[\uBCF4\uD638\uB428: \uD604\uC7AC OS \uB514\uC2A4\uD06C]") }
-  "WINPE_MEDIA"    { return (U "[\uBCF4\uD638\uB428: WinPE/\uC124\uCE58 \uB9E4\uCCB4]") }
+  "PROTECTED"          { return (U "[\uBCF4\uD638\uB428: \uD604\uC7AC OS/\uBD80\uD305 EFI]") }
+  "PROTECTED_OS"       { return (U "[\uBCF4\uD638\uB428: \uD604\uC7AC OS \uB514\uC2A4\uD06C]") }
+  "WINPE_MEDIA"        { return (U "[\uBCF4\uD638\uB428: WinPE/\uC124\uCE58 \uB9E4\uCCB4]") }
+  "READONLY_PROTECTED" { return (U "[\uBCF4\uD638\uB428: \uC77D\uAE30 \uC804\uC6A9(\uC4F0\uAE30 \uAE08\uC9C0) \uB514\uC2A4\uD06C]") }
   "ACTIVE"         {
    if ($item.BootType -eq "MBR_ACTIVE") { return (U "[\uCDA9\uB3CC \uC704\uD5D8: MBR \uD65C\uC131 \uBD80\uD2B8\uB85C\uB354 \uBC1C\uACAC!]") }
    return (U "[\uCDA9\uB3CC \uC704\uD5D8: GPT \uD65C\uC131 EFI \uBC1C\uACAC!]")
@@ -574,6 +703,10 @@ function Get-BootloaderStateColor($item) {
 function Invoke-BootloaderToggle($item, [bool]$disableOnly) {
  if ($item.IsWinPEMedia) {
   Write-Host (" [" + (U "\uCC28\uB2E8") + "] Disk " + $item.DiskNumber + " : " + (U "WinPE/\uC124\uCE58 \uB9E4\uCCB4 \uB514\uC2A4\uD06C\uB85C \uAC10\uC9C0\uB418\uC5B4 \uBCF4\uD638\uB429\uB2C8\uB2E4.")) -ForegroundColor Red
+  return "BLOCKED"
+ }
+ if ($item.IsReadOnly) {
+  Write-Host (" [" + (U "\uCC28\uB2E8") + "] Disk " + $item.DiskNumber + " : " + (U "\uC77D\uAE30 \uC804\uC6A9(\uC4F0\uAE30 \uAE08\uC9C0) \uB514\uC2A4\uD06C\uB85C \uBCF4\uD638\uB429\uB2C8\uB2E4.")) -ForegroundColor Red
   return "BLOCKED"
  }
  if ($item.IsProtected) {

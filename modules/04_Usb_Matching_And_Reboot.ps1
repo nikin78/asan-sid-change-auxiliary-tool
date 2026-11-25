@@ -2,16 +2,27 @@
 # Module 04: Physical USB Inspection, 4-Tier NVRAM Matching & Confirmed Reboot
 # ==============================================================================
 
-function Get-PhysicalUsbInfo([array]$usbDisks) {
+function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
  $physicalUsbList = @()
  $usbDrivePatterns = @()
  $usbStrictModelPatterns = @()
  $usbPartPatterns = @()
  $anyEfiReadyUsb = $false
 
+ # Collect words appearing in internal disk model names to prevent same-brand false matches (e.g. Samsung USB vs Samsung NVMe)
+ $internalWords = @{}
+ foreach ($idisk in $internalDisks) {
+  if ($idisk -and $idisk.FriendlyName) {
+   foreach ($iw in ($idisk.FriendlyName.Trim() -split "[\s_-]+")) {
+    if ($iw.Length -ge 3) { $internalWords[$iw.ToLower()] = $true }
+   }
+  }
+ }
+
+ $hasStorage = Test-StorageCmdletsAvailable
  foreach ($disk in $usbDisks) {
   $sizeGB = [math]::Round($disk.Size / 1GB, 1)
-  $parts = @(Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue)
+  $parts = if ($hasStorage) { @(Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue) } else { @() }
   $drvLetters = @()
   $hasEfi = $false
 
@@ -19,7 +30,9 @@ function Get-PhysicalUsbInfo([array]$usbDisks) {
    $cleanName = $disk.FriendlyName.Trim()
    $usbStrictModelPatterns += [regex]::Escape($cleanName)
    foreach ($word in ($cleanName -split "[\s_-]+")) {
-    if ($word.Length -ge 3 -and $word -notmatch "^(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|3\.0|2\.0|3\.2)$") {
+    if ($word.Length -ge 3 -and
+        $word -notmatch "^(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|3\.0|2\.0|3\.2)$" -and
+        (-not $internalWords.ContainsKey($word.ToLower()))) {
      $usbStrictModelPatterns += [regex]::Escape($word)
     }
    }
@@ -59,6 +72,7 @@ function Get-PhysicalUsbInfo([array]$usbDisks) {
    SizeGB = "$sizeGB GB"
    Partitions = ($drvLetters -join ", ")
    IsEfiReady = $hasEfi
+   IsReadOnly = [bool]$disk.IsReadOnly
   }
  }
 
@@ -88,9 +102,12 @@ function Find-MatchedUsbNvramEntries(
  }
 
  $candidateEntries = @($bcdEntries | Where-Object {
+  $descStr = [string]$_.Description
+  $isInternalBusWithoutUsb = ($descStr -match "\b(SATA|NVMe)\b") -and ($descStr -notmatch "\bUSB\b|External|Removable")
   $_.Identifier -ne "{fwbootmgr}" -and
   $_.Identifier -ne "{bootmgr}" -and
-  ([string]$_.Description -notmatch $excludeDesc) -and
+  ($descStr -notmatch $excludeDesc) -and
+  (-not $isInternalBusWithoutUsb) -and
   ((-not $internalPattern) -or ([string]$_.Device -notmatch $internalPattern))
  })
 
@@ -196,7 +213,7 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
     Write-Host (U "`n[R] \uB2E4\uC2DC \uC2A4\uCE94 | [B] BIOS \uC124\uC815 | [E] \uB0B4\uC7A5 \uBD80\uD2B8\uB85C\uB354 \uAD00\uB9AC | [D] NVRAM \uC6D0\uBCF8 | [L] \uB514\uC2A4\uD06C \uC9C4\uB2E8 | [M/Enter] \uBA54\uC778 \uBA54\uB274") -ForegroundColor DarkGray
     $noUsbChoice = (Read-Host (U "\uC120\uD0DD")).Trim()
     if ($noUsbChoice -match "^[rR]$") { $rescanNow = $true; break }
-    elseif ($noUsbChoice -match "^[bB]$") { shutdown /r /fw /f /t 0; exit 0 }
+    elseif ($noUsbChoice -match "^[bB]$") { $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup" }
     elseif ($noUsbChoice -match "^[eE]$") { Show-BootloaderManager $false }
     elseif ($noUsbChoice -match "^[dD]$") { Show-BcdDebug $bcdOutput }
     elseif ($noUsbChoice -match "^[lL]$") { Show-DiskDebug }
@@ -207,11 +224,12 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
   }
 
   # Inspect physical USB partitions
-  $usbInfo = Get-PhysicalUsbInfo $usbDisks
+  $usbInfo = Get-PhysicalUsbInfo $usbDisks $internalDisks
   Write-Host (U "`n[STEP 2-1] \uD604\uC7AC \uC5F0\uACB0\uB41C \uBB3C\uB9AC USB \uB514\uC2A4\uD06C \uBAA9\uB85D:") -ForegroundColor Cyan
   foreach ($u in $usbInfo.PhysicalUsbList) {
    $efiTag = if ($u.IsEfiReady) { U "UEFI \uBD80\uD305 \uAC00\uB2A5" } else { U "EFI \uD30C\uD2F0\uC158 \uBBF8\uD655\uC778" }
-   Write-Host (" - Disk " + $u.DiskNumber + " : " + $u.Model + " [" + $u.SizeGB + "] | " + $u.Partitions + " -> (" + $efiTag + ")") -ForegroundColor White
+   $roTag = if ($u.IsReadOnly) { " [" + (U "\uC77D\uAE30 \uC804\uC6A9") + "]" } else { "" }
+   Write-Host (" - Disk " + $u.DiskNumber + " : " + $u.Model + " [" + $u.SizeGB + "]" + $roTag + " | " + $u.Partitions + " -> (" + $efiTag + ")") -ForegroundColor White
   }
 
   $matchedEntries = @(Find-MatchedUsbNvramEntries `
@@ -252,10 +270,10 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
     elseif ($fbChoice -match "^[dD]$") { Show-BcdDebug $bcdOutput; continue }
     elseif ($fbChoice -match "^[lL]$") { Show-DiskDebug; continue }
     elseif ($fbChoice -eq "") {
-     if ($isLikelyHotPlug) { shutdown /r /o /f /t 0 } else { shutdown /r /fw /f /t 0 }
-     exit 0
-    } elseif ($fbChoice -match "^[oO]$") { shutdown /r /o /f /t 0; exit 0 }
-    elseif ($fbChoice -match "^[bB]$") { shutdown /r /fw /f /t 0; exit 0 }
+     if ($isLikelyHotPlug) { $null = Invoke-SafeReboot "/r /o /f /t 0" "Advanced Boot" }
+     else { $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup" }
+    } elseif ($fbChoice -match "^[oO]$") { $null = Invoke-SafeReboot "/r /o /f /t 0" "Advanced Boot" }
+    elseif ($fbChoice -match "^[bB]$") { $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup" }
     elseif ($fbChoice -match "^[mMqQ]$") { return }
    }
    if ($rescanNow) { continue }
@@ -295,8 +313,8 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
    elseif ($choice -match "^[lL]$") { Show-DiskDebug; continue }
    elseif ($choice -eq "" -and $matchedEntries.Count -eq 1) { $selectedTarget = $matchedEntries[0]; break }
    elseif ($choice -match "^\d+$" -and [int]$choice -ge 1 -and [int]$choice -le $matchedEntries.Count) { $selectedTarget = $matchedEntries[[int]$choice - 1]; break }
-   elseif ($choice -match "^[oO]$") { shutdown /r /o /f /t 0; exit 0 }
-   elseif ($choice -match "^[bB]$") { shutdown /r /fw /f /t 0; exit 0 }
+   elseif ($choice -match "^[oO]$") { $null = Invoke-SafeReboot "/r /o /f /t 0" "Advanced Boot" }
+   elseif ($choice -match "^[bB]$") { $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup" }
    elseif ($choice -match "^[mMqQ]$") { return }
   }
 
@@ -307,16 +325,15 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
   $setRes = Invoke-NativeOem "bcdedit.exe" ("/set {fwbootmgr} bootsequence " + $selectedTarget.Identifier)
   if ($setRes.ExitCode -eq 0) {
    Write-Host ("`n-> [" + $selectedTarget.Description + (U "] \uBD80\uD305 \uC21C\uC11C \uC9C0\uC815 \uC644\uB8CC! \uC989\uC2DC \uC7AC\uBD80\uD305\uD569\uB2C8\uB2E4...")) -ForegroundColor Cyan
-   shutdown /r /f /t 0
-   exit 0
+   $null = Invoke-SafeReboot "/r /f /t 0" "USB One-Time Boot"
+   return
   } else {
    Write-Host (U "`n[\uC624\uB958] NVRAM \uBD80\uD305 \uC21C\uC11C \uBCC0\uACBD \uC2E4\uD328!") -ForegroundColor Red
    Write-Host ((U "\uC0C1\uC138 \uCD9C\uB825: ") + ($setRes.Lines -join " ")) -ForegroundColor Yellow
    Write-Host (U "[O] Windows \uC7A5\uCE58 \uC0AC\uC6A9 \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305 | [Enter/M] \uBA54\uC778 \uBA54\uB274\uB85C \uB3CC\uC544\uAC00\uAE30") -ForegroundColor Cyan
    $errChoice = (Read-Host (U "\uC120\uD0DD")).Trim()
    if ($errChoice -match "^[oO]$") {
-    shutdown /r /o /f /t 0
-    exit 0
+    $null = Invoke-SafeReboot "/r /o /f /t 0" "Advanced Boot"
    }
    return
   }

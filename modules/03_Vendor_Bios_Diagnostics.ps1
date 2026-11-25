@@ -16,7 +16,7 @@ function Get-SystemInfo {
  }
 
  $vendor = "Standard"
- if ($rawVendor -match "Samsung|SEC") { $vendor = "Samsung" }
+ if ($rawVendor -match "Samsung|\bSEC\b") { $vendor = "Samsung" }
  elseif ($rawVendor -match "HP|Hewlett-Packard") { $vendor = "HP" }
  elseif ($rawVendor -match "Dell") { $vendor = "Dell" }
 
@@ -216,8 +216,7 @@ function Invoke-Gate1Check($diag, [array]$bcdOutput) {
   Write-Host "------------------------------------------------------------------" -ForegroundColor DarkGray
   $gateChoice = (Read-Host (U "\uC791\uC5C5\uC744 \uC120\uD0DD\uD558\uC138\uC694 (Enter=BIOS \uC9C4\uC785)")).Trim()
   if ($gateChoice -eq "" -or $gateChoice -match "^[bB]$") {
-   shutdown /r /fw /f /t 0
-   exit 0
+   $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup"
   } elseif ($gateChoice -match "^[eE]$") {
    Show-BootloaderManager $false
   } elseif ($gateChoice -match "^[dD]$") {

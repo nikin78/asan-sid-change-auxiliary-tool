@@ -25,6 +25,7 @@ function Get-LocalMachineSid {
 function Test-TcpPortFast([string]$targetHost, [int]$port = 445, [int]$timeoutMs = 1000) {
  if (-not $targetHost) { return $false }
  $client = $null
+ $iar = $null
  try {
   $client = New-Object System.Net.Sockets.TcpClient
   $iar = $client.BeginConnect($targetHost, $port, $null, $null)
@@ -36,8 +37,21 @@ function Test-TcpPortFast([string]$targetHost, [int]$port = 445, [int]$timeoutMs
  } catch {
   return $false
  } finally {
+  if ($iar -and $iar.AsyncWaitHandle) { try { $iar.AsyncWaitHandle.Close() } catch {} }
   if ($client) { try { $client.Close() } catch {} }
  }
+}
+
+function Get-SpoolerQueueDirectory {
+ $defaultDir = Join-Path $env:SystemRoot "System32\spool\PRINTERS"
+ try {
+  $reg = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers" -Name "DefaultSpoolDirectory" -ErrorAction Stop
+  $custom = [string]$reg.DefaultSpoolDirectory
+  if ($custom -and $custom.Trim() -ne "" -and (-not $custom.StartsWith("\\")) -and (Test-Path -LiteralPath $custom)) {
+   return $custom.Trim()
+  }
+ } catch {}
+ return $defaultDir
 }
 
 function Parse-NetworkPrinterServer([string]$printerName, [string]$portName, [string]$serverName) {
@@ -97,7 +111,7 @@ function Get-PostSidStatus {
  $spStartMode = if ($spCim -and $spCim.StartMode) { [string]$spCim.StartMode } else { "Unknown" }
 
  # Queue directory file count
- $queueDir = Join-Path $env:SystemRoot "System32\spool\PRINTERS"
+ $queueDir = Get-SpoolerQueueDirectory
  $qTotal = 0
  $qSplShd = 0
  if (Test-Path -LiteralPath $queueDir) {
@@ -147,37 +161,47 @@ function Get-PostSidStatus {
   }
  }
 
- # Also check HKCU\Printers\Connections for user-session network printers
+ # Also check HKCU and all loaded HKU user hives for per-user network printers (works across Over-the-Shoulder UAC)
  $seenNetNames = @{}
  foreach ($p in $printers) {
   if ($p.IsNetwork) { $seenNetNames[$p.Name.ToLower()] = $true }
  }
+ $connRegPaths = @("HKCU:\Printers\Connections")
  try {
-  if (Test-Path "HKCU:\Printers\Connections") {
-   $connKeys = @(Get-ChildItem "HKCU:\Printers\Connections" -ErrorAction SilentlyContinue)
-   foreach ($ck in $connKeys) {
-    if ($ck.PSChildName -match "^,,([^,]+),(.+)$") {
-     $unc = "\\" + $matches[1] + "\" + $matches[2]
-     if (-not $seenNetNames.ContainsKey($unc.ToLower())) {
-      $seenNetNames[$unc.ToLower()] = $true
-      $printers += [PSCustomObject]@{
-       Name = $unc
-       Shared = $false
-       ShareName = ""
-       PortName = $unc
-       DriverName = ""
-       IsNetwork = $true
-       RemoteServer = $matches[1]
+  foreach ($uh in @(Get-ChildItem "Registry::HKEY_USERS" -ErrorAction SilentlyContinue)) {
+   if ($uh.PSChildName -match "^S-1-5-21-\d+-\d+-\d+-\d+$") {
+    $connRegPaths += (Join-Path $uh.PSPath "Printers\Connections")
+   }
+  }
+ } catch {}
+ foreach ($regPath in ($connRegPaths | Select-Object -Unique)) {
+  try {
+   if (Test-Path $regPath) {
+    $connKeys = @(Get-ChildItem $regPath -ErrorAction SilentlyContinue)
+    foreach ($ck in $connKeys) {
+     if ($ck.PSChildName -match "^,,([^,]+),(.+)$") {
+      $unc = "\\" + $matches[1] + "\" + $matches[2]
+      if (-not $seenNetNames.ContainsKey($unc.ToLower())) {
+       $seenNetNames[$unc.ToLower()] = $true
+       $printers += [PSCustomObject]@{
+        Name = $unc
+        Shared = $false
+        ShareName = ""
+        PortName = $unc
+        DriverName = ""
+        IsNetwork = $true
+        RemoteServer = $matches[1]
+       }
       }
      }
     }
    }
-  }
- } catch {}
+  } catch {}
+ }
 
  $sharedPrinters = @($printers | Where-Object { $_.Shared -and -not $_.IsNetwork })
  $networkPrinters = @($printers | Where-Object { $_.IsNetwork })
- $role = if ($sharedPrinters.Count -gt 0) { "Host" } else { "Client" }
+ $role = if ($spStatus -ne "Running") { "Unknown" } elseif ($sharedPrinters.Count -gt 0) { "Host" } else { "Client" }
 
  # Host diagnostics: File & Printer Sharing firewall rules + Network profiles
  $fwTotal = -1
@@ -186,15 +210,17 @@ function Get-PostSidStatus {
  $hasPublicProfile = $false
  if ($role -eq "Host") {
   try {
-   $fwRules = @(Get-NetFirewallRule -Group "@FirewallAPI.dll,-28502" -Direction Inbound -ErrorAction Stop)
-   if ($fwRules.Count -eq 0) {
-    $koGroup = U "\uD30C\uC77C \uBC0F \uD504\uB9B0\uD130 \uACF5\uC720"
-    $fwRules = @(Get-NetFirewallRule -Direction Inbound -ErrorAction SilentlyContinue | Where-Object {
-     $_.DisplayGroup -eq "File and Printer Sharing" -or $_.DisplayGroup -eq $koGroup
-    })
+   if (Get-Command Get-NetFirewallRule -ErrorAction SilentlyContinue) {
+    $fwRules = @(Get-NetFirewallRule -Group "@FirewallAPI.dll,-28502" -Direction Inbound -ErrorAction SilentlyContinue)
+    if ($fwRules.Count -eq 0) {
+     $koGroup = U "\uD30C\uC77C \uBC0F \uD504\uB9B0\uD130 \uACF5\uC720"
+     $fwRules = @(Get-NetFirewallRule -Direction Inbound -ErrorAction SilentlyContinue | Where-Object {
+      $_.DisplayGroup -eq "File and Printer Sharing" -or $_.DisplayGroup -eq $koGroup
+     })
+    }
+    $fwTotal = $fwRules.Count
+    $fwEnabled = @($fwRules | Where-Object { [string]$_.Enabled -eq "True" }).Count
    }
-   $fwTotal = $fwRules.Count
-   $fwEnabled = @($fwRules | Where-Object { [string]$_.Enabled -eq "True" }).Count
   } catch {
    $fwTotal = -1
    $fwEnabled = -1
@@ -271,7 +297,12 @@ function Invoke-SpoolerReset {
  } catch {}
 
  $sp = Get-Service -Name "Spooler" -ErrorAction SilentlyContinue
- if ($sp -and $sp.Status -eq "Stopped") {
+ if (-not $sp) {
+  Write-Host (U " [\uC624\uB958] \uC774 PC\uC5D0\uC11C Spooler \uC11C\uBE44\uC2A4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.") -ForegroundColor Red
+  Read-Host (U "\uACC4\uC18D\uD558\uB824\uBA74 Enter\uB97C \uB204\uB974\uC138\uC694") | Out-Null
+  return
+ }
+ if ($sp.Status -eq "Stopped") {
   $stopMode = "NORMAL"
  } else {
   Stop-Service -Name "Spooler" -Force -ErrorAction SilentlyContinue
@@ -297,7 +328,7 @@ function Invoke-SpoolerReset {
 
  # 2. Clear PRINTERS queue directory
  Write-Host (U " 2/4. \uB300\uAE30\uC5F4 \uD3F4\uB354(PRINTERS) \uC815\uB9AC \uC911...") -ForegroundColor White
- $queueDir = Join-Path $env:SystemRoot "System32\spool\PRINTERS"
+ $queueDir = Get-SpoolerQueueDirectory
  $qRes = Clear-SpoolerQueueDirectory $queueDir
 
  # 3. Restore StartType if Disabled
@@ -374,8 +405,16 @@ function Show-PostSidStatusScreen($st) {
  Write-Host (" " + (U "\uC548\uB0B4: SID \uBCC0\uACBD \uD6C4 \uACF5\uC720 \uD504\uB9B0\uD130 \uC815\uC0C1 \uC774\uC6A9\uC744 \uC704\uD574 [\uBA54\uC778 \uD504\uB9B0\uD130 PC]\uC640 [\uD074\uB77C\uC774\uC5B8\uD2B8 PC] \uAC01\uAC01\uC5D0\uC11C \uD55C \uBC88\uC529 \uC2E4\uD589\uD558\uC138\uC694.")) -ForegroundColor Yellow
  Write-Host "------------------------------------------------------------------" -ForegroundColor DarkGray
 
- $roleLabel = if ($st.Role -eq "Host") { U "[\uD638\uC2A4\uD2B8(\uBA54\uC778 \uD504\uB9B0\uD130 PC)]" } else { U "[\uD074\uB77C\uC774\uC5B8\uD2B8]" }
- $roleColor = if ($st.Role -eq "Host") { "Cyan" } else { "Green" }
+ $roleLabel = switch ($st.Role) {
+  "Host"    { U "[\uD638\uC2A4\uD2B8(\uBA54\uC778 \uD504\uB9B0\uD130 PC)]" }
+  "Client"  { U "[\uD074\uB77C\uC774\uC5B8\uD2B8]" }
+  default   { U "[\uD310\uBCC4 \uBCF4\uB958 (Spooler \uC911\uC9C0\uB428)]" }
+ }
+ $roleColor = switch ($st.Role) {
+  "Host"   { "Cyan" }
+  "Client" { "Green" }
+  default  { "Yellow" }
+ }
  Write-Host (" * " + (U "PC \uC5ED\uD560 \uD310\uBCC4") + "        : " + $roleLabel) -ForegroundColor $roleColor
  Write-Host (" * " + (U "\uCEF4\uD4E8\uD130 \uC774\uB984") + "        : " + $st.ComputerName) -ForegroundColor White
  Write-Host (" * " + (U "\uD604\uC7AC Machine SID") + "   : " + $st.MachineSid) -ForegroundColor DarkGray
@@ -395,6 +434,8 @@ function Show-PostSidStatusScreen($st) {
  Write-Host ("`n" + (U "[\uC124\uCE58\uB41C \uD504\uB9B0\uD130 \uBAA9\uB85D]")) -ForegroundColor Cyan
  if ($st.SpoolerStatus -ne "Running") {
   Write-Host (" - " + (U "(Spooler \uC911\uC9C0 \uC0C1\uD0DC - \uB9AC\uC14B \uD6C4 \uBAA9\uB85D\uC774 \uD45C\uC2DC\uB429\uB2C8\uB2E4)")) -ForegroundColor Yellow
+ } elseif ($st.PrinterQueryError) {
+  Write-Host (" - " + (U "[\uACBD\uACE0] \uD504\uB9B0\uD130 \uBAA9\uB85D \uC870\uD68C \uC624\uB958 - Spooler RPC \uBE44\uC815\uC0C1 \uC0C1\uD0DC\uC785\uB2C8\uB2E4. \uC2A4\uD480\uB7EC \uB9AC\uC14B\uC744 \uC2E4\uD589\uD558\uC138\uC694!")) -ForegroundColor Red
  } elseif ($st.Printers.Count -eq 0) {
   Write-Host (" - " + (U "(\uC124\uCE58\uB41C \uD504\uB9B0\uD130 \uC5C6\uC74C)")) -ForegroundColor DarkGray
  } else {

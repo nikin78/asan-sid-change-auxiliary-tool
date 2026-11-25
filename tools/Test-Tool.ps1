@@ -309,6 +309,123 @@ foreach ($m in $uMatches) {
 }
 Assert-Eq $badU 0 "All $($uMatches.Count) U(...) Korean strings decode cleanly without stray escapes or U+FFFD"
 
+Write-Host "`n=== 8. Scenario & Regression Tests (Read-Only USB / Local Special Chars / Shared Folder) ===" -ForegroundColor Cyan
+# 8a. Korean diskpart 'select disk' line & Read-only state parsing
+$dpDetailKoReal = @(
+    ("Microsoft DiskPart " + (U "\uBC84\uC804") + " 10.0.26100.1"),
+    ((U "\uCEF4\uD4E8\uD130") + ": SHK"),
+    ("0 " + $koDisk + (U "\uAC00 \uC120\uD0DD\uD55C \uB514\uC2A4\uD06C\uC785\uB2C8\uB2E4.")),
+    "Kanguru SS3 Write-Protected USB",
+    "$koDisk ID: 9A8B7C6D",
+    ((U "\uC720\uD615") + "   : USB"),
+    ((U "\uD604\uC7AC \uC77D\uAE30 \uC804\uC6A9 \uC0C1\uD0DC") + " : " + (U "\uC608"))
+)
+$ddRo = Parse-DiskpartDetailDisk $dpDetailKoReal
+Assert-Eq $ddRo.FriendlyName "Kanguru SS3 Write-Protected USB" "KO select-disk line skipped; actual disk model extracted"
+Assert-Eq $ddRo.IsUsb $true "Write-protected USB detected as USB"
+Assert-Eq $ddRo.IsReadOnly $true "KO Current Read-only State : Yes detected"
+
+# 8b. Korean detail partition with '문자' header and CJK wide-char volume row
+$koVol = U "\uBCFC\uB968"
+$koLtr = U "\uBB38\uC790"
+$dpDetPartKo2 = @(
+    ((U "\uD65C\uC131") + ": " + (U "\uC608")),
+    "  $koVol ###  $koLtr  Label        Fs     Type        Size     Status     Info",
+    "  ----------  ---  -----------  -----  ----------  -------  ---------  --------",
+    "* $koVol 3     E   Data         NTFS   Partition    500 GB  Healthy"
+)
+$dpInfo2 = Parse-DiskpartDetailPartition $dpDetPartKo2
+Assert-Eq $dpInfo2.DriveLetter "E" "KO detail partition with Korean volume/Ltr row parsed E:"
+
+# 8c. Multi-word partition type in list partition
+$dpListPartMulti = @(
+    "  Partition 1    Dynamic Data      100 GB  1024 KB",
+    "  Partition 2    Primary           200 GB   100 GB"
+)
+$ppMulti = @(Parse-DiskpartListPartition $dpListPartMulti)
+Assert-Eq $ppMulti.Count 2 "Multi-word partition type parsed without dropping row"
+Assert-Eq $ppMulti[0].TypeText "Dynamic Data" "Multi-word partition TypeText preserved"
+
+# 8d. Same-brand USB vs Internal SSD exclusion (Samsung USB vs Samsung NVMe)
+$sameBrandEntries = @(
+    @{ Identifier = "{aaaa1111-1111-1111-1111-111111111111}"; Description = "UEFI OS (Samsung SSD 980 PRO)"; Device = "partition=\Device\HarddiskVolume1"; Path = "" },
+    @{ Identifier = "{bbbb2222-2222-2222-2222-222222222222}"; Description = "UEFI: Samsung Flash Drive BAR Plus"; Device = ""; Path = "" }
+)
+$fakeUsbDisk = @([PSCustomObject]@{ Number = 99; FriendlyName = "Samsung BAR Plus"; Size = 64GB; IsReadOnly = $true })
+$fakeIntDisk = @([PSCustomObject]@{ Number = 0; FriendlyName = "Samsung SSD 980 PRO"; Size = 500GB; IsReadOnly = $false })
+$fakeUsbInfo = Get-PhysicalUsbInfo $fakeUsbDisk $fakeIntDisk
+Assert-True ($fakeUsbInfo.UsbStrictModelPatterns -notcontains "Samsung") "Shared brand token 'Samsung' excluded from USB single-word patterns"
+Assert-True ($fakeUsbInfo.UsbStrictModelPatterns -contains "BAR") "Unique USB token 'BAR' retained"
+$mBrand = @(Find-MatchedUsbNvramEntries $sameBrandEntries @() @() $fakeUsbInfo.UsbStrictModelPatterns @() $true)
+Assert-Eq $mBrand.Count 1 "Same-brand Samsung NVMe SSD excluded; only Samsung BAR Plus USB matched"
+Assert-Eq $mBrand[0].Identifier "{bbbb2222-2222-2222-2222-222222222222}" "Matched exact Samsung USB GUID"
+
+# 8e. Standalone NVMe/SATA NVRAM entry without USB keyword excluded; USB NVMe kept
+$nvmeMixEntries = @(
+    @{ Identifier = "{cccc3333-3333-3333-3333-333333333333}"; Description = "NVMe: WD Black SN850X"; Device = ""; Path = "" },
+    @{ Identifier = "{dddd4444-4444-4444-4444-444444444444}"; Description = "UEFI: USB NVMe Enclosure"; Device = ""; Path = "" }
+)
+$mNvme = @(Find-MatchedUsbNvramEntries $nvmeMixEntries @() @() @() @() $true)
+Assert-Eq $mNvme.Count 1 "Standalone NVMe excluded while USB NVMe Enclosure kept"
+Assert-Eq $mNvme[0].Identifier "{dddd4444-4444-4444-4444-444444444444}" "USB NVMe Enclosure matched"
+
+# 8f. Busy drive letters includes C:
+$busyLtrs = Get-BusyDriveLetters
+Assert-True ($busyLtrs.ContainsKey("C")) "Get-BusyDriveLetters includes C:"
+
+# 8g. Target-exists conflict guard inside Invoke-BootloaderRenameInRoot
+$tmpGuard = Join-Path ([System.IO.Path]::GetTempPath()) ("sid_aux_guard_" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path "$tmpGuard\EFI" -Force | Out-Null
+New-Item -ItemType Directory -Path "$tmpGuard\EFI_OLD" -Force | Out-Null
+try {
+    $rConf = Invoke-BootloaderRenameInRoot $tmpGuard "GPT_EFI" "DISABLE"
+    Assert-Eq $rConf.Status "BLOCKED" "Rename blocked directly when EFI_OLD target already exists"
+} finally {
+    Remove-Item -LiteralPath $tmpGuard -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# 8h. Read-only file attribute + local special-char path + simulated network staging self-cleanup
+$tmpScen = Join-Path ([System.IO.Path]::GetTempPath()) ("sid & (test) '" + (U "\uD55C\uAE00") + "'_" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $tmpScen -Force | Out-Null
+$roBat = Join-Path $tmpScen "SID_Change_Aux_Tool.bat"
+try {
+    [System.IO.File]::WriteAllBytes($roBat, [System.IO.File]::ReadAllBytes($batPath))
+    (Get-Item -LiteralPath $roBat).IsReadOnly = $true
+    # Verify read-only copy can be read as ASCII and loaded cleanly without writing to source dir
+    $beforeCount = @(Get-ChildItem -LiteralPath $tmpScen -Force).Count
+    $roCode = [System.IO.File]::ReadAllText($roBat, [System.Text.Encoding]::ASCII)
+    Assert-Eq $roCode.Length $code.Length "Read-only .bat in special-char folder read cleanly as ASCII"
+    $afterCount = @(Get-ChildItem -LiteralPath $tmpScen -Force).Count
+    Assert-Eq $afterCount $beforeCount "Zero files created in read-only source directory"
+
+    # Simulate network staging runner (EncodedCommand reads staged copy, deletes it, preserves SELF_PATH)
+    $stageTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("SID_Aux_Stage_" + [guid]::NewGuid().ToString("N") + ".tmp")
+    [System.IO.File]::WriteAllBytes($stageTmp, [System.IO.File]::ReadAllBytes($roBat))
+    $q = [string][char]39
+    $eT = $stageTmp.Replace($q, $q + $q)
+    $eO = ("\\MAIN-PC\Share & (1)\SID_Change_Aux_Tool.bat").Replace($q, $q + $q)
+    $run = '$p=' + $q + $eT + $q + ';$env:SELF_PATH=' + $q + $eO + $q + ';$env:SID_TOOL_STAGED=' + $q + '1' + $q + ';$env:SID_TOOL_TEST_MODE=' + $q + '1' + $q + ';try{$c=[IO.File]::ReadAllText($p,[Text.Encoding]::ASCII)}finally{Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue};Invoke-Expression $c;Write-Output ("LOADED_VER=" + $script:ToolVersion + "|ORIG=" + $env:SELF_PATH)'
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($run))
+    $psExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $stRes = Invoke-NativeOem $psExe ("-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + $b64)
+    Assert-Eq $stRes.ExitCode 0 "Simulated network-staged EncodedCommand runner exited cleanly"
+    Assert-True ($stRes.StdOut -match "LOADED_VER=2\.0\|ORIG=\\\\MAIN-PC\\Share & \(1\)\\SID_Change_Aux_Tool\.bat") "Staged runner loaded full tool in RAM and preserved UNC SELF_PATH"
+    Assert-True (-not (Test-Path -LiteralPath $stageTmp)) "Staged temp file auto-deleted immediately after RAM load"
+} finally {
+    if (Test-Path -LiteralPath $roBat) { try { (Get-Item -LiteralPath $roBat).IsReadOnly = $false } catch {} }
+    Remove-Item -LiteralPath $tmpScen -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# 8i. Invoke-NativeOem timeout guard
+$toRes = Invoke-NativeOem "cmd.exe" "/c ping -n 4 127.0.0.1 >nul" $null 300
+Assert-Eq $toRes.ExitCode -2 "Invoke-NativeOem enforces timeout cleanly without hanging"
+
+# 8j. Wrapper structural audit (WinPE X: skip, fltmc fallback, network staging, no inner double-quotes in -Command)
+$wrapperLines = ($code -split "`r?`n")[0..20] -join "`n"
+Assert-True ($wrapperLines -match 'SystemDrive.*X:') "Wrapper skips UAC loop in WinPE (X:)"
+Assert-True ($wrapperLines -match 'fltmc >nul 2>&1') "Wrapper includes fltmc admin fallback when LanmanServer is stopped"
+Assert-True ($wrapperLines -match 'SID_Aux_Stage_') "Wrapper includes local staging for UNC/mapped network drives"
+
 Write-Host "`n==================================================================" -ForegroundColor Cyan
 if ($script:Failed -eq 0) {
     Write-Host "[TEST SUMMARY] ALL $($script:Passed) TESTS PASSED!" -ForegroundColor Green

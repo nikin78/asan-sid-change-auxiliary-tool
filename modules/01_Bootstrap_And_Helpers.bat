@@ -3,13 +3,17 @@
 set "SELF_PATH=%~f0"
 cd /d "%SystemRoot%\System32"
 
+if /i "%SystemDrive%"=="X:" goto :RUN_ELEVATED
 net session >nul 2>&1
-if %errorlevel% neq 0 (
- powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:SELF_PATH -Verb RunAs"
- exit /b
-)
+if %errorlevel% equ 0 goto :RUN_ELEVATED
+fltmc >nul 2>&1
+if %errorlevel% equ 0 goto :RUN_ELEVATED
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$code = [System.IO.File]::ReadAllText($env:SELF_PATH); Invoke-Expression $code"
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:SELF_PATH;$staged=$null;try{$isNet=$p.StartsWith('\\');if(-not $isNet){try{$rt=[IO.Path]::GetPathRoot($p);if($rt -and ([IO.DriveInfo]$rt).DriveType -eq 'Network'){$isNet=$true}}catch{}};$target=$p;if($isNet){$bytes=[IO.File]::ReadAllBytes($p);$dirs=@($env:TEMP,(Join-Path $env:LOCALAPPDATA 'Temp'),(Join-Path $env:PUBLIC 'Documents'))|Where-Object{$_ -and (Test-Path -LiteralPath $_)};foreach($d in $dirs){try{$rt2=[IO.Path]::GetPathRoot($d);if($rt2 -and ([IO.DriveInfo]$rt2).DriveType -eq 'Network'){continue};$cand=Join-Path $d ('SID_Aux_Stage_'+[guid]::NewGuid().ToString('N')+'.tmp');[IO.File]::WriteAllBytes($cand,$bytes);$staged=$cand;break}catch{}};if(-not $staged){throw 'Cannot stage script from network share to a local temp folder.'};$target=$staged};$q=[string][char]39;$eT=$target.Replace($q,$q+$q);$eO=$p.Replace($q,$q+$q);$stFlag=if($staged){'1'}else{'0'};$del=if($staged){'Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue'}else{''};$run='$p='+$q+$eT+$q+';$env:SELF_PATH='+$q+$eO+$q+';$env:SID_TOOL_STAGED='+$q+$stFlag+$q+';Set-Location (Join-Path $env:SystemRoot '+$q+'System32'+$q+');try{try{$c=[IO.File]::ReadAllText($p,[Text.Encoding]::ASCII)}finally{'+$del+'};Invoke-Expression $c}catch{Write-Host ('+$q+'[FATAL] '+$q+'+$_.Exception.Message) -ForegroundColor Red;Read-Host '+$q+'Press Enter to exit'+$q+'|Out-Null}';$b64=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($run));$psExe=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe';Start-Process -FilePath $psExe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$b64) -Verb RunAs}catch{if($staged){Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue};$ex=$_.Exception;$w32=if($ex -is [System.ComponentModel.Win32Exception]){$ex}elseif($ex.InnerException -is [System.ComponentModel.Win32Exception]){$ex.InnerException}else{$null};if($w32 -and $w32.NativeErrorCode -eq 1223){exit 0};Write-Host ('[UAC/LAUNCH ERROR] '+$ex.Message) -ForegroundColor Red;Read-Host 'Press Enter to exit'|Out-Null;exit 1}"
+exit /b
+
+:RUN_ELEVATED
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "try{$c=[System.IO.File]::ReadAllText($env:SELF_PATH,[System.Text.Encoding]::ASCII);Invoke-Expression $c}catch{Write-Host ('[FATAL] '+$_.Exception.Message) -ForegroundColor Red;Read-Host 'Press Enter to exit'|Out-Null;exit 1}"
 exit /b
 #>
 
@@ -32,7 +36,7 @@ $script:ToolVersion = "2.0"
 $gptEfiGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
 $gptRecoveryGuid = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"
 $gptMsrGuid = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
-$mbrEfiFatTypes = @(11, 12, 14, 239)
+$mbrEfiFatTypes = @(1, 4, 6, 11, 12, 14, 239)
 
 # Resolve system OEM encoding (CP949 on Korean Windows, CP437 on EN-US, 65001 if UTF-8 beta)
 function Get-SystemOemEncoding {
@@ -43,8 +47,8 @@ function Get-SystemOemEncoding {
  return [System.Text.Encoding]::Default
 }
 
-# Run native console commands (bcdedit, diskpart, bcdboot, netsh) safely with OEM decoding
-function Invoke-NativeOem([string]$fileName, [string]$arguments = "", [string]$stdinText = $null) {
+# Run native console commands (bcdedit, diskpart, bcdboot, shutdown) safely with OEM decoding & timeout
+function Invoke-NativeOem([string]$fileName, [string]$arguments = "", [string]$stdinText = $null, [int]$timeoutMs = 30000) {
  $oemEnc = Get-SystemOemEncoding
  $prevOutEnc = $null
  $changedEnc = $false
@@ -56,8 +60,14 @@ function Invoke-NativeOem([string]$fileName, [string]$arguments = "", [string]$s
   }
  } catch {}
 
+ $resolvedExe = $fileName
+ if ($fileName -and ($fileName -notmatch "[\\/]")) {
+  $sysCand = Join-Path (Join-Path $env:SystemRoot "System32") $fileName
+  if (Test-Path -LiteralPath $sysCand) { $resolvedExe = $sysCand }
+ }
+
  $psi = New-Object System.Diagnostics.ProcessStartInfo
- $psi.FileName = $fileName
+ $psi.FileName = $resolvedExe
  $psi.Arguments = $arguments
  $psi.UseShellExecute = $false
  $psi.CreateNoWindow = $true
@@ -70,6 +80,7 @@ function Invoke-NativeOem([string]$fileName, [string]$arguments = "", [string]$s
  $outText = ""
  $errText = ""
  $exitCode = -1
+ $proc = $null
  try {
   $proc = New-Object System.Diagnostics.Process
   $proc.StartInfo = $psi
@@ -81,14 +92,21 @@ function Invoke-NativeOem([string]$fileName, [string]$arguments = "", [string]$s
   }
   $outTask = $proc.StandardOutput.ReadToEndAsync()
   $errTask = $proc.StandardError.ReadToEndAsync()
-  $proc.WaitForExit()
-  $outText = $outTask.Result
-  $errText = $errTask.Result
-  $exitCode = $proc.ExitCode
+  if ($proc.WaitForExit($timeoutMs)) {
+   $proc.WaitForExit()
+   $outText = $outTask.Result
+   $errText = $errTask.Result
+   $exitCode = $proc.ExitCode
+  } else {
+   try { $proc.Kill() } catch {}
+   $errText = "Command timed out after ${timeoutMs}ms: $fileName $arguments"
+   $exitCode = -2
+  }
  } catch {
   $errText = $_.Exception.Message
   $exitCode = -1
  } finally {
+  if ($proc) { try { $proc.Dispose() } catch {} }
   if ($changedEnc -and $null -ne $prevOutEnc) {
    try { [Console]::OutputEncoding = $prevOutEnc } catch {}
   }
@@ -103,6 +121,21 @@ function Invoke-NativeOem([string]$fileName, [string]$arguments = "", [string]$s
   StdErr = $errText
   Lines = $lines
  }
+}
+
+# Safe reboot wrapper: checks exit code so reboot errors are never hidden
+function Invoke-SafeReboot([string]$shutdownArgs, [string]$targetLabel = "") {
+ $shExe = Join-Path $env:SystemRoot "System32\shutdown.exe"
+ $res = Invoke-NativeOem $shExe $shutdownArgs
+ if ($res.ExitCode -eq 0) {
+  exit 0
+ }
+ $lbl = if ($targetLabel) { " (" + $targetLabel + ")" } else { "" }
+ Write-Host ("`n [" + (U "\uC624\uB958") + "] " + (U "\uC7AC\uBD80\uD305 \uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328") + $lbl + " (ExitCode=" + $res.ExitCode + ")") -ForegroundColor Red
+ $detail = ($res.Lines | Where-Object { $_ -and $_.Trim() -ne "" }) -join " "
+ if ($detail) { Write-Host (" - " + $detail) -ForegroundColor Yellow }
+ Read-Host (U "\uBA54\uB274\uB85C \uB3CC\uC544\uAC00\uB824\uBA74 Enter\uB97C \uB204\uB974\uC138\uC694") | Out-Null
+ return $false
 }
 
 # Parse bcdedit /enum firmware output (supports both English and Korean Windows)
