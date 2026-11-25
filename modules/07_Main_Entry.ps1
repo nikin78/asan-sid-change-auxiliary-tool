@@ -1,5 +1,6 @@
 # ==============================================================================
-# Module 06: Main Entrypoint, WinPE Auto-Branch & Pre-SID STEP 1 -> STEP 2 UX
+# Module 07: Main Entrypoint (GUI-First with Automatic Console TUI Fallback,
+#            WinPE Auto-Branch & Pre-SID STEP 1 -> STEP 2 UX)
 # ==============================================================================
 
 function Invoke-PreSidWorkflow($sysInfo) {
@@ -140,24 +141,11 @@ function Invoke-PreSidWorkflow($sysInfo) {
  }
 }
 
-function Start-ToolMain {
- Clear-Host
-
- # WinPE (X:) Emergency Mode Auto-Detection
- if ($env:SystemDrive -eq "X:") {
-  Write-Host "==================================================================" -ForegroundColor Yellow
-  Write-Host (U " [WinPE \uBE44\uC0C1 \uBAA8\uB4DC] \uB0B4\uC7A5 \uB514\uC2A4\uD06C \uBD80\uD2B8\uB85C\uB354(EFI/MBR) \uC810\uAC80 \uBC0F \uBCF5\uAD6C") -ForegroundColor Yellow
-  Write-Host "==================================================================" -ForegroundColor Yellow
-  Show-BootloaderManager $true
-  exit 0
- }
-
- # Normal Windows Main Menu
- $sysInfo = Get-SystemInfo
+function Start-ToolConsoleMain($sysInfo) {
  while ($true) {
   Clear-Host
   Write-Host "==================================================================" -ForegroundColor Cyan
-  Write-Host (" " + (U "[SID \uBCC0\uACBD \uBCF4\uC870 \uD234] \uC2DC\uC2A4\uD15C :") + " [" + $sysInfo.Vendor + "] (" + $sysInfo.ModelName + ")") -ForegroundColor Cyan
+  Write-Host (" " + (U "[SID \uBCC0\uACBD \uBCF4\uC870 \uD234") + " v" + $script:ToolVersion + "] " + (U "\uC2DC\uC2A4\uD15C :") + " [" + $sysInfo.Vendor + "] (" + $sysInfo.ModelName + ")") -ForegroundColor Cyan
   Write-Host "==================================================================" -ForegroundColor Cyan
   if ($env:SID_TOOL_STAGED -eq "1" -or ($env:SELF_PATH -and $env:SELF_PATH.StartsWith("\\"))) {
    Write-Host (U " [\uC548\uB0B4] \uACF5\uC720\uD3F4\uB354/\uB124\uD2B8\uC6CC\uD06C \uACBD\uB85C\uC5D0\uC11C \uC2E4\uD589\uB428 -> \uB85C\uCEEC \uBA54\uBAA8\uB9AC \uB85C\uB4DC \uC644\uB8CC (\uC6D0\uBCF8 \uBB34\uBCC0\uACBD)") -ForegroundColor DarkGray
@@ -182,6 +170,41 @@ function Start-ToolMain {
    Start-Sleep -Milliseconds 900
   }
  }
+}
+
+function Start-ToolMain {
+ $forceCli = ($env:SID_TOOL_CLI -eq "1") -or ($env:SELF_ARG1 -match "^(--cli|/cli|-cli)$")
+
+ # WinPE (X:) Emergency Mode Auto-Detection
+ if ($env:SystemDrive -eq "X:") {
+  if (-not $forceCli -and (Test-WinFormsAvailable)) {
+   try {
+    Show-WinPeEmergencyGui
+    exit 0
+   } catch {}
+  }
+  Clear-Host
+  Write-Host "==================================================================" -ForegroundColor Yellow
+  Write-Host (U " [WinPE \uBE44\uC0C1 \uBAA8\uB4DC] \uB0B4\uC7A5 \uB514\uC2A4\uD06C \uBD80\uD2B8\uB85C\uB354(EFI/MBR) \uC810\uAC80 \uBC0F \uBCF5\uAD6C") -ForegroundColor Yellow
+  Write-Host "==================================================================" -ForegroundColor Yellow
+  Show-BootloaderManager $true
+  exit 0
+ }
+
+ # Normal Windows: Prefer WinForms GUI, automatically fall back to Console TUI if unavailable
+ $sysInfo = Get-SystemInfo
+ if (-not $forceCli -and (Test-WinFormsAvailable)) {
+  try {
+   try { [Console]::Title = "SID Change Auxiliary Tool v" + $script:ToolVersion } catch {}
+   Start-ToolGui $sysInfo
+   exit 0
+  } catch {
+   Write-Host ((U "`n[\uC548\uB0B4] GUI \uBAA8\uB4DC \uCD08\uAE30\uD654 \uC2E4\uD328 - \uCF58\uC194 \uBAA8\uB4DC\uB85C \uC790\uB3D9 \uC804\uD658\uD569\uB2C8\uB2E4: ") + $_.Exception.Message) -ForegroundColor Yellow
+   Start-Sleep -Milliseconds 1200
+  }
+ }
+
+ Start-ToolConsoleMain $sysInfo
 }
 
 if (-not $env:SID_TOOL_TEST_MODE) {

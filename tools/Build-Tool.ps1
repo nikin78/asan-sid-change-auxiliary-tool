@@ -6,13 +6,50 @@
 [CmdletBinding()]
 param(
     [string]$OutputName = "SID_Change_Aux_Tool.bat",
-    [switch]$VerifyOnly
+    [switch]$VerifyOnly,
+    [ValidateSet("", "Major", "Minor", "Patch")]
+    [string]$Bump = ""
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $modulesDir = Join-Path $repoRoot "modules"
+$versionFile = Join-Path $repoRoot "VERSION"
 $outputPath = Join-Path $repoRoot $OutputName
+
+if (-not (Test-Path -LiteralPath $versionFile)) {
+    throw "Missing VERSION file at $versionFile"
+}
+$toolVersion = ([System.IO.File]::ReadAllText($versionFile)).Trim()
+if ($toolVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+    throw "Invalid SemVer in VERSION file: '$toolVersion' (expected MAJOR.MINOR.PATCH)"
+}
+if ($Bump -and -not $VerifyOnly) {
+    $maj = [int]$matches[1]; $min = [int]$matches[2]; $pat = [int]$matches[3]
+    switch ($Bump) {
+        "Major" { $maj++; $min = 0; $pat = 0 }
+        "Minor" { $min++; $pat = 0 }
+        "Patch" { $pat++ }
+    }
+    $toolVersion = "$maj.$min.$pat"
+    $asciiEncTmp = New-Object System.Text.ASCIIEncoding
+    [System.IO.File]::WriteAllText($versionFile, ($toolVersion + "`r`n"), $asciiEncTmp)
+    Write-Host "[VERSION] Bumped VERSION ($Bump) -> v$toolVersion" -ForegroundColor Yellow
+}
+
+$buildDate = (Get-Date).ToString("yyyy-MM-dd")
+$buildCommit = "local"
+$gitExe = Join-Path $env:ProgramFiles "Git\cmd\git.exe"
+if (-not (Test-Path -LiteralPath $gitExe)) {
+    $gCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($gCmd) { $gitExe = $gCmd.Source } else { $gitExe = "" }
+}
+if ($gitExe) {
+    try {
+        $sha = (& $gitExe -C $repoRoot rev-parse --short HEAD 2>$null)
+        if ($sha -and $sha.Trim() -match '^[0-9a-fA-F]{6,12}$') { $buildCommit = $sha.Trim() }
+    } catch {}
+}
 
 $moduleOrder = @(
     "01_Bootstrap_And_Helpers.bat",
@@ -20,7 +57,8 @@ $moduleOrder = @(
     "03_Vendor_Bios_Diagnostics.ps1",
     "04_Usb_Matching_And_Reboot.ps1",
     "05_PostSid_Spooler_Module.ps1",
-    "06_Main_Entry.ps1"
+    "06_Gui_WinForms.ps1",
+    "07_Main_Entry.ps1"
 )
 
 function Test-PureAsciiBytes {
@@ -94,9 +132,12 @@ if (-not $VerifyOnly) {
     }
 
     $finalText = ($chunks -join "`r`n") + "`r`n"
+    $finalText = $finalText.Replace("__TOOL_VERSION__", $toolVersion)
+    $finalText = $finalText.Replace("__BUILD_DATE__", $buildDate)
+    $finalText = $finalText.Replace("__BUILD_COMMIT__", $buildCommit)
     $asciiEnc = New-Object System.Text.ASCIIEncoding
     [System.IO.File]::WriteAllText($outputPath, $finalText, $asciiEnc)
-    Write-Host "[BUILD] Generated $outputPath ($($finalText.Length) chars)" -ForegroundColor Cyan
+    Write-Host "[BUILD] Generated $outputPath v$toolVersion ($buildDate / $buildCommit, $($finalText.Length) chars)" -ForegroundColor Cyan
 }
 
 if (-not (Test-Path $outputPath)) {
@@ -161,6 +202,14 @@ if ($outText -match '(?i)\bformat\s+(fs=|quick|[a-z]:)') {
     $allErrors += "${OutputName}: Forbidden destructive command 'format' detected!"
 }
 
+# 7. Version injection & parity check against root VERSION file
+if ($outText -match '__TOOL_VERSION__|__BUILD_DATE__|__BUILD_COMMIT__') {
+    $allErrors += "${OutputName}: Unreplaced version/build placeholder detected!"
+}
+if ($outText -notmatch ('\$script:ToolVersion\s*=\s*"' + [regex]::Escape($toolVersion) + '"')) {
+    $allErrors += "${OutputName}: Built ToolVersion does not match VERSION file (expected v$toolVersion). Re-run Build-Tool.ps1."
+}
+
 $lineCount = ($outText -split "`r`n").Count
 if ($allErrors.Count -gt 0) {
     Write-Host "`n[VERIFY FAILED] $($allErrors.Count) error(s) found:" -ForegroundColor Red
@@ -169,6 +218,6 @@ if ($allErrors.Count -gt 0) {
     }
     exit 1
 } else {
-    Write-Host "[VERIFY OK] ${OutputName}: $($outBytes.Length) bytes, $lineCount lines | Pure ASCII | Strict CRLF | PS AST OK | Safety Rules OK" -ForegroundColor Green
+    Write-Host "[VERIFY OK] ${OutputName} v${toolVersion}: $($outBytes.Length) bytes, $lineCount lines | Pure ASCII | Strict CRLF | PS AST OK | Version Parity OK | Safety Rules OK" -ForegroundColor Green
     exit 0
 }

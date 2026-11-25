@@ -172,6 +172,47 @@ function Find-MatchedUsbNvramEntries(
  return @($matched)
 }
 
+# Shared snapshot collector for STEP 2 (used by both WinForms GUI and Console TUI)
+function Get-PreSidStep2Snapshot($sysInfo) {
+ $bcdRes = Invoke-NativeOem "bcdedit.exe" "/enum firmware"
+ $bcdOutput = @($bcdRes.Lines)
+ $entries = @(Parse-BcdFirmwareLines $bcdOutput)
+
+ $diskSplit = Get-ClassifiedDisks $false
+ $usbDisks = @($diskSplit.UsbDisks)
+ $internalDisks = @($diskSplit.InternalDisks)
+ $internalDriveLetters = @()
+ $internalDiskNums = @($internalDisks | Select-Object -ExpandProperty Number)
+ if ($internalDiskNums.Count -gt 0 -and (Test-StorageCmdletsAvailable)) {
+  $internalDriveLetters = @(Get-Partition -DiskNumber $internalDiskNums -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | ForEach-Object { "partition=$($_.DriveLetter):" })
+ }
+
+ $usbInfo = Get-PhysicalUsbInfo $usbDisks $internalDisks
+ $matchedEntries = @()
+ if ($usbDisks.Count -gt 0) {
+  $matchedEntries = @(Find-MatchedUsbNvramEntries `
+   $entries `
+   $internalDriveLetters `
+   $usbInfo.UsbDrivePatterns `
+   $usbInfo.UsbStrictModelPatterns `
+   $usbInfo.UsbPartPatterns `
+   $usbInfo.AnyEfiReadyUsb)
+ }
+
+ $diag = Get-BiosDiagnostics $sysInfo $usbDisks $entries $matchedEntries.Count
+
+ return [PSCustomObject]@{
+  BcdOutput = $bcdOutput
+  BcdEntries = $entries
+  UsbDisks = $usbDisks
+  InternalDisks = $internalDisks
+  InternalDriveLetters = $internalDriveLetters
+  UsbInfo = $usbInfo
+  MatchedEntries = $matchedEntries
+  BiosDiag = $diag
+ }
+}
+
 function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
  $gate1Ignored = $false
 
@@ -182,20 +223,15 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
   Write-Host ("   System : [" + $sysInfo.Vendor + "] (" + $sysInfo.ModelName + ")") -ForegroundColor DarkCyan
   Write-Host "==================================================================" -ForegroundColor Cyan
 
-  $bcdRes = Invoke-NativeOem "bcdedit.exe" "/enum firmware"
-  $bcdOutput = @($bcdRes.Lines)
-  $entries = @(Parse-BcdFirmwareLines $bcdOutput)
+  $snap = Get-PreSidStep2Snapshot $sysInfo
+  $bcdOutput = $snap.BcdOutput
+  $entries = $snap.BcdEntries
+  $usbDisks = $snap.UsbDisks
+  $internalDisks = $snap.InternalDisks
+  $usbInfo = $snap.UsbInfo
+  $matchedEntries = $snap.MatchedEntries
+  $diag = $snap.BiosDiag
 
-  $diskSplit = Get-ClassifiedDisks $false
-  $usbDisks = @($diskSplit.UsbDisks)
-  $internalDisks = @($diskSplit.InternalDisks)
-  $internalDriveLetters = @()
-  $internalDiskNums = @($internalDisks | Select-Object -ExpandProperty Number)
-  if ($internalDiskNums.Count -gt 0 -and (Test-StorageCmdletsAvailable)) {
-   $internalDriveLetters = @(Get-Partition -DiskNumber $internalDiskNums -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | ForEach-Object { "partition=$($_.DriveLetter):" })
-  }
-
-  $diag = Get-BiosDiagnostics $sysInfo $usbDisks $entries
   Show-BiosStatusDashboard $diag $step1Bypassed
 
   if (-not $gate1Ignored) {
@@ -223,22 +259,13 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
    return
   }
 
-  # Inspect physical USB partitions
-  $usbInfo = Get-PhysicalUsbInfo $usbDisks $internalDisks
+  # Display physical USB partitions
   Write-Host (U "`n[STEP 2-1] \uD604\uC7AC \uC5F0\uACB0\uB41C \uBB3C\uB9AC USB \uB514\uC2A4\uD06C \uBAA9\uB85D:") -ForegroundColor Cyan
   foreach ($u in $usbInfo.PhysicalUsbList) {
    $efiTag = if ($u.IsEfiReady) { U "UEFI \uBD80\uD305 \uAC00\uB2A5" } else { U "EFI \uD30C\uD2F0\uC158 \uBBF8\uD655\uC778" }
    $roTag = if ($u.IsReadOnly) { " [" + (U "\uC77D\uAE30 \uC804\uC6A9") + "]" } else { "" }
    Write-Host (" - Disk " + $u.DiskNumber + " : " + $u.Model + " [" + $u.SizeGB + "]" + $roTag + " | " + $u.Partitions + " -> (" + $efiTag + ")") -ForegroundColor White
   }
-
-  $matchedEntries = @(Find-MatchedUsbNvramEntries `
-   $entries `
-   $internalDriveLetters `
-   $usbInfo.UsbDrivePatterns `
-   $usbInfo.UsbStrictModelPatterns `
-   $usbInfo.UsbPartPatterns `
-   $usbInfo.AnyEfiReadyUsb)
 
   # Gate 2: Physical USB found, but 0 matching NVRAM entries
   if ($matchedEntries.Count -eq 0) {

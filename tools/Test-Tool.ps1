@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Automated Unit & Smoke Test Suite for SID_Change_Aux_Tool.bat
 # Loads the actual built deliverable with SID_TOOL_TEST_MODE=1 and tests
 # pure helpers, parsers, media guards, non-destructive renames, and live
@@ -409,7 +409,8 @@ try {
     $psExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
     $stRes = Invoke-NativeOem $psExe ("-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + $b64)
     Assert-Eq $stRes.ExitCode 0 "Simulated network-staged EncodedCommand runner exited cleanly"
-    Assert-True ($stRes.StdOut -match "LOADED_VER=2\.0\|ORIG=\\\\MAIN-PC\\Share & \(1\)\\SID_Change_Aux_Tool\.bat") "Staged runner loaded full tool in RAM and preserved UNC SELF_PATH"
+    $expectedVer = ([System.IO.File]::ReadAllText((Join-Path $repoRoot "VERSION"))).Trim()
+    Assert-True ($stRes.StdOut -match ("LOADED_VER=" + [regex]::Escape($expectedVer) + "\|ORIG=\\\\MAIN-PC\\Share & \(1\)\\SID_Change_Aux_Tool\.bat")) "Staged runner loaded full tool v$expectedVer in RAM and preserved UNC SELF_PATH"
     Assert-True (-not (Test-Path -LiteralPath $stageTmp)) "Staged temp file auto-deleted immediately after RAM load"
 } finally {
     if (Test-Path -LiteralPath $roBat) { try { (Get-Item -LiteralPath $roBat).IsReadOnly = $false } catch {} }
@@ -425,6 +426,157 @@ $wrapperLines = ($code -split "`r?`n")[0..20] -join "`n"
 Assert-True ($wrapperLines -match 'SystemDrive.*X:') "Wrapper skips UAC loop in WinPE (X:)"
 Assert-True ($wrapperLines -match 'fltmc >nul 2>&1') "Wrapper includes fltmc admin fallback when LanmanServer is stopped"
 Assert-True ($wrapperLines -match 'SID_Aux_Stage_') "Wrapper includes local staging for UNC/mapped network drives"
+Assert-True ($wrapperLines -match '-STA') "Wrapper launches PowerShell in STA mode for WinForms & Clipboard"
+
+Write-Host "`n=== 9. Multi-Signal BIOS Cross-Verification Tests ===" -ForegroundColor Cyan
+# 9a. 3-Signal Secure Boot Cross-Check
+$sbAgreeOff = Resolve-SecureBootCrossCheck "Off" "Off" "Off"
+Assert-Eq $sbAgreeOff.State "Off" "SecureBoot 3x Off => Off"
+Assert-Eq $sbAgreeOff.Confidence "CrossConfirmed" "SecureBoot 3x Off => CrossConfirmed"
+
+$sbApiFailRegOn = Resolve-SecureBootCrossCheck "Unavailable" "On" "Unavailable"
+Assert-Eq $sbApiFailRegOn.State "On" "SecureBoot API fail + Registry On => On (never silent false-negative!)"
+Assert-Eq $sbApiFailRegOn.IsOnOrRisk $true "SecureBoot API fail + Registry On flags IsOnOrRisk=True"
+
+$sbConflict = Resolve-SecureBootCrossCheck "Off" "Off" "On"
+Assert-Eq $sbConflict.State "Conflict" "SecureBoot API/Reg Off vs WMI On => Conflict"
+Assert-Eq $sbConflict.IsOnOrRisk $true "SecureBoot Conflict treated conservatively as Risk"
+
+$sbAllUnk = Resolve-SecureBootCrossCheck "Unavailable" "Unavailable" "Unavailable"
+Assert-Eq $sbAllUnk.State "Unknown" "SecureBoot all unavailable => Unknown (never silent Off)"
+
+# 9b. HP WMI Primary vs Legacy/Port separation (eliminates Legacy USB Boot=Disable false positive!)
+$hpMock = @(
+    [PSCustomObject]@{ Name = "USB Storage Boot"; CurrentValue = ""; Value = "*Enable,Disable" },
+    [PSCustomObject]@{ Name = "Legacy USB Boot"; CurrentValue = ""; Value = "*Disable,Enable" },
+    [PSCustomObject]@{ Name = "Fast Boot"; CurrentValue = "Enable"; Value = "" },
+    [PSCustomObject]@{ Name = "Configure Legacy Support and Secure Boot"; CurrentValue = "Legacy Support Disable and Secure Boot Disable"; Value = "" }
+)
+$hpRes = Resolve-HpBiosDiagnostics $hpMock
+Assert-Eq $hpRes.UsbState "Enabled" "HP USB Storage Boot=Enable is NOT falsely overridden by Legacy USB Boot=Disable"
+Assert-Eq $hpRes.FastBootWarn $true "HP Fast Boot=Enable flagged"
+Assert-Eq $hpRes.SecureBootWmi "Off" "HP compound Secure Boot value parsed accurately as Off"
+Assert-True ($hpRes.Evidence.Count -ge 4) "HP raw evidence collected for transparency ($($hpRes.Evidence.Count))"
+
+# 9c. Dell WMI type-safe PossibleValues lookup (int vs string) + Minimal Fastboot
+$dellMock = @(
+    [PSCustomObject]@{ AttributeName = "EnableUsbBootSupport"; CurrentValue = @("2"); PossibleValues = @(1, 2); PossibleValuesDescription = @("Disabled", "Enabled") },
+    [PSCustomObject]@{ AttributeName = "Fastboot"; CurrentValue = @("1"); PossibleValues = @(1, 2, 3); PossibleValuesDescription = @("Minimal", "Thorough", "Auto") },
+    [PSCustomObject]@{ AttributeName = "SecureBoot"; CurrentValue = @("1"); PossibleValues = @(1, 2); PossibleValuesDescription = @("Disabled", "Enabled") }
+)
+$dellRes = Resolve-DellBiosDiagnostics $dellMock
+Assert-Eq $dellRes.UsbState "Enabled" "Dell numeric PossibleValues (int vs string) resolved cleanly to Enabled"
+Assert-Eq $dellRes.FastBootWarn $true "Dell Fastboot=Minimal flagged"
+Assert-Eq $dellRes.SecureBootWmi "Off" "Dell SecureBoot resolved to Off"
+
+# 9d. Cross-Check Verdict: WMI=Disabled vs NVRAM=Found => Conflict (not blind false-positive!)
+$vConf = Resolve-BiosCrossCheckVerdict "HP" "Disabled" "HP WMI: USB=Disabled" $false $false "" $true 1 1
+Assert-Eq $vConf.UsbBootState "Conflict" "WMI Disabled vs NVRAM USB match triggers Conflict instead of blind block"
+Assert-Eq $vConf.HasSignalConflict $true "HasSignalConflict flagged true"
+Assert-Eq $vConf.IsConfirmedBlocked $false "Conflict does not blindly hard-block USB boot"
+
+# 9e. Rule #5 check: Samsung AMI never assumes ON even when NVRAM USB observed
+$vSam = Resolve-BiosCrossCheckVerdict "Samsung" "Unknown" "" $false $false "" $true 1 1
+Assert-Eq $vSam.UsbBootState "UnverifiableAMI" "Samsung AMI stays UnverifiableAMI (Rule #5 preserved)"
+Assert-Eq $vSam.UsbBootConfidence "NvramObserved" "Samsung AMI with NVRAM USB marks NvramObserved"
+
+# 9f. Port blocked check
+$vPort = Resolve-BiosCrossCheckVerdict "HP" "Enabled" "HP WMI: USB Storage Boot=Enable" $false $true "HP WMI: External USB=Disable" $false 0 0
+Assert-Eq $vPort.UsbBootState "PortBlocked" "Enabled USB Boot + Disabled USB Port flagged PortBlocked"
+Assert-Eq $vPort.IsConfirmedBlocked $true "PortBlocked triggers BIOS guidance"
+
+# 9g. Live Boot Mode Cross-Check
+$liveBm = Get-BootModeDiagnostics
+Assert-True ($liveBm.Mode -in @("UEFI","Legacy")) "Live Get-BootModeDiagnostics returned Mode=$($liveBm.Mode) ($($liveBm.Confidence))"
+
+Write-Host "`n=== 10. Contextual Guidance Engine & Live WinForms GUI Smoke Test ===" -ForegroundColor Cyan
+$mockUefiOk = [PSCustomObject]@{ BootMode = [PSCustomObject]@{ IsUefi = $true }; SecureBootState = "Off"; IsConfirmedBlocked = $false; HasSignalConflict = $false; UsbBootState = "Enabled"; FastBootWarn = $false; BiosHint = "Hint" }
+$mockEfiClean = [PSCustomObject]@{ HasBlockingRisk = $false; SplitBoot = $false; ActionableConflictItems = @(); ConflictItems = @() }
+$mockEfiRisk  = [PSCustomObject]@{ HasBlockingRisk = $true; SplitBoot = $false; ActionableConflictItems = @([PSCustomObject]@{ DiskNumber = 1 }); ConflictItems = @([PSCustomObject]@{ DiskNumber = 1 }) }
+$mockUsbOne   = [PSCustomObject]@{ PhysicalUsbList = @([PSCustomObject]@{ DiskNumber = 2 }) }
+$mockUsbNone  = [PSCustomObject]@{ PhysicalUsbList = @() }
+
+$gStep1 = Get-PreSidGuidance $liveSys $mockEfiRisk $mockUefiOk $mockUsbOne @() $false
+Assert-Eq $gStep1.RecommendedAction "STEP1_FIX" "Pre-SID guidance prioritizes STEP1_FIX when auxiliary bootloader found"
+
+$gReady = Get-PreSidGuidance $liveSys $mockEfiClean $mockUefiOk $mockUsbOne @([PSCustomObject]@{ Identifier = "{1}" }) $false
+Assert-Eq $gReady.RecommendedAction "USB_REBOOT" "Pre-SID guidance recommends USB_REBOOT when STEP 1 clean & USB matched"
+
+$gHotPlug = Get-PreSidGuidance $liveSys $mockEfiClean $mockUefiOk $mockUsbOne @() $false
+Assert-Eq $gHotPlug.RecommendedAction "ADV_BOOT" "Pre-SID guidance recommends ADV_BOOT on likely Hot-Plug"
+
+$gNoUsb = Get-PreSidGuidance $liveSys $mockEfiClean $mockUefiOk $mockUsbNone @() $false
+Assert-Eq $gNoUsb.RecommendedAction "PLUG_USB" "Pre-SID guidance recommends PLUG_USB when no physical USB connected"
+
+$gPostLive = Get-PostSidGuidance $livePost
+Assert-Eq $gPostLive.RecommendedAction "SPOOLER_RESET" "Post-SID guidance recommends SPOOLER_RESET ($($gPostLive.Level))"
+
+# Live WinForms GUI construction, real event closures, & ShowDialog -> Close (FormClosed) smoke test
+$guiAvail = Test-WinFormsAvailable
+Assert-True $guiAvail "WinForms GAC assemblies available on this Windows host"
+if ($guiAvail) {
+    try { [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::ThrowException) } catch {}
+    $guiBundle = $null
+    try {
+        $guiBundle = New-SidAuxMainForm $liveSys $true
+        Assert-True ($null -ne $guiBundle.Form) "WinForms Main Form instantiated cleanly"
+        Assert-Eq $guiBundle.TabControl.TabPages.Count 2 "Main Form has 2 primary tabs (Pre-SID & Post-SID)"
+        Assert-True ($guiBundle.DiskListView.Items.Count -ge 1) "STEP 1 DiskListView populated ($($guiBundle.DiskListView.Items.Count) row(s))"
+        Assert-True ($guiBundle.PhysUsbListView.Items.Count -ge 1) "STEP 2 Physical USB ListView populated"
+        Assert-True ($guiBundle.NvramUsbListView.Items.Count -ge 1) "STEP 2 NVRAM USB ListView populated"
+        Assert-True ($guiBundle.PrinterListView.Items.Count -ge 1) "Post-SID Printer ListView populated"
+        $repTxt = Format-BiosCrossCheckReport $liveSys $guiBundle.State.Step2Snap.BiosDiag $guiBundle.State.Step2Snap.UsbInfo $guiBundle.State.Step2Snap.MatchedEntries
+        Assert-True ($repTxt.Length -gt 200) "BIOS Cross-Check detailed report generated ($($repTxt.Length) chars)"
+
+        # Exercise real event handlers AFTER New-SidAuxMainForm returned (catches closure/scope bugs!)
+        $clickOk = $true
+        try {
+            $guiBundle.BtnTopRefresh.PerformClick()
+            $guiBundle.BtnRescanUsb.PerformClick()
+            $guiBundle.BtnPostRefresh.PerformClick()
+            if ($guiBundle.DiskListView.Items.Count -gt 0) {
+                $guiBundle.DiskListView.Items[0].Selected = $true
+            }
+        } catch {
+            $clickOk = $false
+            Write-Host ("  [CLICK ERR] " + $_.Exception.Message) -ForegroundColor Red
+        }
+        Assert-True $clickOk "Real button PerformClick() & DiskListView SelectedIndexChanged succeed after factory return"
+
+        # Exercise real WinForms ShowDialog -> Close() -> OnFormClosed message loop!
+        $closeOk = $true
+        $formClosedFired = $false
+        $guiBundle.Form.Opacity = 0
+        $guiBundle.Form.ShowInTaskbar = $false
+        $guiBundle.Form.Add_Shown({ param($s,$e) $s.Close() })
+        $guiBundle.Form.Add_FormClosed({ $script:testFormClosedFlag = $true })
+        $script:testFormClosedFlag = $false
+        try {
+            [void]$guiBundle.Form.ShowDialog()
+            $formClosedFired = [bool]$script:testFormClosedFlag
+        } catch {
+            $closeOk = $false
+            Write-Host ("  [CLOSE ERR] " + $_.Exception.Message) -ForegroundColor Red
+        }
+        Assert-True $closeOk "Real ShowDialog() -> Close() -> OnFormClosed completes with zero exceptions"
+        Assert-True $formClosedFired "OnFormClosed event fired cleanly"
+    } finally {
+        if ($guiBundle -and $guiBundle.Form) { try { $guiBundle.Form.Dispose() } catch {} }
+    }
+}
+
+Write-Host "`n=== 11. Systematic Versioning & Changelog Parity ===" -ForegroundColor Cyan
+$verFile = Join-Path $repoRoot "VERSION"
+$chgFile = Join-Path $repoRoot "CHANGELOG.md"
+Assert-True (Test-Path -LiteralPath $verFile) "Root VERSION file exists"
+$verVal = ([System.IO.File]::ReadAllText($verFile)).Trim()
+Assert-True ($verVal -match '^\d+\.\d+\.\d+$') "VERSION follows SemVer MAJOR.MINOR.PATCH ($verVal)"
+Assert-Eq $script:ToolVersion $verVal "Built SID_Change_Aux_Tool.bat ToolVersion matches VERSION ($verVal)"
+Assert-True ($script:BuildDate -match '^\d{4}-\d{2}-\d{2}$') "Built BuildDate stamped accurately ($($script:BuildDate))"
+Assert-True (-not [string]::IsNullOrWhiteSpace($script:BuildCommit)) "Built BuildCommit stamped ($($script:BuildCommit))"
+Assert-True (Test-Path -LiteralPath $chgFile) "CHANGELOG.md exists"
+$chgTxt = [System.IO.File]::ReadAllText($chgFile)
+Assert-True ($chgTxt -match ("## \[v" + [regex]::Escape($verVal) + "\]")) "CHANGELOG.md contains release entry for [v$verVal]"
 
 Write-Host "`n==================================================================" -ForegroundColor Cyan
 if ($script:Failed -eq 0) {

@@ -279,13 +279,95 @@ function Get-PostSidStatus {
  }
 }
 
-function Invoke-SpoolerReset {
- Write-Host "`n==================================================================" -ForegroundColor Cyan
- Write-Host (U " [\uC9C4\uD589] \uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B\uC744 \uC2DC\uC791\uD569\uB2C8\uB2E4...") -ForegroundColor Cyan
- Write-Host "==================================================================" -ForegroundColor Cyan
+# Contextual UX guidance for Post-SID screen (used by WinForms GUI and Console)
+function Get-PostSidGuidance($st) {
+ if (-not $st) {
+  return [PSCustomObject]@{
+   Level = "Info"
+   Title = U "\uC0C1\uD0DC \uC870\uD68C \uC911"
+   Message = U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uC0C1\uD0DC\uB97C \uD655\uC778\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4."
+   RecommendedAction = "SPOOLER_RESET"
+  }
+ }
+ if ($st.SpoolerStatus -ne "Running" -or $st.SpoolerStartMode -eq "Disabled") {
+  return [PSCustomObject]@{
+   Level = "Error"
+   Title = U "\uC989\uC2DC \uC870\uCE58 \uD544\uC694: Spooler \uC11C\uBE44\uC2A4 \uC911\uC9C0/\uBE44\uD65C\uC131\uD654"
+   Message = U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4\uAC00 \uC2E4\uD589 \uC911\uC774 \uC544\uB2C8\uAC70\uB098 \uC0AC\uC6A9 \uC548 \uD568 \uC0C1\uD0DC\uC785\uB2C8\uB2E4. [\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589]\uC744 \uB20C\uB7EC \uC790\uB3D9 \uBCF5\uAD6C\uD558\uC138\uC694."
+   RecommendedAction = "SPOOLER_RESET"
+  }
+ }
+ if ($st.PrinterQueryError) {
+  return [PSCustomObject]@{
+   Level = "Error"
+   Title = U "\uC989\uC2DC \uC870\uCE58 \uD544\uC694: Spooler RPC \uC751\uB2F5 \uC624\uB958"
+   Message = U "Spooler\uB294 \uC2E4\uD589 \uC911\uC774\uC9C0\uB9CC \uD504\uB9B0\uD130 \uBAA9\uB85D \uC870\uD68C\uAC00 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4(SID \uBCC0\uACBD \uC9C1\uD6C4 \uD754\uD55C \uC99D\uC0C1). [\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589]\uC744 \uC9C4\uD589\uD558\uC138\uC694."
+   RecommendedAction = "SPOOLER_RESET"
+  }
+ }
+ if ($st.Role -eq "Host") {
+  if ($st.HasPublicProfile -or $st.FirewallInboundEnabled -eq 0) {
+   return [PSCustomObject]@{
+    Level = "Warn"
+    Title = U "[\uBA54\uC778 \uD504\uB9B0\uD130 PC] \uC2A4\uD480\uB7EC \uB9AC\uC14B + \uB124\uD2B8\uC6CC\uD06C/\uBC29\uD654\uBCBD \uD655\uC778 \uD544\uC694"
+    Message = U "\uBA3C\uC800 [\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589]\uC744 \uB204\uB974\uC138\uC694. \uB610\uD55C \uACF5\uC6A9(Public) \uB124\uD2B8\uC6CC\uD06C\uB098 \uBC29\uD654\uBCBD \uCC28\uB2E8 \uACBD\uACE0\uAC00 \uC788\uC73C\uBBC0\uB85C \uC544\uB798 \uC9C4\uB2E8 \uACB0\uACFC\uB97C \uD568\uAED8 \uD655\uC778\uD558\uC138\uC694."
+    RecommendedAction = "SPOOLER_RESET"
+   }
+  }
+  return [PSCustomObject]@{
+   Level = "OK"
+   Title = U "[\uBA54\uC778 \uD504\uB9B0\uD130 PC(\uD638\uC2A4\uD2B8)] \uAD8C\uC7A5: \uC2A4\uD480\uB7EC \uB9AC\uC14B 1\uD68C \uC2E4\uD589"
+   Message = U "SID \uBCC0\uACBD \uC9C1\uD6C4\uB77C\uBA74 [\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589]\uC744 1\uD68C \uC9C4\uD589\uD558\uC138\uC694. \uC774\uD6C4 \uAC01 \uD074\uB77C\uC774\uC5B8\uD2B8 PC\uC5D0\uC11C\uB3C4 1\uD68C \uC2E4\uD589\uD558\uBA74 \uACF5\uC720 \uD504\uB9B0\uD130\uAC00 \uC815\uC0C1 \uC5F0\uACB0\uB429\uB2C8\uB2E4."
+   RecommendedAction = "SPOOLER_RESET"
+  }
+ }
+ $unreachableHosts = @($st.RemoteHostChecks | Where-Object { -not $_.Reachable })
+ if ($unreachableHosts.Count -gt 0) {
+  $uNames = ($unreachableHosts | ForEach-Object { "\\" + $_.Server }) -join ", "
+  return [PSCustomObject]@{
+   Level = "Warn"
+   Title = U "[\uD074\uB77C\uC774\uC5B8\uD2B8 PC] \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589 + \uBA54\uC778 PC \uC5F0\uACB0 \uD655\uC778 \uD544\uC694"
+   Message = ((U "\uC774 PC\uC5D0\uC11C [\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589]\uC744 \uC9C4\uD589\uD558\uC138\uC694. \uB2E8, \uBA54\uC778 PC(") + $uNames + (U ")\uC758 SMB(445) \uC751\uB2F5\uC774 \uC5C6\uC5B4 \uBA54\uC778 PC \uC804\uC6D0/\uB124\uD2B8\uC6CC\uD06C\uB3C4 \uD655\uC778\uD558\uC138\uC694."))
+   RecommendedAction = "SPOOLER_RESET"
+  }
+ }
+ return [PSCustomObject]@{
+  Level = "Info"
+  Title = U "[\uD074\uB77C\uC774\uC5B8\uD2B8 PC] \uAD8C\uC7A5: \uC2A4\uD480\uB7EC \uB9AC\uC14B 1\uD68C \uC2E4\uD589 \uD6C4 \uD14C\uC2A4\uD2B8 \uC778\uC1C4"
+  Message = U "\uBA54\uC778 \uD504\uB9B0\uD130 PC\uC640 \uC774 PC\uC5D0\uC11C \uAC01\uAC01 [\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589]\uC744 1\uD68C \uC9C4\uD589\uD55C \uB4A4 \uACF5\uC720 \uD504\uB9B0\uD130 \uD14C\uC2A4\uD2B8 \uC778\uC1C4\uB97C \uD655\uC778\uD558\uC138\uC694."
+  RecommendedAction = "SPOOLER_RESET"
+ }
+}
 
- # 1. Stop dependent services and Spooler
- Write-Host (U " 1/4. Spooler \uC11C\uBE44\uC2A4 \uC911\uC9C0 \uC911...") -ForegroundColor White
+# Headless Spooler Reset engine (shared by WinForms GUI and Console TUI)
+function Invoke-SpoolerResetCore([scriptblock]$onProgress = $null) {
+ $logs = New-Object System.Collections.ArrayList
+ $emit = {
+  param([string]$msg)
+  [void]$logs.Add($msg)
+  if ($onProgress) { & $onProgress $msg }
+ }
+
+ $sp = Get-Service -Name "Spooler" -ErrorAction SilentlyContinue
+ if (-not $sp) {
+  $errMsg = U "\uC774 PC\uC5D0\uC11C Spooler \uC11C\uBE44\uC2A4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
+  & $emit ("[" + (U "\uC624\uB958") + "] " + $errMsg)
+  return [PSCustomObject]@{
+   Success = $false
+   ServiceMissing = $true
+   StopMode = "FAILED"
+   QueueResult = $null
+   StartRestored = $false
+   StartMode = "NotFound"
+   RunningDeps = @()
+   RestartedDeps = @()
+   IsRunning = $false
+   StartError = $errMsg
+   LogLines = @($logs)
+  }
+ }
+
+ & $emit (U "1/4. Spooler \uC11C\uBE44\uC2A4 \uC911\uC9C0 \uC911...")
  $runningDeps = @()
  $stopMode = "FAILED"
  try {
@@ -296,12 +378,6 @@ function Invoke-SpoolerReset {
   }
  } catch {}
 
- $sp = Get-Service -Name "Spooler" -ErrorAction SilentlyContinue
- if (-not $sp) {
-  Write-Host (U " [\uC624\uB958] \uC774 PC\uC5D0\uC11C Spooler \uC11C\uBE44\uC2A4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.") -ForegroundColor Red
-  Read-Host (U "\uACC4\uC18D\uD558\uB824\uBA74 Enter\uB97C \uB204\uB974\uC138\uC694") | Out-Null
-  return
- }
  if ($sp.Status -eq "Stopped") {
   $stopMode = "NORMAL"
  } else {
@@ -315,7 +391,7 @@ function Invoke-SpoolerReset {
   if ($stopped) {
    $stopMode = "NORMAL"
   } else {
-   Write-Host (U "      \uC911\uC9C0 \uD0C0\uC784\uC544\uC6C3 - spoolsv \uD504\uB85C\uC138\uC2A4\uB97C \uC548\uC804 \uC885\uB8CC\uD569\uB2C8\uB2E4...") -ForegroundColor Yellow
+   & $emit (U "     \uC911\uC9C0 \uD0C0\uC784\uC544\uC6C3 - spoolsv \uD504\uB85C\uC138\uC2A4\uB97C \uC548\uC804 \uC885\uB8CC\uD569\uB2C8\uB2E4...")
    Stop-Process -Name "spoolsv" -Force -ErrorAction SilentlyContinue
    for ($i = 0; $i -lt 10; $i++) {
     Start-Sleep -Milliseconds 500
@@ -326,13 +402,11 @@ function Invoke-SpoolerReset {
   }
  }
 
- # 2. Clear PRINTERS queue directory
- Write-Host (U " 2/4. \uB300\uAE30\uC5F4 \uD3F4\uB354(PRINTERS) \uC815\uB9AC \uC911...") -ForegroundColor White
+ & $emit (U "2/4. \uB300\uAE30\uC5F4 \uD3F4\uB354(PRINTERS) \uC815\uB9AC \uC911...")
  $queueDir = Get-SpoolerQueueDirectory
  $qRes = Clear-SpoolerQueueDirectory $queueDir
 
- # 3. Restore StartType if Disabled
- Write-Host (U " 3/4. Spooler \uC2DC\uC791 \uC720\uD615 \uC810\uAC80 \uC911...") -ForegroundColor White
+ & $emit (U "3/4. Spooler \uC2DC\uC791 \uC720\uD615 \uC810\uAC80 \uC911...")
  $startRestored = $false
  $spCim = Get-CimInstance -ClassName Win32_Service -Filter "Name='Spooler'" -ErrorAction SilentlyContinue
  $curStartMode = if ($spCim -and $spCim.StartMode) { [string]$spCim.StartMode } else { "Unknown" }
@@ -341,12 +415,11 @@ function Invoke-SpoolerReset {
    Set-Service -Name "Spooler" -StartupType Automatic -ErrorAction Stop
    $startRestored = $true
    $curStartMode = "Auto"
-   Write-Host (U "      \uC2DC\uC791 \uC720\uD615\uC774 Disabled \uC0C1\uD0DC\uC5EC\uC11C Automatic(\uC790\uB3D9)\uC73C\uB85C \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Green
+   & $emit (U "     \uC2DC\uC791 \uC720\uD615\uC774 Disabled \uC0C1\uD0DC\uC5EC\uC11C Automatic(\uC790\uB3D9)\uC73C\uB85C \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4.")
   } catch {}
  }
 
- # 4. Start Spooler and restart previously running dependent services
- Write-Host (U " 4/4. Spooler \uC11C\uBE44\uC2A4 \uC7AC\uC2DC\uC791 \uC911...") -ForegroundColor White
+ & $emit (U "4/4. Spooler \uC11C\uBE44\uC2A4 \uC7AC\uC2DC\uC791 \uC911...")
  $startErr = ""
  try {
   Start-Service -Name "Spooler" -ErrorAction Stop
@@ -370,28 +443,58 @@ function Invoke-SpoolerReset {
   }
  }
 
- # Result report
+ return [PSCustomObject]@{
+  Success = $isRunning
+  ServiceMissing = $false
+  StopMode = $stopMode
+  QueueResult = $qRes
+  StartRestored = $startRestored
+  StartMode = $curStartMode
+  RunningDeps = $runningDeps
+  RestartedDeps = $restartedDeps
+  IsRunning = $isRunning
+  StartError = $startErr
+  LogLines = @($logs)
+ }
+}
+
+function Invoke-SpoolerReset {
+ Write-Host "`n==================================================================" -ForegroundColor Cyan
+ Write-Host (U " [\uC9C4\uD589] \uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B\uC744 \uC2DC\uC791\uD569\uB2C8\uB2E4...") -ForegroundColor Cyan
+ Write-Host "==================================================================" -ForegroundColor Cyan
+
+ $res = Invoke-SpoolerResetCore {
+  param($msg)
+  Write-Host (" " + $msg) -ForegroundColor White
+ }
+
+ if ($res.ServiceMissing) {
+  Read-Host (U "\uACC4\uC18D\uD558\uB824\uBA74 Enter\uB97C \uB204\uB974\uC138\uC694") | Out-Null
+  return
+ }
+
+ $qRes = $res.QueueResult
  Write-Host ("`n-------------------- [" + (U "\uC2A4\uD480\uB7EC \uB9AC\uC14B \uACB0\uACFC \uB9AC\uD3EC\uD2B8") + "] --------------------") -ForegroundColor Cyan
- $stopText = switch ($stopMode) {
+ $stopText = switch ($res.StopMode) {
   "NORMAL" { U "\uC815\uC0C1 \uC911\uC9C0" }
   "FORCED" { U "\uD504\uB85C\uC138\uC2A4 \uAC15\uC81C \uC885\uB8CC \uD6C4 \uC911\uC9C0" }
   default  { U "\uC911\uC9C0 \uC2E4\uD328" }
  }
- Write-Host (" * " + (U "\uC11C\uBE44\uC2A4 \uC911\uC9C0") + "      : " + $stopText) -ForegroundColor $(if ($stopMode -eq "FAILED") { "Red" } else { "Green" })
+ Write-Host (" * " + (U "\uC11C\uBE44\uC2A4 \uC911\uC9C0") + "      : " + $stopText) -ForegroundColor $(if ($res.StopMode -eq "FAILED") { "Red" } else { "Green" })
  Write-Host (" * " + (U "\uB300\uAE30\uC5F4 \uD30C\uC77C \uC815\uB9AC") + " : " + $qRes.DeletedCount + (U "\uAC74 \uC0AD\uC81C \uC644\uB8CC") + " (SPL/SHD: " + $qRes.SplShdDeleted + ") | " + (U "\uC794\uC874 \uD30C\uC77C") + ": " + $qRes.RemainingCount + (U "\uAC74")) -ForegroundColor $(if ($qRes.RemainingCount -gt 0) { "Yellow" } else { "Green" })
  if ($qRes.FailedFiles.Count -gt 0) {
   Write-Host ("   - " + (U "\uC7A0\uAE40/\uC2E4\uD328") + ": " + ($qRes.FailedFiles -join ", ")) -ForegroundColor Yellow
  }
- $startTypeText = if ($startRestored) { U "Automatic\uC73C\uB85C \uBCF5\uAD6C\uB428" } else { $curStartMode + " (" + (U "\uC720\uC9C0") + ")" }
- Write-Host (" * " + (U "\uC2DC\uC791 \uC720\uD615") + "        : " + $startTypeText) -ForegroundColor $(if ($startRestored) { "Green" } else { "Gray" })
- if ($runningDeps.Count -gt 0) {
-  Write-Host (" * " + (U "\uC758\uC874 \uC11C\uBE44\uC2A4 \uC911\uC9C0/\uC7AC\uC2DC\uC791") + " : " + $restartedDeps.Count + "/" + $runningDeps.Count + " " + (U "\uC7AC\uC2DC\uC791 \uC644\uB8CC")) -ForegroundColor Gray
+ $startTypeText = if ($res.StartRestored) { U "Automatic\uC73C\uB85C \uBCF5\uAD6C\uB428" } else { $res.StartMode + " (" + (U "\uC720\uC9C0") + ")" }
+ Write-Host (" * " + (U "\uC2DC\uC791 \uC720\uD615") + "        : " + $startTypeText) -ForegroundColor $(if ($res.StartRestored) { "Green" } else { "Gray" })
+ if ($res.RunningDeps.Count -gt 0) {
+  Write-Host (" * " + (U "\uC758\uC874 \uC11C\uBE44\uC2A4 \uC911\uC9C0/\uC7AC\uC2DC\uC791") + " : " + $res.RestartedDeps.Count + "/" + $res.RunningDeps.Count + " " + (U "\uC7AC\uC2DC\uC791 \uC644\uB8CC")) -ForegroundColor Gray
  }
- if ($isRunning) {
+ if ($res.IsRunning) {
   Write-Host (" * " + (U "\uCD5C\uC885 \uC11C\uBE44\uC2A4 \uC0C1\uD0DC") + " : " + (U "\uC815\uC0C1 \uC2E4\uD589 \uC911 (Running)")) -ForegroundColor Green
   Write-Host ("`n " + (U "\uC644\uB8CC! \uBA54\uC778 \uD504\uB9B0\uD130 PC\uC640 \uD074\uB77C\uC774\uC5B8\uD2B8 PC \uBAA8\uB450\uC5D0\uC11C \uC2E4\uD589\uD55C \uB4A4 \uD14C\uC2A4\uD2B8 \uC778\uC1C4\uB97C \uD655\uC778\uD558\uC138\uC694.")) -ForegroundColor Cyan
  } else {
-  Write-Host (" * " + (U "\uCD5C\uC885 \uC11C\uBE44\uC2A4 \uC0C1\uD0DC") + " : " + (U "\uC2DC\uC791 \uC2E4\uD328") + $(if ($startErr) { " (" + $startErr + ")" } else { "" })) -ForegroundColor Red
+  Write-Host (" * " + (U "\uCD5C\uC885 \uC11C\uBE44\uC2A4 \uC0C1\uD0DC") + " : " + (U "\uC2DC\uC791 \uC2E4\uD328") + $(if ($res.StartError) { " (" + $res.StartError + ")" } else { "" })) -ForegroundColor Red
  }
  Write-Host "------------------------------------------------------------------" -ForegroundColor DarkGray
  Read-Host (U "\uACC4\uC18D\uD558\uB824\uBA74 Enter\uB97C \uB204\uB974\uC138\uC694") | Out-Null

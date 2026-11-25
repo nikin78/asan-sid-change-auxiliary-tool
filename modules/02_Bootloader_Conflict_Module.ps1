@@ -698,7 +698,107 @@ function Get-BootloaderStateColor($item) {
  return "Gray"
 }
 
-# Interactive non-destructive toggle for GPT EFI or MBR Active bootloader
+# Headless helper: Inspect root folder listing of target partition (for GUI confirmation preview)
+function Get-PartitionPreviewListing($item) {
+ if (-not $item -or $item.TargetPart -le 0 -or $item.BootType -eq "NONE") { return "" }
+ $res = Invoke-WithEspMount $item.DiskNumber $item.TargetPart $item.TargetLetter {
+  param($drv)
+  $entries = @(Get-ChildItem -Path "$($drv):\" -Force -ErrorAction SilentlyContinue | Select-Object -First 12)
+  if ($entries.Count -eq 0) { return "(empty)" }
+  return (($entries | ForEach-Object {
+   $tag = if ($_.PSIsContainer) { "[DIR] " } else { "      " }
+   $tag + $_.Name
+  }) -join "`r`n")
+ }
+ if ($res -eq "MOUNT_FAIL") { return (U "[\uB9C8\uC6B4\uD2B8 \uC2E4\uD328]") }
+ return [string]$res
+}
+
+# Headless non-destructive bootloader action (used by both WinForms GUI and Console TUI)
+# $mode: "DISABLE" | "RESTORE"
+function Invoke-BootloaderAction($item, [string]$mode) {
+ if (-not $item) {
+  return [PSCustomObject]@{ Success = $false; Status = "SKIPPED"; Message = (U "\uB300\uC0C1 \uB514\uC2A4\uD06C \uC5C6\uC74C"); Warning = "" }
+ }
+ if ($item.IsWinPEMedia) {
+  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "WinPE/\uC124\uCE58 \uB9E4\uCCB4 \uB514\uC2A4\uD06C\uB85C \uAC10\uC9C0\uB418\uC5B4 \uBCF4\uD638\uB429\uB2C8\uB2E4.")); Warning = "" }
+ }
+ if ($item.IsReadOnly) {
+  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uC77D\uAE30 \uC804\uC6A9(\uC4F0\uAE30 \uAE08\uC9C0) \uB514\uC2A4\uD06C\uB85C \uBCF4\uD638\uB429\uB2C8\uB2E4.")); Warning = "" }
+ }
+ if ($item.IsProtected) {
+  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " (" + (U "\uD604\uC7AC OS/\uBD80\uD305 \uB514\uC2A4\uD06C") + ") " + (U "\uBCF4\uD638\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.")); Warning = "" }
+ }
+ if ($item.TargetPart -le 0 -or $item.BootType -eq "NONE") {
+  return [PSCustomObject]@{ Success = $false; Status = "SKIPPED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uC870\uCE58 \uB300\uC0C1 \uBD80\uD2B8\uB85C\uB354 \uD30C\uD2F0\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")); Warning = "" }
+ }
+
+ $actRes = Invoke-WithEspMount $item.DiskNumber $item.TargetPart $item.TargetLetter {
+  param($drv)
+  $root = "$($drv):\"
+  $guard = Test-PartitionMediaGuard $root
+  if ($guard.HasOs) {
+   return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = (U "OS \uD30C\uD2F0\uC158(ntoskrnl.exe)\uC774 \uAC10\uC9C0\uB418\uC5B4 \uC790\uB3D9 \uBCC0\uACBD\uC744 \uC911\uB2E8\uD569\uB2C8\uB2E4."); Warning = "" }
+  }
+  if ($guard.HasWinPE) {
+   return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = (U "WinPE/\uC124\uCE58 \uB9E4\uCCB4(boot.wim/\uC678\uC7A5 \uBD80\uD305 \uAD6C\uC870)\uAC00 \uAC10\uC9C0\uB418\uC5B4 \uC911\uB2E8\uD569\uB2C8\uB2E4."); Warning = "" }
+  }
+
+  if ($item.BootType -eq "GPT_EFI") {
+   $hasEfi = Test-Path "$($drv):\EFI"
+   $hasOld = Test-Path "$($drv):\EFI_OLD"
+   if ($hasEfi -and $hasOld) {
+    return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uD30C\uD2F0\uC158\uC5D0 \uD65C\uC131/\uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uAC00 \uACF5\uC874\uD569\uB2C8\uB2E4. \uC218\uB3D9 \uD655\uC778 \uD544\uC694.")); Warning = "" }
+   }
+   $r = Invoke-BootloaderRenameInRoot $root "GPT_EFI" $mode
+   if ($r.Success) {
+    $msg = if ($mode -eq "DISABLE") {
+     "Disk " + $item.DiskNumber + " EFI -> EFI_OLD " + (U "\uBE44\uD65C\uC131\uD654 \uC644\uB8CC!")
+    } else {
+     "Disk " + $item.DiskNumber + " EFI_OLD -> EFI " + (U "\uBCF5\uAD6C \uC644\uB8CC!")
+    }
+    return [PSCustomObject]@{ Success = $true; Status = "CHANGED"; Message = $msg; Warning = "" }
+   }
+   return [PSCustomObject]@{ Success = $false; Status = $r.Status; Message = ((U "\uC774\uB984 \uBCC0\uACBD \uC2E4\uD328: ") + $r.Error); Warning = "" }
+  }
+
+  if ($item.BootType -eq "MBR_ACTIVE") {
+   $hasActive = (Test-Path "$($drv):\bootmgr") -or (Test-Path "$($drv):\Boot\BCD")
+   $hasOld = (Test-Path "$($drv):\bootmgr_OLD") -or (Test-Path "$($drv):\Boot_OLD")
+   if ($hasActive -and $hasOld) {
+    return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uD30C\uD2F0\uC158\uC5D0 \uD65C\uC131/\uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uAC00 \uACF5\uC874\uD569\uB2C8\uB2E4. \uC218\uB3D9 \uD655\uC778 \uD544\uC694.")); Warning = "" }
+   }
+   $r = Invoke-BootloaderRenameInRoot $root "MBR_ACTIVE" $mode
+   if ($r.Success) {
+    $dpCmd = if ($mode -eq "DISABLE") { "inactive" } else { "active" }
+    $dpRes = Invoke-NativeOem "diskpart.exe" "" ("select disk " + $item.DiskNumber + "`r`nselect partition " + $item.TargetPart + "`r`n" + $dpCmd + "`r`nexit`r`n")
+    $warn = ""
+    if ($dpRes.ExitCode -ne 0) {
+     $warn = if ($mode -eq "DISABLE") {
+      U "\uD30C\uC77C \uC774\uB984 \uBCC0\uACBD\uC740 \uC644\uB8CC\uD588\uC73C\uB098 diskpart inactive \uC124\uC815\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4."
+     } else {
+      U "\uD30C\uC77C \uBCF5\uAD6C\uB294 \uC644\uB8CC\uD588\uC73C\uB098 diskpart active \uC124\uC815\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4."
+     }
+    }
+    $msg = if ($mode -eq "DISABLE") {
+     "Disk " + $item.DiskNumber + " " + (U "MBR \uBD80\uD2B8\uB85C\uB354 \uBE44\uD65C\uC131\uD654 \uC644\uB8CC! (bootmgr/Boot -> _OLD, inactive)")
+    } else {
+     "Disk " + $item.DiskNumber + " " + (U "MBR \uBD80\uD2B8\uB85C\uB354 \uBCF5\uAD6C \uC644\uB8CC! (_OLD -> \uC6D0\uBCF5, active)")
+    }
+    return [PSCustomObject]@{ Success = $true; Status = "CHANGED"; Message = $msg; Warning = $warn }
+   }
+   return [PSCustomObject]@{ Success = $false; Status = $r.Status; Message = ((U "MBR \uC870\uCE58 \uC2E4\uD328 (\uAD8C\uD55C/\uC7A0\uAE08 \uD655\uC778): ") + $r.Error); Warning = "" }
+  }
+  return [PSCustomObject]@{ Success = $false; Status = "SKIPPED"; Message = "UNSUPPORTED_TYPE"; Warning = "" }
+ }
+
+ if ($actRes -eq "MOUNT_FAIL") {
+  return [PSCustomObject]@{ Success = $false; Status = "FAILED"; Message = ("Disk " + $item.DiskNumber + " " + (U "[\uB9C8\uC6B4\uD2B8 \uC2E4\uD328]")); Warning = "" }
+ }
+ return $actRes
+}
+
+# Interactive Console non-destructive toggle for GPT EFI or MBR Active bootloader
 # Returns: "CHANGED" | "CANCELLED" | "BLOCKED" | "SKIPPED" | "FAILED"
 function Invoke-BootloaderToggle($item, [bool]$disableOnly) {
  if ($item.IsWinPEMedia) {
@@ -718,121 +818,47 @@ function Invoke-BootloaderToggle($item, [bool]$disableOnly) {
   return "SKIPPED"
  }
 
- $toggleRes = Invoke-WithEspMount $item.DiskNumber $item.TargetPart $item.TargetLetter {
-  param($drv)
-  $root = "$($drv):\"
-  $guard = Test-PartitionMediaGuard $root
-  if ($guard.HasOs) {
-   Write-Host (U " [\uCC28\uB2E8] OS \uD30C\uD2F0\uC158(ntoskrnl.exe)\uC774 \uAC10\uC9C0\uB418\uC5B4 \uC790\uB3D9 \uBCC0\uACBD\uC744 \uC911\uB2E8\uD569\uB2C8\uB2E4.") -ForegroundColor Red
-   return "BLOCKED"
-  }
-  if ($guard.HasWinPE) {
-   Write-Host (U " [\uCC28\uB2E8] WinPE/\uC124\uCE58 \uB9E4\uCCB4(boot.wim/\uC678\uC7A5 \uBD80\uD305 \uAD6C\uC870)\uAC00 \uAC10\uC9C0\uB418\uC5B4 \uC911\uB2E8\uD569\uB2C8\uB2E4.") -ForegroundColor Red
-   return "BLOCKED"
-  }
+ $preview = Get-PartitionPreviewListing $item
+ Write-Host ("`n--- Disk " + $item.DiskNumber + " (" + $item.Model + ") | " + $item.BootType + " Part #" + $item.TargetPart + " ---") -ForegroundColor Cyan
+ if ($preview) { Write-Host $preview -ForegroundColor Gray }
 
-  Write-Host ("`n--- Disk " + $item.DiskNumber + " (" + $item.Model + ") | " + $item.BootType + " Part #" + $item.TargetPart + " (" + $drv + ":) ---") -ForegroundColor Cyan
-  Get-ChildItem -Path $root -Force -ErrorAction SilentlyContinue | Format-Table Mode, LastWriteTime, Name -AutoSize | Out-String | Write-Host -ForegroundColor Gray
-
-  if ($item.BootType -eq "GPT_EFI") {
-   $hasEfi = Test-Path "$($drv):\EFI"
-   $hasOld = Test-Path "$($drv):\EFI_OLD"
-   if ($hasEfi -and $hasOld) {
-    Write-Host (" [" + (U "\uC911\uB2E8") + "] Disk " + $item.DiskNumber + " : " + (U "\uD30C\uD2F0\uC158\uC5D0 \uD65C\uC131/\uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uAC00 \uACF5\uC874\uD569\uB2C8\uB2E4. \uC218\uB3D9 \uD655\uC778 \uD544\uC694.")) -ForegroundColor Yellow
-    return "BLOCKED"
-   }
-   if ($hasEfi) {
-    $yn = (Read-Host ("Disk " + $item.DiskNumber + " [EFI -> EFI_OLD] " + (U "\uBE44\uD65C\uC131\uD654\uD560\uAE4C\uC694? (Y/N)"))).Trim()
-    if ($yn -match "^[yY]$") {
-     $r = Invoke-BootloaderRenameInRoot $root "GPT_EFI" "DISABLE"
-     if ($r.Success) {
-      Write-Host (" [" + (U "\uC131\uACF5") + "] Disk " + $item.DiskNumber + " EFI -> EFI_OLD " + (U "\uBE44\uD65C\uC131\uD654 \uC644\uB8CC!")) -ForegroundColor Green
-      return "CHANGED"
-     } else {
-      Write-Host ((U " [\uC2E4\uD328] \uC774\uB984 \uBCC0\uACBD \uC2E4\uD328: ") + $r.Error) -ForegroundColor Red
-      return "FAILED"
-     }
-    } else {
-     Write-Host (U " \uC791\uC5C5\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Gray
-     return "CANCELLED"
-    }
-   } elseif ($hasOld -and -not $disableOnly) {
-    $yn = (Read-Host ("Disk " + $item.DiskNumber + " [EFI_OLD -> EFI] " + (U "\uBCF5\uAD6C\uD560\uAE4C\uC694? (Y/N)"))).Trim()
-    if ($yn -match "^[yY]$") {
-     $r = Invoke-BootloaderRenameInRoot $root "GPT_EFI" "RESTORE"
-     if ($r.Success) {
-      Write-Host (" [" + (U "\uC131\uACF5") + "] Disk " + $item.DiskNumber + " EFI_OLD -> EFI " + (U "\uBCF5\uAD6C \uC644\uB8CC!")) -ForegroundColor Green
-      return "CHANGED"
-     } else {
-      Write-Host ((U " [\uC2E4\uD328] \uBCF5\uAD6C \uC2E4\uD328: ") + $r.Error) -ForegroundColor Red
-      return "FAILED"
-     }
-    } else {
-     Write-Host (U " \uC791\uC5C5\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Gray
-     return "CANCELLED"
-    }
-   }
-   return "SKIPPED"
+ $mode = ""
+ $promptText = ""
+ if ($item.State -eq "ACTIVE") {
+  $mode = "DISABLE"
+  $promptText = if ($item.BootType -eq "MBR_ACTIVE") {
+   "Disk " + $item.DiskNumber + " " + (U "MBR \uD65C\uC131 \uBD80\uD2B8\uB85C\uB354(bootmgr/Boot)\uB97C \uBE44\uD65C\uC131\uD654(_OLD + inactive)\uD560\uAE4C\uC694? (Y/N)")
+  } else {
+   "Disk " + $item.DiskNumber + " [EFI -> EFI_OLD] " + (U "\uBE44\uD65C\uC131\uD654\uD560\uAE4C\uC694? (Y/N)")
   }
-
-  if ($item.BootType -eq "MBR_ACTIVE") {
-   $hasActive = (Test-Path "$($drv):\bootmgr") -or (Test-Path "$($drv):\Boot\BCD")
-   $hasOld = (Test-Path "$($drv):\bootmgr_OLD") -or (Test-Path "$($drv):\Boot_OLD")
-   if ($hasActive -and $hasOld) {
-    Write-Host (" [" + (U "\uC911\uB2E8") + "] Disk " + $item.DiskNumber + " : " + (U "\uD30C\uD2F0\uC158\uC5D0 \uD65C\uC131/\uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uAC00 \uACF5\uC874\uD569\uB2C8\uB2E4. \uC218\uB3D9 \uD655\uC778 \uD544\uC694.")) -ForegroundColor Yellow
-    return "BLOCKED"
-   }
-   if ($hasActive) {
-    $yn = (Read-Host ("Disk " + $item.DiskNumber + " " + (U "MBR \uD65C\uC131 \uBD80\uD2B8\uB85C\uB354(bootmgr/Boot)\uB97C \uBE44\uD65C\uC131\uD654(_OLD + inactive)\uD560\uAE4C\uC694? (Y/N)"))).Trim()
-    if ($yn -match "^[yY]$") {
-     $r = Invoke-BootloaderRenameInRoot $root "MBR_ACTIVE" "DISABLE"
-     if ($r.Success) {
-      $dpInact = Invoke-NativeOem "diskpart.exe" "" ("select disk " + $item.DiskNumber + "`r`nselect partition " + $item.TargetPart + "`r`ninactive`r`nexit`r`n")
-      if ($dpInact.ExitCode -eq 0) {
-       Write-Host (" [" + (U "\uC131\uACF5") + "] Disk " + $item.DiskNumber + " " + (U "MBR \uBD80\uD2B8\uB85C\uB354 \uBE44\uD65C\uC131\uD654 \uC644\uB8CC! (bootmgr/Boot -> _OLD, inactive)")) -ForegroundColor Green
-      } else {
-       Write-Host (U " [\uACBD\uACE0] \uD30C\uC77C \uC774\uB984 \uBCC0\uACBD\uC740 \uC644\uB8CC\uD588\uC73C\uB098 diskpart inactive \uC124\uC815\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
-      }
-      return "CHANGED"
-     } else {
-      Write-Host ((U " [\uC2E4\uD328] MBR \uBE44\uD65C\uC131\uD654 \uC2E4\uD328 (\uAD8C\uD55C/\uC7A0\uAE08 \uD655\uC778): ") + $r.Error) -ForegroundColor Red
-      return "FAILED"
-     }
-    } else {
-     Write-Host (U " \uC791\uC5C5\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Gray
-     return "CANCELLED"
-    }
-   } elseif ($hasOld -and -not $disableOnly) {
-    $yn = (Read-Host ("Disk " + $item.DiskNumber + " " + (U "MBR \uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354(_OLD)\uB97C \uBCF5\uAD6C(+ active)\uD560\uAE4C\uC694? (Y/N)"))).Trim()
-    if ($yn -match "^[yY]$") {
-     $r = Invoke-BootloaderRenameInRoot $root "MBR_ACTIVE" "RESTORE"
-     if ($r.Success) {
-      $dpAct = Invoke-NativeOem "diskpart.exe" "" ("select disk " + $item.DiskNumber + "`r`nselect partition " + $item.TargetPart + "`r`nactive`r`nexit`r`n")
-      if ($dpAct.ExitCode -eq 0) {
-       Write-Host (" [" + (U "\uC131\uACF5") + "] Disk " + $item.DiskNumber + " " + (U "MBR \uBD80\uD2B8\uB85C\uB354 \uBCF5\uAD6C \uC644\uB8CC! (_OLD -> \uC6D0\uBCF5, active)")) -ForegroundColor Green
-      } else {
-       Write-Host (U " [\uACBD\uACE0] \uD30C\uC77C \uBCF5\uAD6C\uB294 \uC644\uB8CC\uD588\uC73C\uB098 diskpart active \uC124\uC815\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
-      }
-      return "CHANGED"
-     } else {
-      Write-Host ((U " [\uC2E4\uD328] MBR \uBCF5\uAD6C \uC2E4\uD328: ") + $r.Error) -ForegroundColor Red
-      return "FAILED"
-     }
-    } else {
-     Write-Host (U " \uC791\uC5C5\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Gray
-     return "CANCELLED"
-    }
-   }
-   return "SKIPPED"
+ } elseif ($item.State -eq "DISABLED" -and -not $disableOnly) {
+  $mode = "RESTORE"
+  $promptText = if ($item.BootType -eq "MBR_ACTIVE") {
+   "Disk " + $item.DiskNumber + " " + (U "MBR \uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354(_OLD)\uB97C \uBCF5\uAD6C(+ active)\uD560\uAE4C\uC694? (Y/N)")
+  } else {
+   "Disk " + $item.DiskNumber + " [EFI_OLD -> EFI] " + (U "\uBCF5\uAD6C\uD560\uAE4C\uC694? (Y/N)")
   }
+ } elseif ($item.State -eq "BOTH") {
+  Write-Host (" [" + (U "\uC911\uB2E8") + "] Disk " + $item.DiskNumber + " : " + (U "\uD30C\uD2F0\uC158\uC5D0 \uD65C\uC131/\uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uAC00 \uACF5\uC874\uD569\uB2C8\uB2E4. \uC218\uB3D9 \uD655\uC778 \uD544\uC694.")) -ForegroundColor Yellow
+  return "BLOCKED"
+ } else {
   return "SKIPPED"
  }
 
- if ($toggleRes -eq "MOUNT_FAIL") {
-  Write-Host (" [" + (U "\uC2E4\uD328") + "] Disk " + $item.DiskNumber + " " + (U "[\uB9C8\uC6B4\uD2B8 \uC2E4\uD328]")) -ForegroundColor Red
-  return "FAILED"
+ $yn = (Read-Host $promptText).Trim()
+ if ($yn -notmatch "^[yY]$") {
+  Write-Host (U " \uC791\uC5C5\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.") -ForegroundColor Gray
+  return "CANCELLED"
  }
- return [string]$toggleRes
+
+ $res = Invoke-BootloaderAction $item $mode
+ if ($res.Success) {
+  Write-Host (" [" + (U "\uC131\uACF5") + "] " + $res.Message) -ForegroundColor Green
+  if ($res.Warning) { Write-Host (" [" + (U "\uACBD\uACE0") + "] " + $res.Warning) -ForegroundColor Yellow }
+ } else {
+  Write-Host (" [" + (U "\uC2E4\uD328") + "] " + $res.Message) -ForegroundColor Red
+ }
+ return [string]$res.Status
 }
 
 # Interactive Bootloader Manager (used in WinPE emergency mode or [E] menu)
