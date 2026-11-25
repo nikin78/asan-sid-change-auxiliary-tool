@@ -1,148 +1,164 @@
-# [인수인계서] Windows UEFI USB 부팅 도우미 및 다중 디스크 EFI 충돌 방지 도구 (`USB_Reboot.bat`)
+# [인수인계서] SID 변경 사전·사후 보조 툴 (`SID_Change_Aux_Tool.bat`)
 
 > [!IMPORTANT]
-> **2026-11-25 방향 전환:** 이 도구는 "WinPE 기반 SID 변경 작업의 사전·사후 보조 툴"로 확장됩니다.
-> 새 방향성, 사용자 결정 사항, 단계별 실행 계획은 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 먼저 읽으세요.
-> 아래 내용(기존 사양 및 6대 절대 제약사항)은 계속 유효합니다.
+> **2026-11-25 구현 현황 (1~4단계 완료):**
+> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하는 **1~4단계 코드 구현 및 자동 검증(빌드 검증 + 63개 단위/스모크 테스트)이 완료**되었습니다.
+> 상세 의사결정 배경 및 진행 표는 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
+> 다음 단계는 **5단계 실장비 검증(Samsung S8, HP G9, Dell, 실제 WinPE, 메인/클라이언트 공유 프린터)**입니다.
 
 ---
 
 ## 1. 프로젝트 개요 및 최종 목표
 
 * **프로그램 목적**
-  * Windows 환경에서 메인보드 부트 메뉴 단축키(F8, F9, F10, F12 등)를 연타하지 않고, 연결된 UEFI 부팅 가능 외장 USB / 외장 SSD(WinPE 등)로 일회성 부팅(`bcdedit /set {fwbootmgr} bootsequence`) 또는 고급 부팅/BIOS 진입을 자동화하는 단일 유틸리티 제작.
-  * WinPE에서 SID 변경 등의 작업을 수행하기 전, **보조 데이터 디스크(구형 HDD 등)에 잔존한 구형 EFI 파티션으로 인한 부팅 충돌(자동 복구 진입)을 사전 탐지·무력화**하고, 사고 발생 시 WinPE 환경에서 사후 비상 복구까지 지원하는 올인원 현장 도구 구축.
+  * **사전 작업(Pre-SID):** WinPE USB 부팅 전,
+    1. **STEP 1 (필수 선행):** C드라이브(현재 OS) 외 다른 내장 드라이브에 잔존한 **GPT EFI 파티션(`EFI`) 및 구형 MBR 활성 부팅 파티션(`bootmgr` / `\Boot\BCD`)**을 탐지해 비파괴 무력화(부팅 충돌·자동 복구 진입 사전 차단).
+    2. **STEP 2 (사용자 선택):** 제조사별 BIOS 차단 요소 확인 → 물리 USB 및 UEFI NVRAM 4단계 교차 매칭 → 사용자 확인 후 일회성 재부팅(`bcdedit /set {fwbootmgr} bootsequence`) 또는 고급 부팅/BIOS 진입.
+  * **사후 작업(Post-SID):** 골든 이미지 복제 PC에서 SID 변경을 마친 뒤, 공유 프린터 이용 시 필요한 **프린터 스풀러 리셋**(대기열 정리 + 서비스 재시작 + `Disabled` 시작 유형 자동 복구) 및 **호스트/클라이언트 공유 상태 진단** 제공.
+  * **비상 복구(WinPE `X:`):** SID 작업 후 부팅이 꼬여 WinPE로 부팅한 상태에서 동일한 `SID_Change_Aux_Tool.bat` 실행 시 자동으로 `[WinPE 비상 모드]` 진입 → 내장 디스크 GPT EFI(`EFI` ↔ `EFI_OLD`) 및 MBR(`bootmgr`/`Boot` ↔ `_OLD` + `active`/`inactive`) 복구 전환. Storage 모듈 미지원 경량 WinPE에서도 `diskpart` 호환 모드로 자동 폴백.
 * **실행 환경**
-  * **OS:** Windows 10 / 11 (UEFI 모드) 및 WinPE (`X:` 환경, 예: PhoenixPE).
+  * **OS:** Windows 10 / 11 (UEFI 및 Legacy MBR — 사후 작업은 Legacy에서도 동작) 및 WinPE (`X:`, 예: PhoenixPE).
   * **주 타깃 장비:** 삼성(Samsung S8/S9 등 AMI BIOS), HP(구형 G1~G5 / 신형 G6~G9+), Dell(구형 OptiPlex 3040~3070 / 신형 3080~7010+) 데스크탑 및 일반 표준 UEFI 보드.
   * **주요 부팅 매체:** 다중 파티션 구조(`NTFS + exFAT + Hidden EFI FAT`)의 WinPE USB 및 외장 NVMe/SSD 인클로저(예: Seagate FireCuda SSD).
-  * **권한 및 의존성:** 관리자 권한 필수(미보유 시 자동 UAC 상승). 외부 실행 파일이나 별도 `.ps1` 파일 없이 Windows 기본 내장 도구(`PowerShell`, `diskpart`, `bcdedit`, `mountvol`, `shutdown`, `bcdboot`)만 사용.
-* **사용자 시나리오**
-  1. **사전 점검 및 WinPE 진입 (정상 Windows):** `USB_Reboot.bat` 실행 → 내장 디스크 EFI 충돌 사전 탐지(Gate 0) → 충돌 시 구형 HDD의 `EFI`를 `EFI_OLD`로 비활성화 + 현재 SSD NVRAM 등록 → BIOS 차단 요소 확인(Gate 1) → 연결된 WinPE USB 선택 및 확인 후 일회성 재부팅.
-  2. **사후 비상 복구 (WinPE `X:`):** SID 작업 후 부팅이 꼬여 WinPE로 부팅한 상태에서 동일한 `USB_Reboot.bat` 실행 → 자동으로 `[WinPE 비상 모드]` 진입 → 구형 HDD의 `EFI` ↔ `EFI_OLD` 전환.
+  * **권한 및 의존성:** 관리자 권한 필수(미보유 시 자동 UAC 상승). 배포물 `SID_Change_Aux_Tool.bat` 1개만으로 동작하며 Windows 기본 내장 도구(`PowerShell`, `diskpart`, `bcdedit`, `mountvol`, `shutdown`, `bcdboot`)만 사용.
 
 ---
 
 ## 2. 핵심 기능 명세
 
-### 2.1 실행 환경 자동 판별 및 벤더 식별
-* `$env:SystemDrive -eq "X:"`인 경우 **WinPE 비상 모드**로 자동 분기하여 USB 부팅 로직을 건너뛰고 내장 디스크 EFI 관리 화면만 표시.
-* 정상 Windows에서는 `Win32_ComputerSystem`, `Win32_BaseBoard`, `Win32_BIOS`를 조회해 제조사를 `Samsung`, `HP`, `Dell`, `Standard`로 분류.
-* `bcdedit /enum {current}`에서 `winload.efi` 존재 여부로 UEFI 모드 검증 (Legacy MBR 모드일 경우 제조사별 부트 메뉴 단축키 안내 후 종료).
+### 2.1 실행 환경 자동 판별 및 메인 메뉴 (`modules/06_Main_Entry.ps1`)
+* `$env:SystemDrive -eq "X:"`인 경우 **WinPE 비상 모드**로 자동 분기하여 USB 부팅 로직을 건너뛰고 내장 디스크 부트로더(GPT EFI / MBR) 관리 화면 표시.
+* 정상 Windows에서는 제조사(`Samsung`, `HP`, `Dell`, `Standard`) 및 모델명을 표시하고 3개 메뉴 제공:
+  * `[1] SID 변경 사전 작업 (잔존 부트로더 탐지/제거 -> USB 부팅)`
+  * `[2] SID 변경 사후 작업 (프린터 스풀러 리셋)`
+  * `[Q] 종료`
+* UEFI 필수 검사는 `[1] 사전 작업` 내부로 이동하여, `[2] 사후 작업`은 USB 없이도, Legacy PC에서도 즉시 실행 가능.
 
-### 2.2 Gate 0: 내장 다중 디스크 EFI 충돌 사전 탐지 및 원스톱 조치
-* **보호 디스크 자동 잠금:** 정상 Windows에서 `Get-Partition`의 `IsBoot`(현재 OS) 및 `IsSystem`(실제 활성 부팅 EFI) 디스크 번호를 추출해 수정 불가 보호 목록으로 지정.
-* **부팅 분리(`SplitBoot`) 감지:** `IsBoot` 디스크와 `IsSystem` 디스크가 다를 경우 `[위험 - 부팅 분리됨]`으로 판정하고 자동 비활성화를 차단.
-* **보조 디스크 ESP 정밀 검사:** USB 디스크를 제외한 내장 온라인 디스크 중 GPT EFI GUID(`{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}`) 파티션을 탐색.
-  * 기존 문자가 있으면 그대로 사용, 없으면 빈 임시 문자(`Z`~`M` 순)를 `diskpart`로 마운트 → `EFI` / `EFI_OLD` 폴더 존재 여부 확인 → 작업 직후 임시 문자 자동 해제(`remove letter` + `mountvol /d` 폴백).
-  * **안전장치:** 대상 파티션에 `Windows\System32\ntoskrnl.exe`나 `sources\boot.wim`이 있으면 OS/설치 매체로 간주하고 즉시 차단. `EFI`와 `EFI_OLD`가 공존하면 수동 확인 안내 후 중단.
-* **원스톱 조치(`[A]`):** 파티션 삭제 대신 비파괴 이름 변경(`EFI` → `EFI_OLD`, 내부 `Backup(AppCheck)` 등 사용자 숨김 백업 데이터 보존) 수행 후, 사용자 확인을 거쳐 `bcdboot %SystemRoot% /f UEFI`로 현재 OS SSD를 UEFI NVRAM 1순위로 정식 등록.
+### 2.2 사전 작업 STEP 1: 잔존 부트로더 탐지·무력화 및 USB/WinPE 보호 (`modules/02_Bootloader_Conflict_Module.ps1`)
+* **순서 강제 UX:** STEP 1에서 충돌 위험이 없으면 `[정상]` 표시 후 바로 STEP 2 진행 가능. 충돌 위험 또는 `SplitBoot` 발견 시 STEP 1을 해결하거나, 명시적 확인 문구 **`IGNORE`**를 입력하기 전에는 STEP 2로 넘어갈 수 없음.
+* **보호 디스크 및 USB/WinPE 매체 차단:**
+  * 정상 Windows에서 `IsBoot` / `IsSystem` 디스크는 수정 불가 보호 목록으로 잠금(`SplitBoot` 감지 시 자동 조치 차단).
+  * 외장 USB(`BusType=USB`, `IsRemovable`, `USBSTOR|UASP`)는 내장 부트로더 점검 대상에서 원천 제외.
+  * 외장 NVMe 인클로저가 내장처럼 보이는 경우까지 대비하여, 동일 디스크 내 형제 파티션 또는 대상 파티션에 `sources\boot.wim`, `sources\install.wim/esd`, `ventoy\ventoy.json`, `PhoenixPE.cfg`, `boot\boot.sdi+sources`, 또는 `EFI\Microsoft` 없이 `EFI\BOOT\BOOTX64.EFI`만 존재하는 경우 `WINPE_MEDIA`/`WINPE_BLOCKED`로 자동 차단.
+  * `Windows\System32\ntoskrnl.exe`가 있는 파티션은 OS 파티션으로 자동 차단(구형 단일 파티션 MBR OS+부트로더 공존 시 `MBR_OS_BLOCKED` 경고 표시 후 자동 변경 차단).
+* **GPT EFI 및 구형 MBR 활성 파티션 비파괴 조치:**
+  * **GPT EFI:** `EFI` ↔ `EFI_OLD` 이름 변경 (내부 백업 데이터 보존).
+  * **MBR 활성 부팅 파티션(CSM 보드 충돌 대비):** 보조 MBR 디스크의 활성 파티션에 `bootmgr` 또는 `\Boot\BCD`가 있으면 충돌 위험으로 탐지. `+R/+S/+H` 속성 해제 후 `bootmgr` → `bootmgr_OLD`, `Boot` → `Boot_OLD` 이름 변경 + `diskpart inactive` 실행(실패 시 롤백). 복구 시 원복 + `diskpart active`.
+  * **취소 흐름 보강:** 원스톱 조치(`[A]`)에서 사용자가 개별 변경을 취소(`N`)해 실제 변경 건수가 0이면 `bcdboot` 등록 프롬프트를 건너뜀.
+* **WinPE `diskpart` 폴백:** `Get-Disk`/`Get-Partition`이 없거나 실패하는 경량 WinPE에서는 `diskpart` (`list disk` / `detail disk` / `list partition` / `detail partition`) 영문·한글 출력 파서로 자동 전환.
 
-### 2.3 Gate 1: BIOS 보안 및 차단 요소 사전 감지 (3사 구형/신형 대응)
-* **Secure Boot:** `Confirm-SecureBootUEFI`로 확인. 활성화 시 경고.
-* **BIOS USB Boot & Fast Boot 상태 조회:**
-  * **HP:** `root\HP\InstrumentedBIOS` (`HP_BIOSSetting`) 조회. 구형 `*Enable,Disable` 형식과 신형 `CurrentValue` 속성 모두 파싱. `USB Storage Boot` 계열 및 `Fast Boot` 동시 감지.
-  * **Dell:** `root\dcim\sysman` (`DCIM_BIOSEnumeration`) 조회. 구형(`UsbBoot`, `BootUsb`) 및 신형(`EnableUsbBootSupport`, `UsbBootSupport`, `ExternalUsb`) 속성명과 `Fastboot`(`Minimal` 여부) 동시 감지. Dell Command | Monitor 미설치 시 `UnverifiableDell`로 표기.
-  * **Samsung (AMI BIOS) 및 WMI 미지원 보드:** WMI 조회 불가하므로 절대 `ON`으로 추정하지 않고 `[확인 불가]`로 표기. NVRAM 문자열 검사 시 내장 SSD 브랜드(`Samsung`, `Crucial`, `Micron` 등)와 내장 SATA/NVMe 항목을 엄격히 제외.
-* **제조사별 BIOS 메뉴 힌트 자동 출력:** HP(F10), Dell(F2), Samsung(F2)별 정확한 USB Boot / Fast Boot 설정 경로 안내.
+### 2.3 사전 작업 STEP 2: BIOS 진단 및 USB NVRAM 4단계 매칭 (`modules/03_Vendor_Bios_Diagnostics.ps1`, `modules/04_Usb_Matching_And_Reboot.ps1`)
+* **OEM 안전 네이티브 실행(`Invoke-NativeOem`):** 한국어 Windows(CP949)에서 `[Console]::OutputEncoding = UTF8` 설정으로 인해 `bcdedit`/`diskpart` 출력이 깨지던 결함을 해결. 실행 중 임시 OEM 코드페이지 전환 + 스트림 OEM 디코딩 + `finally` UTF-8 복원.
+* **`bcdedit /enum firmware` 파서 보강:** 영문(`identifier/description/path/device`) 및 한글(`식별자/설명/경로/장치`) 정확 파싱, `{fwbootmgr}` 내 `displayorder` GUID 오인식 방지, 한글 `Windows 부팅 관리자` 필터링, 내장 드라이브 목록이 비어 있을 때의 빈 `Device` 누락 버그 수정.
+* **BIOS 보안·차단 요소 감지 (Gate 1):** Secure Boot, HP WMI(`HP_BIOSSetting` 구형/신형 + `Fast Boot`), Dell WMI(`DCIM_BIOSEnumeration` + `Fastboot`), Samsung/AMI 미지원 `[확인 불가]` 원칙 유지.
+* **물리 USB 스캔 및 4단계 매칭 + Gate 2:** 드라이브 문자 → 모델명 → 파티션 번호 → 범용 UEFI USB 순 매칭. `[R]` 다시 스캔 지원. 매칭 0건 시 Hot-Plug(`[O]`) vs BIOS 차단(`[B]`) 분기. 매칭 1건 이상이면 반드시 사용자 확인 후 `bcdedit /set {fwbootmgr} bootsequence <GUID>` 실행 및 재부팅.
 
-### 2.4 물리 USB 감지 및 NVRAM 4단계 교차 매칭
-* `Get-Disk`로 온라인 외장 USB/외장 SSD(`BusType -eq 'USB'`, `IsRemovable`, `USBSTOR|UASP`)만 필터링하여 내장 디스크 및 NVRAM 과거 유령 항목 배제.
-* MSR/복구 파티션을 제외하고 GPT EFI GUID, MBR FAT/EFI 타입(`11, 12, 14, 239`), FAT/FAT32/exFAT, 실제 부팅 파일(`BOOTX64.EFI`, `BCD`) 기준으로 부팅 가능 여부 판별.
-* `bcdedit /enum firmware` 파싱 결과와 4단계 우선순위로 매칭:
-  1. `[정확 일치 - 드라이브]` (`partition=X:`)
-  2. `[정확 일치 - 모델명]` (디스크 `FriendlyName` 단어 매칭)
-  3. `[파티션 일치]` (`Partition N` + UEFI/USB 키워드)
-  4. `[범용 UEFI USB 항목]` (`USB Hard Drive`, `Removable Device` 등)
-
-### 2.5 Gate 2 (미등록/Hot-Plug 분기) 및 일회성 재부팅
-* 물리 USB는 인식됐으나 NVRAM 매칭 결과가 0건일 때:
-  * BIOS USB Boot가 확실히 `Enabled`이고 `Fast Boot` 경고가 없으면 **Hot-Plug**로 판단 → `Enter/O` (`shutdown /r /o /f /t 0`, Windows 고급 부팅 '장치 사용') 기본 권장.
-  * 그 외(차단 의심, 삼성/AMI, Fast Boot 경고 등) → `Enter/B` (`shutdown /r /fw /f /t 0`, BIOS 펌웨어 설정 진입) 기본 권장.
-* 매칭된 USB가 1개 이상이면 목록 출력 후 사용자 확인(`Enter` 또는 번호 입력)을 거쳐 `bcdedit /set {fwbootmgr} bootsequence <GUID>` 실행 후 즉시 재부팅(`shutdown /r /f /t 0`). 실패 시 고급 부팅(`[O]`) 폴백 제공.
-
----
-
-## 3. UI/UX 및 입출력 구조
-
-* **화면 구성 (콘솔 TUI, UTF-8 출력)**
-  1. **헤더:** 시스템 제조사 및 모델명 (`[Samsung/HP/Dell/Standard] (Model)`).
-  2. **상태 요약 대시보드:**
-     * `Secure Boot` 상태 (녹색/적색)
-     * `BIOS USB Boot 옵션` 상태 및 상세 근거 (녹색/황색/적색)
-     * `BIOS Fast Boot 옵션` 경고 (해당 시 황색)
-     * `BIOS Hint` (제조사별 BIOS 단축키 및 메뉴 경로)
-     * `내장 디스크 EFI 충돌` 상태 (녹색/적색)
-  3. **단계별 게이트 메뉴 (Gate 0 → Gate 1 → Gate 2 → USB 선택 메뉴)**
-* **공통 단축키 및 메뉴 동작**
-  * `[Enter]`: 각 게이트의 기본 권장 동작 실행 (Gate 0: 원스톱 조치, Gate 1: BIOS 진입, Gate 2: 장치 사용 또는 BIOS 진입, 최종 메뉴: 단일 USB 즉시 재부팅).
-  * `[A]`: 구형 EFI 일괄 비활성화 + NVRAM 정식 등록 (Gate 0).
-  * `[E]`: 내장 디스크 EFI 관리 화면 (`EFI` ↔ `EFI_OLD` 개별 토글).
-  * `[O]`: Windows 고급 부팅('장치 사용')으로 재부팅.
-  * `[B]`: UEFI BIOS 펌웨어 설정으로 재부팅.
-  * `[D]`: `bcdedit /enum firmware` 원본 디버그 출력.
-  * `[L]`: `Get-Disk` / `Get-Partition` 진단 테이블 출력.
-  * `[I]`: 경고 무시하고 다음 단계 진행.
-  * `[Q]`: 취소 및 종료.
-* **입출력 형식**
-  * **입력:** 키보드 단일 문자 또는 숫자 입력(`Read-Host`).
-  * **출력:** 콘솔 표준 출력(색상 강조). 별도 로그 파일 생성 없음. 임시 파일 생성 없이 파이프라인으로 `diskpart` 제어.
-  * **부가 운영 팁:** USB 루트 상대 경로 바로가기(`.lnk`) 지원 — 대상: `cmd.exe /c start "" "\유틸리티\USB_Reboot.bat"`, 시작 위치: `\`, 실행: 최소화.
+### 2.4 사후 작업: 프린터 스풀러 리셋 및 호스트/클라이언트 진단 (`modules/05_PostSid_Spooler_Module.ps1`)
+* **역할 자동 판별:** 공유 중인 로컬 프린터가 있으면 `[호스트(메인 프린터 PC)]`, 없으면 `[클라이언트]`로 표시하며, 화면 상단에 "메인 프린터 PC와 클라이언트 PC 각각에서 한 번씩 실행하세요" 안내.
+* **상태 표시 (테스트 대신 진단 정보 표시, 자기 자신 연결 테스트 미수행):**
+  * **공통:** 컴퓨터 이름, 현재 Machine SID(`Win32_UserAccount` 로컬 계정 기준), `Spooler` 서비스 상태 및 시작 유형, `PRINTERS` 대기열 파일 수(`.SPL`/`.SHD`), 설치된 프린터 목록.
+  * **호스트:** 공유 프린터 목록(`\\PC명\공유명`), 파일 및 프린터 공유 인바운드 방화벽 규칙 상태(`@FirewallAPI.dll,-28502`, 영문/한글 공용), 네트워크 프로필(`Public` 시 경고).
+  * **클라이언트:** 연결된 네트워크 프린터(`Get-Printer`/`Win32_Printer` + `HKCU:\Printers\Connections`) 및 원격 호스트 SMB(445) 빠른 응답 확인(1초 타임아웃, 로컬 PC 제외).
+* **안전 스풀러 리셋 (기존 프린터·드라이버·공유 설정 비삭제):**
+  1. `Spooler` 및 실행 중인 의존 서비스 중지 (10초 타임아웃 시 `spoolsv` 프로세스 안전 종료)
+  2. `%SystemRoot%\System32\spool\PRINTERS\*` 파일만 정리 (폴더 유지)
+  3. `Spooler` 시작 유형이 `Disabled`면 `Automatic`으로 자동 복구
+  4. `Spooler` 및 기존 의존 서비스 재시작 후 결과 리포트 출력
 
 ---
 
-## 4. 기술 스택 및 아키텍처
+## 3. 저장소 구조 및 개발/빌드 워크플로
 
-* **사용 언어 및 실행 구조:** Batch + PowerShell 단일 파일 하이브리드 (`<# : ... #>` 폴리글랏 패턴).
-  * 상단 Batch 래퍼: `SELF_PATH=%~f0` 저장 → `cd /d "%SystemRoot%\System32"` 고정 → `net session` 관리자 권한 체크 및 UAC 상승 → `ReadAllText` + `Invoke-Expression`으로 PowerShell 본문 실행.
-* **주요 내장 API / 도구:**
-  * PowerShell Storage 모듈 (`Get-Disk`, `Get-Partition`, `Get-Volume`)
-  * CIM/WMI (`Get-CimInstance`: `Win32_*`, `root\HP\InstrumentedBIOS`, `root\dcim\sysman`)
-  * UEFI/부팅 유틸리티 (`Confirm-SecureBootUEFI`, `bcdedit`, `bcdboot`, `diskpart`, `mountvol`, `shutdown`)
-* **모듈화 구조 (단일 파일 내 함수 분리 권장)**
-  * `U()` : 유니코드 이스케이프 한글 디코더
-  * `Show-BcdDebug` / `Show-DiskDebug` : 현장 진단용 디버그 뷰어
-  * `Invoke-WithEspMount` : 임시 마운트/자동 해제 래퍼 (`try/finally` 보장)
-  * `Get-InternalEfiReport` / `Invoke-EspToggle` / `Show-EfiManager` : 다중 디스크 EFI 탐지 및 비활성화 모듈
-  * 메인 파이프라인: WinPE 분기 → 벤더/BIOS 진단 → Gate 0 → Gate 1 → USB 스캔 및 NVRAM 매칭 → Gate 2 → 일회성 부팅 실행
+```text
+SID_Change_Aux_Tool.bat                  # 최종 단일 배포 파일 (100% 순수 ASCII, CRLF)
+modules/
+  01_Bootstrap_And_Helpers.bat           # UAC 래퍼, 안전한 U(), Invoke-NativeOem, bcdedit 파서, [D]/[L]
+  02_Bootloader_Conflict_Module.ps1      # GPT EFI + MBR 활성 부트로더 탐지/토글, USB/WinPE 가드, diskpart 폴백
+  03_Vendor_Bios_Diagnostics.ps1         # 벤더 식별, UEFI 검사, Secure Boot/HP/Dell/Samsung 진단, Gate 1
+  04_Usb_Matching_And_Reboot.ps1         # 물리 USB 스캔, 4단계 NVRAM 매칭, Gate 2, 확인 후 일회성 재부팅
+  05_PostSid_Spooler_Module.ps1          # 사후 프린터 스풀러 리셋 + 호스트/클라이언트 상태 진단
+  06_Main_Entry.ps1                      # WinPE 자동 분기, 메인 메뉴, 사전 STEP 1 -> STEP 2 순서 강제
+tools/
+  Build-Tool.ps1                         # modules/ -> SID_Change_Aux_Tool.bat 빌드 및 6종 자동 검증
+  Test-Tool.ps1                          # 빌드된 .bat 대상 63개 자동 단위/스모크 테스트
+docs/
+  DIRECTION_AND_DECISIONS.md             # 방향 전환 결정 사항 및 단계별 진행 현황
+HANDOVER.md                              # 본 인수인계서
+```
 
----
-
-## 5. 현재까지의 진행 상황 및 미해결 이슈
-
-### 이미 구현 완료된 기능
-* 100% 순수 ASCII 단일 하이브리드 `.bat` 아키텍처 및 한글 경로/공백 대응.
-* ASRock B650M 등 일반 보드에서 미연결 NVRAM 유령 항목 필터링 완료.
-* HP G9 외장 SSD(Seagate FireCuda, 숨김 EFI 파티션) 인식 및 4단계 NVRAM 매칭 로직 구현 완료.
-* 삼성 S8(AMI BIOS)에서 내장 삼성 SSD 브랜드명으로 인해 `USB Boot`가 `ON`으로 오인식되던 버그 수정 완료.
-* HP 구형(`*Enable,Disable`)·신형(`CurrentValue`) 및 Dell 구형·신형 WMI 파싱, `Fast Boot` 감지, 제조사별 BIOS 힌트 출력 구현 완료.
-* Gate 0 (내장 다중 디스크 EFI 충돌 사전 탐지, 부팅 분리 차단, `EFI` → `EFI_OLD` 비파괴 비활성화, `bcdboot` NVRAM 등록) 및 WinPE(`X:`) 비상 모드 통합 완료.
-
-### 작성 중이거나 오류 수정·검증이 필요한 기능
-* **통합판 실장비 검증 미완료:** Gate 0(EFI 충돌 탐지)과 보강된 HP/Dell/삼성 BIOS 로직이 합쳐진 최신 통합판에 대한 실장비 테스트 필요.
-* **WinPE 환경의 PowerShell Storage 모듈 호환성 확인 필요:** 일부 경량 WinPE(PhoenixPE 등)에서 `Get-Disk` / `Get-Partition` cmdlet이 누락되거나 비정상 동작할 경우, WinPE 비상 모드에서 `diskpart` 텍스트 파싱 폴백이 필요할 수 있음.
-
-### 앞으로 남은 작업 목록 (우선순위 순)
-1. **삼성 S8(AMI BIOS) 실장비 검증:** `BIOS USB Boot 옵션`이 `[확인 불가]`로 정상 표기되는지, 구형 HDD 연결 상태에서 Gate 0 원스톱 조치 후 SID 작업 및 재부팅 시 부팅 충돌이 재발하지 않는지 확인.
-2. **HP Elite Tower 800 G9 재검증:** 수정된 HP WMI(`USB Storage Boot` + `Fast Boot`) 파싱 동작 확인, `[D]`/`[L]` 출력으로 외장 SSD NVRAM 매칭 정확도 튜닝, `[O]`(장치 사용) 부팅 최종 확인.
-3. **Dell 데스크탑 실장비 검증:** Dell Command | Monitor 설치/미설치 환경 각각의 WMI 동작 및 폴백 표기 확인.
-4. **WinPE 비상 모드 폴백 보강 (필요 시):** 실제 사용 중인 PhoenixPE에서 `Get-Disk` 실행 여부를 테스트하고, 미지원 시 순수 `diskpart` 기반 폴백 로직 추가.
+* **빌드 및 검증 명령:**
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-Tool.ps1
+  ```
+* **부가 운영 팁:** USB 루트 상대 경로 바로가기(`.lnk`) — 대상: `cmd.exe /c start "" "\유틸리티\SID_Change_Aux_Tool.bat"`, 시작 위치: `\`, 실행: 최소화.
 
 ---
 
-## 6. 절대 준수 제약사항
+## 4. 현재까지의 진행 상황 및 남은 작업 (5~6단계)
+
+### 완료된 작업 (1~4단계)
+* `tools/Build-Tool.ps1` 빌드·검증 파이프라인(ASCII, CRLF, 폴리글랏 헤더, PS AST 구문, `\uXXXX` 검사, 파괴적 명령 차단) 및 `tools/Test-Tool.ps1` 63개 자동 테스트 전체 통과.
+* 배포 파일명 변경(`USB_Reboot.bat` → `SID_Change_Aux_Tool.bat`).
+* 기존 결함 수정 완료: `sources\boot.wim` 가드 누락, 한국어 `bcdedit` OEM 인코딩 깨짐 및 `{fwbootmgr}` 식별자 파싱 버그, `U()` 백슬래시 예외 위험, Gate 0 취소 시 `bcdboot` 오호출, 빈 `internalDriveLetters` 시 Tier 4 누락 버그.
+* 메인 메뉴(`[1]` 사전 / `[2]` 사후 / `[Q]` 종료) 및 사전 작업 STEP 1 → STEP 2 순서 강제(`IGNORE` 확인 문구) 구현 완료.
+* 사후 작업 프린터 스풀러 리셋 및 호스트/클라이언트 상태 진단 구현 완료(로컬 HP G9 PC 읽기 전용 스모크 테스트 통과).
+* 사전 작업 보강 완료: USB/WinPE 매체 보호 강화, 구형 MBR 활성 파티션 탐지·비파괴 전환(`_OLD` + `inactive/active`), 경량 WinPE `diskpart` 폴백(영문/한글).
+
+### 오늘(2026-11-25) 수정/추가/삭제된 파일 목록
+* **신규 추가:**
+  * `SID_Change_Aux_Tool.bat` — `modules/`에서 빌드된 최종 단일 배포 파일 (100% 순수 ASCII, CRLF)
+  * `modules/02_Bootloader_Conflict_Module.ps1` — GPT EFI + MBR 활성 부트로더 탐지/비파괴 전환, USB/WinPE 매체 보호, WinPE `diskpart` 폴백
+  * `modules/05_PostSid_Spooler_Module.ps1` — 사후 프린터 스풀러 리셋 + 호스트/클라이언트 공유 상태 진단
+  * `modules/06_Main_Entry.ps1` — WinPE 자동 분기, 메인 메뉴(`[1]`/`[2]`/`[Q]`), STEP 1 → STEP 2 순서 강제(`IGNORE` 확인)
+  * `tools/Build-Tool.ps1` — 단일 `.bat` 빌드 및 6종 자동 검증 스크립트
+  * `tools/Test-Tool.ps1` — 빌드된 `.bat` 대상 63개 단위/스모크 테스트 스크립트
+* **수정:**
+  * `modules/01_Bootstrap_And_Helpers.bat` — 경로 안전 `U()`, OEM 인코딩 안전 실행기(`Invoke-NativeOem`), 영/한 `bcdedit` 파서, `diskpart` 폴백 진단(`[L]`)
+  * `modules/03_Vendor_Bios_Diagnostics.ps1` — 함수화 리팩토링, 한글 `Windows 부팅 관리자` 필터링, STEP 1 상태 포함 대시보드, Gate 1 메인 복귀
+  * `modules/04_Usb_Matching_And_Reboot.ps1` — 함수화 리팩토링, `[R]` 다시 스캔 추가, 빈 내장 드라이브 시 Tier 4 누락 버그 수정
+  * `HANDOVER.md`, `docs/DIRECTION_AND_DECISIONS.md` — 최신 아키텍처, 완료 현황(1~4단계), 5단계 체크리스트 반영
+* **삭제 (대체됨):**
+  * `USB_Reboot.bat` → `SID_Change_Aux_Tool.bat`로 대체
+  * `modules/02_Efi_Conflict_Module.ps1` → `modules/02_Bootloader_Conflict_Module.ps1`로 대체
+
+### 다른 PC AI 에이전트 이어받기 가이드
+* **코드 수정 원칙:** `SID_Change_Aux_Tool.bat`를 직접 수정하지 말고 반드시 `modules/*.{bat,ps1}`를 수정한 뒤 `tools/Build-Tool.ps1`로 재생성·검증하고 `tools/Test-Tool.ps1`을 실행할 것.
+* **현재 위치:** 1~4단계 구현 및 63개 자동 테스트 통과 상태. 사용자가 5단계 실장비 테스트 결과를 공유하면 발견된 현장 이슈/튜닝을 `modules/`에 반영하고 재빌드·재검증 후 6단계(최종 문서 확정)를 마무리하면 됨.
+
+### 남은 작업 — 5단계 실장비 검증 체크리스트
+1. **HP Elite Tower 800 G9 (관리자 권한 실행):**
+   * `[1]` 사전 작업 진입 → STEP 1 정상 표시 → STEP 2에서 HP WMI(`USB Storage Boot`, `Fast Boot`) 파싱 확인.
+   * `[D]` NVRAM 원본(한글 깨짐 없음 확인) 및 `[L]` 디스크 진단 출력 확인.
+   * 외장 SSD/USB 연결 후 4단계 NVRAM 매칭 및 `[O]`(장치 사용) / 일회성 부팅 검증.
+2. **Samsung S8 (AMI BIOS + 보조 구형 HDD):**
+   * STEP 1에서 보조 HDD 구형 GPT EFI 또는 MBR 활성 부트로더가 `[충돌 위험]`으로 잡히고 STEP 2가 잠기는지 확인.
+   * `[A]` 원스톱 조치 취소(`N`) 시 `bcdboot` 건너뜀 확인 → 다시 `[A]` 승인(`Y`) 후 비활성화 및 `bcdboot` 완료 확인.
+   * STEP 2에서 `BIOS USB Boot 옵션`이 `[확인 불가]`로 정상 표기되는지 확인 후 WinPE SID 작업 → 재부팅 시 부팅 충돌 미발생 검증.
+3. **Dell 데스크탑 (DCM 설치 / 미설치):**
+   * DCM 설치 시 `DCIM_BIOSEnumeration` 파싱, 미설치 시 `UnverifiableDell`(`[확인 불가]`) 표기 확인.
+4. **실제 WinPE (PhoenixPE 등 `X:` 환경):**
+   * `SID_Change_Aux_Tool.bat` 실행 시 `[WinPE 비상 모드]` 자동 진입 확인.
+   * Storage 모듈 유/무에 따른 정상 스캔 또는 `diskpart` 호환 모드 동작 및 `EFI`↔`EFI_OLD`, MBR `_OLD`↔원복 검증.
+5. **사후 작업 실전 검증 (메인 프린터 PC + 클라이언트 PC):**
+   * SID 변경 후 메인 프린터 PC에서 `[2]` 실행 → `[호스트(메인 프린터 PC)]` 판별, 공유 프린터/방화벽/네트워크 프로필 표시 확인 → 스풀러 리셋 실행.
+   * 클라이언트 PC에서 `[2]` 실행 → `[클라이언트]` 판별, 연결된 네트워크 프린터 및 호스트 SMB(445) 응답 표시 확인 → 스풀러 리셋 실행 → 공유 프린터 테스트 인쇄 정상 확인.
+6. **6단계 마무리:** 실장비 검증 중 발견된 튜닝 사항 반영 후 최종 `Build-Tool.ps1` / `Test-Tool.ps1` 통과 및 문서 최종 확정.
+
+---
+
+## 5. 절대 준수 제약사항 (계속 유효)
 
 1. **100% 순수 ASCII 파일 유지 (최우선 절대 규칙):**
-   * `.bat` 파일 내부에 한글 등 비-ASCII 문자를 단 1바이트도 직접 입력하지 말 것 (CMD 배치 파서의 바이트 오프셋 밀림 오류 방지).
-   * 화면에 출력할 모든 한글은 반드시 PowerShell `U()` 함수(`[Regex]::Unescape`)와 `\uXXXX` 유니코드 이스케이프로만 작성할 것. (줄바꿈은 Windows `CRLF` 권장)
+   * `.bat` 및 `modules/` 내부에 한글 등 비-ASCII 문자를 단 1바이트도 직접 입력하지 말 것 (`Build-Tool.ps1`이 강제 검증).
+   * 모든 한글은 `U()` 함수와 `\uXXXX` 유니코드 이스케이프로 작성하고, 줄바꿈은 Windows `CRLF` 유지.
 2. **단일 하이브리드 파일 구조 유지:**
-   * `.ps1` 등 외부 스크립트 파일을 분리하지 않고 `USB_Reboot.bat` 단일 파일로만 배포·실행할 것.
-   * 상단 래퍼의 `set "SELF_PATH=%~f0"` 및 `cd /d "%SystemRoot%\System32"` 고정 로직을 임의로 제거하지 말 것.
+   * 배포물은 `SID_Change_Aux_Tool.bat` 단일 파일 1개로 유지(`SELF_PATH=%~f0`, `cd /d "%SystemRoot%\System32"` 래퍼 보존).
 3. **무확인 즉시 재부팅 금지:**
-   * 부팅 가능한 USB가 1개만 감지되더라도 즉시 재부팅하지 말고, 반드시 물리 디스크 정보와 NVRAM 매칭 결과를 출력한 뒤 사용자 확인(`Enter` 또는 번호)을 거쳐 재부팅할 것.
-4. **비파괴 EFI 처리 원칙:**
-   * 보조 디스크의 구형 EFI 충돌 해결 시 파티션을 삭제(`delete partition`)하거나 포맷하지 말고, 반드시 `EFI` ↔ `EFI_OLD` 폴더 이름 변경 방식만 사용할 것 (내부 숨김 백업 데이터 보존 및 즉시 원상 복구 보장).
+   * 부팅 가능한 USB가 1개만 감지되더라도 반드시 목록 출력 및 사용자 확인 후 재부팅.
+4. **비파괴 부트로더 처리 원칙:**
+   * 파티션 삭제(`delete partition`)·포맷(`format`) 절대 금지. GPT는 `EFI` ↔ `EFI_OLD`, MBR은 `bootmgr`/`Boot` ↔ `_OLD` (+ `inactive`/`active`) 방식만 사용.
 5. **WMI 미지원 보드 `ON` 추정 금지:**
-   * 삼성(AMI) 및 Dell DCM 미설치 등 WMI로 BIOS 설정을 직접 읽을 수 없는 환경에서는 절대 `BIOS USB Boot`를 `ON(활성화)`으로 단정하지 말고 `[확인 불가]` 또는 `[비활성화 의심]`으로 표기할 것.
-6. **보호 디스크 및 OS 파티션 수정 금지:**
-   * 정상 Windows에서 `IsBoot` 또는 `IsSystem`으로 식별된 디스크는 어떤 경우에도 EFI 비활성화 대상에서 원천 차단할 것.
+   * 삼성(AMI), Dell DCM 미설치 등 WMI 조회 불가 환경에서는 절대 `ON(활성화)`으로 단정하지 않고 `[확인 불가]` 또는 `[비활성화 의심]` 표기.
+6. **보호 디스크·OS·WinPE 매체 수정 금지:**
+   * 정상 Windows의 `IsBoot`/`IsSystem` 디스크, `ntoskrnl.exe` OS 파티션, 외장 USB 및 WinPE/설치 매체(`sources\boot.wim`, `EFI\BOOT` 단독 등)는 수정 대상에서 원천 차단.
