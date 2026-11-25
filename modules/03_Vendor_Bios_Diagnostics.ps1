@@ -51,13 +51,44 @@ function Get-SystemInfo {
   default    { "BIOS Setup (F2/Del): USB Boot [Enabled] / Fast Boot [Disabled] / Secure Boot [Disabled]" }
  }
 
+ $biosGuideShort = switch ($hintVendor) {
+  "HP"       { U "HP \u00B7 BIOS F10 \u00B7 \uBD80\uD305 \uBA54\uB274 F9" }
+  "Dell"     { U "Dell \u00B7 BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F12" }
+  "Samsung"  { U "\uC0BC\uC131 \u00B7 BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F10 \uB610\uB294 F12" }
+  "Lenovo"   { U "Lenovo \u00B7 BIOS F1 \u00B7 \uBD80\uD305 \uBA54\uB274 F12" }
+  "LG"       { U "LG \u00B7 BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F10" }
+  "ASUS"     { U "ASUS \u00B7 BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F8" }
+  "ASRock"   { U "ASRock \u00B7 BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11" }
+  "Gigabyte" { U "Gigabyte \u00B7 BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F12" }
+  "MSI"      { U "MSI \u00B7 BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11" }
+  default    { U "BIOS F2 \uB610\uB294 Del \u00B7 \uBD80\uD305 \uBA54\uB274 \uB2E8\uCD95\uD0A4" }
+ }
+
+ $osSummary = "Windows"
+ try {
+  $osObj = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+  $cap = ([string]$osObj.Caption -replace "^Microsoft\s+", "").Trim()
+  $dv = ""
+  try {
+   $dv = [string](Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name "DisplayVersion" -ErrorAction Stop).DisplayVersion
+  } catch {}
+  if ($cap) {
+   $osSummary = if ($dv) { $cap + " " + $dv } else { $cap }
+  }
+ } catch {}
+
+ $displayVendor = if ($vendor -ne "Standard") { $vendor } elseif ($hintVendor -ne "Standard") { $hintVendor } else { "" }
+
  return [PSCustomObject]@{
   Vendor = $vendor
   HintVendor = $hintVendor
+  DisplayVendor = $displayVendor
   ModelName = $modelName
   RawVendor = $rawVendor
   BiosVersion = [string]$bios.SMBIOSBIOSVersion
   BiosHint = $vendorBiosHint
+  BiosGuideShort = $biosGuideShort
+  OsSummary = $osSummary
  }
 }
 
@@ -98,6 +129,13 @@ function Get-BootModeDiagnostics {
  try {
   if (Test-StorageCmdletsAvailable) {
    $bootDiskObj = Get-Disk -ErrorAction Stop | Where-Object { $_.IsBoot } | Select-Object -First 1
+   if (-not $bootDiskObj) {
+    $sysLtr = if ($env:SystemDrive -and $env:SystemDrive -match "^([A-Za-z]):") { $matches[1] } else { "C" }
+    $sysPart = Get-Partition -DriveLetter $sysLtr -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($sysPart) {
+     $bootDiskObj = Get-Disk -Number $sysPart.DiskNumber -ErrorAction SilentlyContinue
+    }
+   }
    if ($bootDiskObj) {
     $ps = [string]$bootDiskObj.PartitionStyle
     if ($ps -eq "GPT") { $diskSignal = "UEFI" }
@@ -651,13 +689,13 @@ function Format-BiosCrossCheckReport($sysInfo, $diag, $usbInfo, [array]$matchedE
  return $sb.ToString()
 }
 
-# Contextual UX Guidance Engine for Pre-SID (tells the user WHAT state this PC is in & WHICH button to click next!)
+# Contextual UX Guidance Engine for Pre-SID (plain commercial Korean, zero brackets/parentheses/jargon)
 function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedEntries, [bool]$step1Bypassed) {
  if ($diag -and -not $diag.BootMode.IsUefi) {
   return [PSCustomObject]@{
    Level = "Error"
-   Title = U "Legacy(MBR) \uBD80\uD305 \uD658\uACBD - USB \uC77C\uD68C\uC131 \uC790\uB3D9 \uBD80\uD305 \uBBF8\uC9C0\uC6D0"
-   Message = U "\uD604\uC7AC PC\uB294 Legacy \uBAA8\uB4DC\uC785\uB2C8\uB2E4. \uC7AC\uBD80\uD305 \uC2DC \uC81C\uC870\uC0AC \uBD80\uD2B8 \uBA54\uB274 \uB2E8\uCD95\uD0A4(Samsung: F12/F10, HP: F9, Dell: F12)\uB97C \uC0AC\uC6A9\uD558\uC138\uC694. (\uC0AC\uD6C4 \uC791\uC5C5 \uD0ED\uC740 \uC815\uC0C1 \uC0AC\uC6A9 \uAC00\uB2A5)"
+   Title = U "\uB808\uAC70\uC2DC \uBD80\uD305 \uBC29\uC2DD\uC774\uB77C \uC790\uB3D9 USB \uC7AC\uBD80\uD305\uC744 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4"
+   Message = U "\uC7AC\uBD80\uD305\uD560 \uB54C \uC81C\uC870\uC0AC \uBD80\uD305 \uBA54\uB274 \uB2E8\uCD95\uD0A4\uB85C WinPE USB\uB97C \uC9C1\uC811 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694. \uC0AC\uD6C4 \uD504\uB9B0\uD130 \uBCF5\uAD6C \uD0ED\uC740 \uC774 PC\uC5D0\uC11C\uB3C4 \uC815\uC0C1 \uC0AC\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
    RecommendedAction = "LEGACY_INFO"
   }
  }
@@ -665,8 +703,8 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
   if ($efiRep.SplitBoot) {
    return [PSCustomObject]@{
     Level = "Error"
-    Title = U "[STEP 1 \uC704\uD5D8] OS\uC640 \uBD80\uD305 EFI \uB514\uC2A4\uD06C\uAC00 \uBD84\uB9AC\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4!"
-    Message = ((U "OS(Disk ") + $efiRep.BootDisk + (U ")\uC640 \uC2E4\uC81C \uBD80\uD305 EFI(Disk ") + $efiRep.SysDisk + (U ")\uAC00 \uBD84\uB9AC\uB418\uC5B4 \uC790\uB3D9 \uBE44\uD65C\uC131\uD654\uB97C \uCC28\uB2E8\uD588\uC2B5\uB2C8\uB2E4. \uB514\uC2A4\uD06C \uAD6C\uC131\uC744 \uBA3C\uC800 \uD655\uC778\uD558\uC138\uC694."))
+    Title = U "Windows\uC640 \uBD80\uD305 \uD30C\uD2F0\uC158\uC774 \uC11C\uB85C \uB2E4\uB978 \uB514\uC2A4\uD06C\uC5D0 \uB098\uB258\uC5B4 \uC788\uC2B5\uB2C8\uB2E4"
+    Message = ((U "Disk ") + $efiRep.BootDisk + (U "\uACFC Disk ") + $efiRep.SysDisk + (U "\uC5D0 \uBD80\uD305 \uAD6C\uC131\uC774 \uBD84\uB9AC\uB418\uC5B4 \uC790\uB3D9 \uC815\uB9AC\uB97C \uC911\uB2E8\uD588\uC2B5\uB2C8\uB2E4. \uB514\uC2A4\uD06C \uAD6C\uC131\uC744 \uBA3C\uC800 \uD655\uC778\uD574 \uC8FC\uC138\uC694."))
     RecommendedAction = "STEP1_SPLIT"
    }
   }
@@ -674,15 +712,15 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
   if ($efiRep.ActionableConflictItems.Count -gt 0) {
    return [PSCustomObject]@{
     Level = "Error"
-    Title = U "[STEP 1 \uC120\uD589 \uD544\uC218] \uBCF4\uC870 \uB514\uC2A4\uD06C \uC794\uC874 \uBD80\uD2B8\uB85C\uB354 \uAC10\uC9C0!"
-    Message = ($cList + (U "\uC5D0 \uAD6C\uD615 \uBD80\uD2B8\uB85C\uB354\uAC00 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. SID \uBCC0\uACBD \uD6C4 \uBD80\uD305 \uCDA9\uB3CC\uC744 \uB9C9\uAE30 \uC704\uD574 \uBA3C\uC800 [\uC6D0\uC2A4\uD1B1 \uC815\uB9AC] \uBC84\uD2BC\uC744 \uC2E4\uD589\uD558\uC138\uC694."))
+    Title = U "\uBA3C\uC800 \uBCF4\uC870 \uB514\uC2A4\uD06C\uC758 \uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uB97C \uC815\uB9AC\uD574 \uC8FC\uC138\uC694"
+    Message = ($cList + (U "\uC5D0 \uC774\uC804 \uBD80\uD2B8\uB85C\uB354\uAC00 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. SID \uBCC0\uACBD \uD6C4 \uBD80\uD305 \uC624\uB958\uB97C \uB9C9\uAE30 \uC704\uD574 1\uB2E8\uACC4\uC758 \uC794\uC874 \uBD80\uD2B8\uB85C\uB354 \uC815\uB9AC\uB97C \uBA3C\uC800 \uC2E4\uD589\uD574 \uC8FC\uC138\uC694."))
     RecommendedAction = "STEP1_FIX"
    }
   }
   return [PSCustomObject]@{
    Level = "Warn"
-   Title = U "[STEP 1 \uC218\uB3D9 \uD655\uC778 \uD544\uC694] \uBCF4\uC870 \uB514\uC2A4\uD06C \uACBD\uACE0 \uD56D\uBAA9 \uC874\uC7AC"
-   Message = ($cList + (U "\uC5D0 \uC218\uB3D9 \uD655\uC778\uC774 \uD544\uC694\uD55C \uBD80\uD2B8\uB85C\uB354(\uACF5\uC874/\uAD6C\uD615 OS)\uAC00 \uC788\uC2B5\uB2C8\uB2E4. \uD655\uC778 \uD6C4 \uD544\uC694 \uC2DC [IGNORE \uC7A0\uAE08 \uD574\uC81C]\uB85C \uC9C4\uD589\uD558\uC138\uC694."))
+   Title = U "\uBCF4\uC870 \uB514\uC2A4\uD06C\uC5D0 \uC9C1\uC811 \uD655\uC778\uC774 \uD544\uC694\uD55C \uD56D\uBAA9\uC774 \uC788\uC2B5\uB2C8\uB2E4"
+   Message = ($cList + (U "\uC758 \uACBD\uACE0 \uC0C1\uD0DC\uB97C \uBA3C\uC800 \uD655\uC778\uD574 \uC8FC\uC138\uC694. \uC774\uC0C1\uC774 \uC5C6\uB2E4\uBA74 \uC704\uD5D8 \uD655\uC778 \uD6C4 \uAC74\uB108\uB6F0\uAE30\uB97C \uB20C\uB7EC 2\uB2E8\uACC4\uB85C \uC774\uB3D9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."))
    RecommendedAction = "STEP1_MANUAL"
   }
  }
@@ -691,24 +729,24 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
  if ($diag.SecureBootState -eq "On" -or $diag.SecureBootState -eq "Conflict") {
   return [PSCustomObject]@{
    Level = "Warn"
-   Title = U "[BIOS \uC8FC\uC758] Secure Boot \uD65C\uC131\uD654/\uCDA9\uB3CC \uAC10\uC9C0 - BIOS \uD655\uC778 \uAD8C\uC7A5"
-   Message = U "Secure Boot\uAC00 \uCF1C\uC838 \uC788\uC73C\uBA74 \uBBF8\uC11C\uBA85 WinPE USB\uAC00 \uCC28\uB2E8\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4. [BIOS \uC124\uC815 \uC9C4\uC785]\uC73C\uB85C \uB044\uAC70\uB098, \uC11C\uBA85\uB41C WinPE\uB77C\uBA74 \uC544\uB798 USB\uB97C \uC120\uD0DD\uD558\uC138\uC694."
+   Title = U "\uBCF4\uC548 \uBD80\uD305 \uC124\uC815\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694"
+   Message = U "\uBCF4\uC548 \uBD80\uD305\uC774 \uCF1C\uC838 \uC788\uC73C\uBA74 WinPE USB\uAC00 \uCC28\uB2E8\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4. BIOS \uC124\uC815 \uC5F4\uAE30\uB85C \uD574\uC81C\uD558\uAC70\uB098, \uC11C\uBA85\uB41C WinPE\uB77C\uBA74 \uC544\uB798 USB\uB85C \uC9C4\uD589\uD574 \uC8FC\uC138\uC694."
    RecommendedAction = "BIOS_SETUP"
   }
  }
  if ($diag.IsConfirmedBlocked) {
   return [PSCustomObject]@{
    Level = "Error"
-   Title = U "[BIOS \uCC28\uB2E8 \uD655\uC815] BIOS\uC5D0\uC11C USB \uBD80\uD305 \uB610\uB294 \uD3EC\uD2B8\uAC00 \uBE44\uD65C\uC131\uD654\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4"
-   Message = (U "[BIOS \uC124\uC815 \uC9C4\uC785] \uBC84\uD2BC\uC744 \uB20C\uB7EC USB \uBD80\uD305 \uC635\uC158\uC744 \uD65C\uC131\uD654\uD558\uC138\uC694. -> " + $diag.BiosHint)
+   Title = U "BIOS\uC5D0\uC11C USB \uBD80\uD305\uC774 \uCC28\uB2E8\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4"
+   Message = U "\uC544\uB798 BIOS \uC124\uC815 \uC5F4\uAE30\uB97C \uB20C\uB7EC USB \uBD80\uD305 \uC635\uC158\uC744 \uD5C8\uC6A9\uC73C\uB85C \uBCC0\uACBD\uD55C \uB4A4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."
    RecommendedAction = "BIOS_SETUP"
   }
  }
  if (-not $usbInfo -or $usbInfo.PhysicalUsbList.Count -eq 0) {
   return [PSCustomObject]@{
    Level = "Info"
-   Title = U "[STEP 1 \uD1B5\uACFC] WinPE \uBD80\uD305 USB\uB97C \uC5F0\uACB0\uD558\uC138\uC694"
-   Message = U "\uB0B4\uC7A5 \uB514\uC2A4\uD06C \uBD80\uD2B8\uB85C\uB354\uB294 \uC815\uC0C1\uC785\uB2C8\uB2E4. WinPE USB\uB97C PC\uC5D0 \uAF42\uC740 \uB4A4 [\uC804\uCCB4 \uC0C8\uB85C\uACE0\uCE68] \uB610\uB294 [USB \uB2E4\uC2DC \uC2A4\uCE94]\uC744 \uB204\uB974\uC138\uC694."
+   Title = U "WinPE \uBD80\uD305 USB\uB97C \uC5F0\uACB0\uD574 \uC8FC\uC138\uC694"
+   Message = U "\uB0B4\uC7A5 \uB514\uC2A4\uD06C \uC810\uAC80\uC744 \uD1B5\uACFC\uD588\uC2B5\uB2C8\uB2E4. WinPE USB\uB97C PC\uC5D0 \uAF42\uC740 \uB4A4 USB \uB2E4\uC2DC \uCC3E\uAE30\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694."
    RecommendedAction = "PLUG_USB"
   }
  }
@@ -716,15 +754,15 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
   if ($diag.HasSignalConflict) {
    return [PSCustomObject]@{
     Level = "Warn"
-    Title = U "[\uAD50\uCC28 \uAC80\uC99D \uC8FC\uC758] WMI\uC640 NVRAM \uC2E0\uD638\uAC00 \uB2E4\uB985\uB2C8\uB2E4 - USB \uD56D\uBAA9 \uD655\uC778 \uD6C4 \uC9C4\uD589"
-    Message = U "WMI\uB294 \uCC28\uB2E8\uC744 \uBCF4\uACE0\uD588\uC9C0\uB9CC UEFI NVRAM\uC5D0\uC11C USB\uAC00 \uC2E4\uC81C \uAC10\uC9C0\uB418\uC5C8\uC2B5\uB2C8\uB2E4. [\uAD50\uCC28 \uAC80\uC99D \uC0C1\uC138]\uB97C \uD655\uC778\uD558\uAC70\uB098 \uC544\uB798 USB\uB85C \uC7AC\uBD80\uD305\uC744 \uC2DC\uB3C4\uD558\uC138\uC694."
+    Title = U "BIOS \uC124\uC815\uACFC \uD38C\uC6E8\uC5B4 \uBAA9\uB85D \uAC04 \uCC28\uC774\uAC00 \uAC10\uC9C0\uB418\uC5C8\uC2B5\uB2C8\uB2E4"
+    Message = U "USB \uBD80\uD305 \uD56D\uBAA9\uC774 \uC2E4\uC81C \uBAA9\uB85D\uC5D0\uC11C \uD655\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4. BIOS \uC9C4\uB2E8 \uC0C1\uC138\uB97C \uD655\uC778\uD558\uAC70\uB098 \uC544\uB798 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."
     RecommendedAction = "USB_REBOOT"
    }
   }
   return [PSCustomObject]@{
    Level = "OK"
-   Title = U "[\uC900\uBE44 \uC644\uB8CC] \uC544\uB798 WinPE USB\uB97C \uD655\uC778\uD558\uACE0 1\uD68C\uC131 \uC7AC\uBD80\uD305\uD558\uC138\uC694"
-   Message = U "\uBD80\uD2B8\uB85C\uB354 \uC0AC\uC804 \uC810\uAC80\uACFC NVRAM \uB9E4\uCE6D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uBAA9\uB85D\uC5D0\uC11C USB\uB97C \uC120\uD0DD\uD55C \uB4A4 [\uC120\uD0DD\uD55C USB\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305]\uC744 \uB204\uB974\uC138\uC694."
+   Title = U "WinPE USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC900\uBE44\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4"
+   Message = U "2\uB2E8\uACC4 \uBAA9\uB85D\uC5D0\uC11C \uBD80\uD305\uD560 USB\uAC00 \uB9DE\uB294\uC9C0 \uD655\uC778\uD55C \uB4A4 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uB20C\uB7EC \uC8FC\uC138\uC694."
    RecommendedAction = "USB_REBOOT"
   }
  }
@@ -734,15 +772,15 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
  if ($isLikelyHotPlug) {
   return [PSCustomObject]@{
    Level = "Info"
-   Title = U "[Hot-Plug \uCD94\uC815] Windows \uACE0\uAE09 \uBD80\uD305('\uC7A5\uCE58 \uC0AC\uC6A9') \uAD8C\uC7A5"
-   Message = U "BIOS USB Boot\uB294 \uC815\uC0C1\uC774\uC9C0\uB9CC Windows \uBD80\uD305 \uD6C4 USB\uB97C \uAF42\uC544 NVRAM\uC5D0 \uC544\uC9C1 \uBBF8\uB4F1\uB85D \uC0C1\uD0DC\uC785\uB2C8\uB2E4. [\uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9)]\uC744 \uB204\uB974\uBA74 USB\uB97C \uACE8\uB77C \uBD80\uD305\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
+   Title = U "\uACE0\uAE09 \uBD80\uD305\uC5D0\uC11C USB\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694"
+   Message = U "Windows\uB97C \uCF1C \uB4A4 USB\uB97C \uC5F0\uACB0\uD574 \uD38C\uC6E8\uC5B4 \uBAA9\uB85D\uC5D0 \uC544\uC9C1 \uB098\uD0C0\uB098\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC544\uB798 \uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9\uC744 \uB20C\uB7EC \uC7A5\uCE58 \uC0AC\uC6A9 \uBA54\uB274\uC5D0\uC11C USB\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694."
    RecommendedAction = "ADV_BOOT"
   }
  }
  return [PSCustomObject]@{
   Level = "Warn"
-  Title = U "[NVRAM \uBBF8\uB4F1\uB85D] BIOS \uC124\uC815 \uD655\uC778 \uB610\uB294 \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9) \uC120\uD0DD"
-  Message = U "\uBB3C\uB9AC USB\uB294 \uC778\uC2DD\uB410\uC9C0\uB9CC NVRAM \uBD80\uD305 \uBAA9\uB85D\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4. \uBC29\uAE08 USB\uB97C \uAF42\uC558\uB2E4\uBA74 [\uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9)]\uC744, \uBD80\uD305 \uC804\uBD80\uD130 \uAF42\uD600 \uC788\uC5C8\uB2E4\uBA74 [BIOS \uC124\uC815 \uC9C4\uC785]\uC5D0\uC11C Fast Boot/USB Boot\uB97C \uD655\uC778\uD558\uC138\uC694."
+  Title = U "USB\uB294 \uC5F0\uACB0\uB418\uC5C8\uC9C0\uB9CC \uBD80\uD305 \uBAA9\uB85D\uC5D0 \uB098\uD0C0\uB098\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4"
+  Message = U "\uBC29\uAE08 \uAF42\uC740 USB\uB77C\uBA74 \uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9\uC744 \uB20C\uB7EC \uC8FC\uC138\uC694. \uBD80\uD305 \uC804\uBD80\uD130 \uAF42\uD600 \uC788\uC5C8\uB2E4\uBA74 BIOS \uC124\uC815 \uC5F4\uAE30\uC5D0\uC11C USB \uBD80\uD305\uACFC \uBE60\uB978 \uBD80\uD305 \uC635\uC158\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694."
   RecommendedAction = "BIOS_SETUP"
  }
 }

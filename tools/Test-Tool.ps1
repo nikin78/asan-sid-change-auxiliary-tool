@@ -511,39 +511,140 @@ Assert-Eq $gNoUsb.RecommendedAction "PLUG_USB" "Pre-SID guidance recommends PLUG
 $gPostLive = Get-PostSidGuidance $livePost
 Assert-Eq $gPostLive.RecommendedAction "SPOOLER_RESET" "Post-SID guidance recommends SPOOLER_RESET ($($gPostLive.Level))"
 
-# Live WinForms GUI construction, real event closures, & ShowDialog -> Close (FormClosed) smoke test
+# Live WinForms GUI construction, Asan Desktop UI layout audit (1040x720 & 960x640),
+# UX writing check, real event closures, & ShowDialog -> Close (FormClosed) smoke test
 $guiAvail = Test-WinFormsAvailable
 Assert-True $guiAvail "WinForms GAC assemblies available on this Windows host"
 if ($guiAvail) {
     try { [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::ThrowException) } catch {}
+
+    # Verify diagnostic masking helper (Asan Desktop UI Section 6)
+    $masked = ConvertTo-MaskedDiagnosticText 'Password=MySecret123; "token": "abc\"def"'
+    Assert-True ($masked -notmatch "MySecret123" -and $masked -match "\[REDACTED\]") "ConvertTo-MaskedDiagnosticText redacts sensitive credentials"
+
+    # Static check: zero Anchor=Right in GUI module (DPI safety rule)
+    $guiSrc = [System.IO.File]::ReadAllText((Join-Path $repoRoot "modules\06_Gui_WinForms.ps1"))
+    Assert-True ($guiSrc -notmatch "AnchorStyles\]::Right") "06_Gui_WinForms.ps1 uses zero Anchor=Right (DPI-safe Dock/RightFlowStrip)"
+
+    function Invoke-LayoutAudit($formObj, $uiCtx, [string]$label) {
+        $cnt = @{ Clips = 0; Overlaps = 0; SmallGrids = 0; SmallLogs = 0; MissingTips = 0; BadBtnCopy = 0 }
+        $walk = {
+            param($parent)
+            $visBtns = New-Object System.Collections.ArrayList
+            foreach ($ch in $parent.Controls) {
+                if (-not $ch.Visible) { continue }
+                if ($ch -is [System.Windows.Forms.Button]) {
+                    [void]$visBtns.Add($ch)
+                    if (($ch.Right -gt ($parent.ClientSize.Width + 3)) -or ($ch.Bottom -gt ($parent.ClientSize.Height + 3))) {
+                        $cnt.Clips++
+                        Write-Host ("  [CLIP $label] Btn='$($ch.Text)' Right=$($ch.Right)/$($parent.ClientSize.Width) Bottom=$($ch.Bottom)/$($parent.ClientSize.Height)") -ForegroundColor Red
+                    }
+                    if (-not $ch.Enabled) {
+                        if (-not $uiCtx.DisabledReasons.ContainsKey($ch) -or [string]::IsNullOrWhiteSpace([string]$uiCtx.DisabledReasons[$ch])) {
+                            $cnt.MissingTips++
+                            Write-Host ("  [NO TIP $label] Disabled Btn='$($ch.Text)' has no registered reason tooltip") -ForegroundColor Red
+                        }
+                    }
+                    if ($ch.Text -match '[\[\]\(\)!]') {
+                        $cnt.BadBtnCopy++
+                        Write-Host ("  [COPY $label] Button contains disallowed punctuation: '$($ch.Text)'") -ForegroundColor Red
+                    }
+                } elseif ($ch -is [System.Windows.Forms.DataGridView]) {
+                    if ($ch.Height -lt 80) {
+                        $cnt.SmallGrids++
+                        Write-Host ("  [GRID $label] Grid '$($ch.Name)' Height=$($ch.Height) < 80") -ForegroundColor Red
+                    }
+                } elseif ($ch -is [System.Windows.Forms.TextBox] -and $ch.Multiline) {
+                    if ($ch.Height -lt 40) {
+                        $cnt.SmallLogs++
+                        Write-Host ("  [TB $label] Multiline TextBox Height=$($ch.Height) < 40") -ForegroundColor Red
+                    }
+                }
+                if ($ch.Controls.Count -gt 0) { & $walk $ch }
+            }
+            for ($i = 0; $i -lt $visBtns.Count; $i++) {
+                for ($j = $i + 1; $j -lt $visBtns.Count; $j++) {
+                    $r = [System.Drawing.Rectangle]::Intersect($visBtns[$i].Bounds, $visBtns[$j].Bounds)
+                    if ($r.Width -gt 1 -and $r.Height -gt 1) {
+                        $cnt.Overlaps++
+                        Write-Host ("  [OVERLAP $label] '$($visBtns[$i].Text)' vs '$($visBtns[$j].Text)'") -ForegroundColor Red
+                    }
+                }
+            }
+        }
+        & $walk $formObj
+        return [PSCustomObject]$cnt
+    }
+
     $guiBundle = $null
     try {
         $guiBundle = New-SidAuxMainForm $liveSys $true
         Assert-True ($null -ne $guiBundle.Form) "WinForms Main Form instantiated cleanly"
-        Assert-Eq $guiBundle.TabControl.TabPages.Count 2 "Main Form has 2 primary tabs (Pre-SID & Post-SID)"
-        Assert-True ($guiBundle.DiskListView.Items.Count -ge 1) "STEP 1 DiskListView populated ($($guiBundle.DiskListView.Items.Count) row(s))"
-        Assert-True ($guiBundle.PhysUsbListView.Items.Count -ge 1) "STEP 2 Physical USB ListView populated"
-        Assert-True ($guiBundle.NvramUsbListView.Items.Count -ge 1) "STEP 2 NVRAM USB ListView populated"
-        Assert-True ($guiBundle.PrinterListView.Items.Count -ge 1) "Post-SID Printer ListView populated"
+        Assert-True ($null -ne $guiBundle.Form.Icon) "Custom GDI+ vector app icon attached cleanly"
+        Assert-Eq $guiBundle.TabControl.TabPages.Count 2 "Main Form has 2 numbered tabs (Pre-SID & Post-SID)"
+        Assert-True ($guiBundle.DiskGrid.Rows.Count -ge 1) "STEP 1 DiskGrid populated ($($guiBundle.DiskGrid.Rows.Count) row(s))"
+        Assert-True ($guiBundle.UsbGrid.Rows.Count -ge 1) "STEP 2 Unified UsbGrid populated ($($guiBundle.UsbGrid.Rows.Count) row(s))"
+        Assert-True ($guiBundle.PrinterGrid.Rows.Count -ge 1) "Post-SID PrinterGrid populated ($($guiBundle.PrinterGrid.Rows.Count) row(s))"
         $repTxt = Format-BiosCrossCheckReport $liveSys $guiBundle.State.Step2Snap.BiosDiag $guiBundle.State.Step2Snap.UsbInfo $guiBundle.State.Step2Snap.MatchedEntries
         Assert-True ($repTxt.Length -gt 200) "BIOS Cross-Check detailed report generated ($($repTxt.Length) chars)"
+
+        # Automated Layout Audit across 1040x720 and 960x640 (+ expanded log + critical banner)
+        $guiBundle.Form.Opacity = 0
+        $guiBundle.Form.ShowInTaskbar = $false
+        $guiBundle.Form.Show()
+        [System.Windows.Forms.Application]::DoEvents()
+
+        foreach ($sz in @(@(1040, 720, "1040x720"), @(960, 640, "960x640"))) {
+            $guiBundle.Form.Size = New-Object System.Drawing.Size($sz[0], $sz[1])
+            foreach ($tabIdx in @(0, 1)) {
+                $guiBundle.TabControl.SelectedIndex = $tabIdx
+                $guiBundle.Form.PerformLayout()
+                [System.Windows.Forms.Application]::DoEvents()
+                $aud = Invoke-LayoutAudit $guiBundle.Form $guiBundle.UiContext ("$($sz[2])-Tab$($tabIdx+1)")
+                Assert-Eq ($aud.Clips + $aud.Overlaps) 0 "Layout $($sz[2]) Tab $($tabIdx+1): zero button clipping/overlap"
+                Assert-Eq $aud.SmallGrids 0 "Layout $($sz[2]) Tab $($tabIdx+1): all visible DataGridViews Height >= 80px"
+                Assert-Eq $aud.MissingTips 0 "Layout $($sz[2]) Tab $($tabIdx+1): all disabled buttons have reason tooltips"
+                Assert-Eq $aud.BadBtnCopy 0 "Layout $($sz[2]) Tab $($tabIdx+1): commercial UX copy (no brackets/parentheses/!)"
+            }
+        }
+
+        # Worst-case stress audit: 960x640 + Log Expanded + Tab 1 & Tab 2
+        $guiBundle.Form.Size = New-Object System.Drawing.Size(960, 640)
+        $guiBundle.BtnToggleLog.PerformClick()
+        foreach ($tabIdx in @(0, 1)) {
+            $guiBundle.TabControl.SelectedIndex = $tabIdx
+            $guiBundle.Form.PerformLayout()
+            [System.Windows.Forms.Application]::DoEvents()
+            $audEx = Invoke-LayoutAudit $guiBundle.Form $guiBundle.UiContext ("960x640-LogOpen-Tab$($tabIdx+1)")
+            Assert-Eq ($audEx.Clips + $audEx.Overlaps + $audEx.SmallGrids + $audEx.SmallLogs) 0 "Stress layout 960x640 + Expanded Log Tab $($tabIdx+1): zero clipping/overlap/squished grids or log"
+        }
+        $guiBundle.BtnToggleLog.PerformClick() # collapse back
 
         # Exercise real event handlers AFTER New-SidAuxMainForm returned (catches closure/scope bugs!)
         $clickOk = $true
         try {
+            $guiBundle.TabControl.SelectedIndex = 0
             $guiBundle.BtnTopRefresh.PerformClick()
             $guiBundle.BtnRescanUsb.PerformClick()
             $guiBundle.BtnPostRefresh.PerformClick()
-            if ($guiBundle.DiskListView.Items.Count -gt 0) {
-                $guiBundle.DiskListView.Items[0].Selected = $true
+            if ($guiBundle.BtnStep1Fold.Enabled) {
+                $guiBundle.BtnStep1Fold.PerformClick()
+                $guiBundle.BtnStep1Fold.PerformClick()
+            }
+            if ($guiBundle.DiskGrid.Rows.Count -gt 0) {
+                $guiBundle.DiskGrid.Rows[0].Selected = $true
             }
         } catch {
             $clickOk = $false
             Write-Host ("  [CLICK ERR] " + $_.Exception.Message) -ForegroundColor Red
         }
-        Assert-True $clickOk "Real button PerformClick() & DiskListView SelectedIndexChanged succeed after factory return"
+        Assert-True $clickOk "Real button PerformClick() & DiskGrid SelectionChanged succeed after factory return"
 
-        # Exercise real WinForms ShowDialog -> Close() -> OnFormClosed message loop!
+        # Close first shown form cleanly & test fresh ShowDialog -> Close() -> OnFormClosed message loop!
+        $guiBundle.Form.Close()
+        $guiBundle.Form.Dispose()
+
+        $guiBundle = New-SidAuxMainForm $liveSys $false
         $closeOk = $true
         $formClosedFired = $false
         $guiBundle.Form.Opacity = 0

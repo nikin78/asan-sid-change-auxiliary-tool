@@ -1,8 +1,8 @@
 # [인수인계서] SID 변경 사전·사후 보조 툴 (`SID_Change_Aux_Tool.bat`)
 
 > [!IMPORTANT]
-> **현재 버전: `v2.1.1` (2026-11-26 기준 — WinForms GUI + BIOS 다중 신호 교차 검증 + 체계적 SemVer 버저닝 적용 완료):**
-> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **WinForms GUI(`06_Gui_WinForms.ps1`, 콘솔 `--cli` 폴백 지원), 다중 신호 BIOS 교차 검증 엔진, 3종 실행 환경(쓰기 금지 USB / 로컬 / 공유폴더) 하드닝, 체계적 SemVer 버저닝(`VERSION` + `CHANGELOG.md` + `Build-Tool.ps1 -Bump`) 및 132개 자동 테스트(실제 GUI 클릭·X 닫기·버전 정합성 검증 포함)**까지 완료했습니다.
+> **현재 버전: `v2.2.0` (2026-11-26 기준 — 아산병원 데스크톱 디자인 시스템(`asan-desktop-ui`) 전면 적용 + 초보자 친화 워크플로 + 상용 UX 라이팅 + 152개 자동/레이아웃/시각 감사 통과):**
+> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **아산병원 현장 데스크톱 디자인 시스템(`asan-desktop-ui`) 기반 WinForms GUI(`06_Gui_WinForms.ps1`, 콘솔 `--cli` 폴백 지원), 다중 신호 BIOS 교차 검증 엔진, 비동기 프린터 스풀러 초기화, 3종 실행 환경 하드닝, 체계적 SemVer 버저닝(`VERSION` + `CHANGELOG.md` + `Build-Tool.ps1 -Bump`) 및 152개 자동 테스트(실제 GUI `1040×720`/`960×640` 레이아웃 감사·클릭·X 닫기·픽셀 시각 감사 포함)**까지 완료했습니다.
 > 변경 이력은 [CHANGELOG.md](CHANGELOG.md), 상세 의사결정 배경 및 진행 표는 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
 > 다음 단계는 **5단계 실장비 검증(Samsung S8, HP G9, Dell, 실제 WinPE, 메인/클라이언트 공유 프린터, 3종 실행 매체)**입니다.
 
@@ -26,13 +26,17 @@
 
 ## 2. 핵심 기능 명세
 
-### 2.1 실행 환경 자동 판별, WinForms GUI 및 진입점 (`modules/06_Gui_WinForms.ps1`, `modules/07_Main_Entry.ps1`)
+### 2.1 실행 환경 자동 판별, 아산병원 디자인 시스템 WinForms GUI 및 진입점 (`modules/06_Gui_WinForms.ps1`, `modules/07_Main_Entry.ps1`)
+* **아산병원 현장 데스크톱 디자인 시스템(`asan-desktop-ui`) 전면 적용:**
+  * **4영역 고정 셸 (`1040×720` 기본 / `960×640` 최소, DPI 100~150% 안전):** `#005658` 딥 틸 2단 헤더 + 순수 GDI+ 자체 벡터 심볼/창 아이콘(저작권 로고 미사용·22바이트 PNG-in-ICO로 HICON 누수 없음) + `#F68B1F` 오렌지 포인트 라인 + `#EDF3F3` 메타 바(`PC명 · 모델명 · OS · 부팅 방식 · SID + 1.5초 즉각 피드백 SID 복사`), 조건부 치명 경고 배너, `OwnerDrawFixed` 번호형 탭(`1. SID 변경 전 준비`, `2. SID 변경 후 프린터 복구`, `Alt+1`/`Alt+2`/`F5` 단축키), 기본 접힘 다크 로그 콘솔(`38px ↔ 114px`, `New-PaddedTextBoxPanel` 패딩 래퍼).
+  * **초보자 친화 워크플로 & 단일 통합 USB 표:** 기존 3개 표가 혼재하던 사전 탭을 `1단계`(내장 디스크 점검, 이상 없을 시 접기 가능) + `2단계`(단일 통합 `DataGridView` USB 부팅 표, `#0B4F51` 헤더 · `32px` 행)로 단순화하고, 사후 탭은 4열 핵심 메트릭 타일 + 프린터 목록 + 하단 실행 바로 정돈.
+  * **비활성 점선 버튼 + 부모 라우팅 사유 툴팁:** 모든 비활성 버튼을 점선(`Dash`) 테두리·무채색으로 직접 렌더하고, 마우스 오버 시 비활성 사유와 해결 방법을 툴팁으로 즉시 표시. 화면당 핵심 `Primary(#006769)` 버튼 최대 1개 원칙 준수.
+  * **상용 한국어 UX 라이팅:** 모든 GUI 문구·버튼에서 `[대괄호]`, `(부가 괄호)`, `!`, `->` 개발자 표기를 배제하고 2~3어절 행동 동사 버튼과 차분한 `~해 주세요` 안내로 통일.
+  * **비동기 프린터 스풀러 초기화 & 오류 자동 진단 리포트:** 스풀러 초기화를 백그라운드 Runspace + `Timer` 폴링으로 실행해 UI 멈춤을 제거했고, 오류 시 민감정보가 `[REDACTED]`로 마스킹된 진단 리포트의 로컬 저장/클립보드 복사를 즉시 안내.
 * **GUI 우선 실행 + 콘솔 자동 폴백:**
-  * 정상 Windows 및 WinForms 지원 WinPE에서는 순수 GAC `System.Windows.Forms` / `System.Drawing` 기반 GUI로 즉시 실행(임시 DLL·`csc.exe` 호출 0건으로 쓰기 금지 USB/공유폴더/보안 환경 호환).
+  * 순수 GAC `System.Windows.Forms` / `System.Drawing` 기반(임시 DLL·`csc.exe` 호출 0건으로 쓰기 금지 USB/공유폴더/보안 환경 호환).
   * `SID_Change_Aux_Tool.bat --cli` 인자를 주거나 WinForms 로드 불가(경량 WinPE 등) 환경에서는 기존 콘솔 TUI로 자동 전환.
-  * 모든 WinForms 이벤트 핸들러는 단일 `$ui` 상태 해시테이블(`$form.Tag`) + `.GetNewClosure()`로 바인딩되며, `FormClosed`는 Null-Safe 리소스 해제로 `X` 버튼 종료 예외를 원천 방지.
-* **상황 맞춤 추천 액션 UX (`Get-PreSidGuidance`, `Get-PostSidGuidance`):**
-  * 현재 환경(제조사·부팅 모드·부트로더 충돌 여부·BIOS 교차 검증 판정·USB 매칭·스풀러/방화벽/네트워크 프로필 상태)에 따라 지금 가장 먼저 해야 할 권장 액션을 상단 배너로 직관 안내.
+  * 모든 이벤트 핸들러는 단일 `$ui` 상태 해시테이블(`$form.Tag`) + `.GetNewClosure()`로 바인딩되며, `FormClosing`/`FormClosed`에서 타이머·Runspace·폰트·아이콘을 Null-Safe 해제해 `X` 버튼 종료 예외를 원천 방지.
 * **WinPE 비상 모드 (`$env:SystemDrive -eq "X:"`):** USB 부팅 로직을 건너뛰고 내장 디스크 부트로더(GPT EFI / MBR) 전용 비상 복구 화면(GUI 가능 시 전용 비상 창, 불가 시 콘솔 TUI)으로 자동 분기.
 * **실행 매체별 부트스트랩 안전장치 (`modules/01_Bootstrap_And_Helpers.bat`):**
   * **PowerShell `-STA` 강제:** WinForms 안정 동작을 위해 일반/UAC 상승 실행 경로 모두 `-STA` 스위치를 적용하고 `--cli` 인자(`SELF_ARG1`)를 유지.
@@ -93,7 +97,7 @@ modules/
   07_Main_Entry.ps1                      # WinPE 자동 분기, GUI 우선 실행 + 콘솔 TUI 폴백(--cli)
 tools/
   Build-Tool.ps1                         # VERSION 기반 버전 주입(-Bump 지원), modules/ -> .bat 빌드 및 자동 검증
-  Test-Tool.ps1                          # 빌드된 .bat 대상 132개 자동 단위/GUI/버전 정합성 테스트
+  Test-Tool.ps1                          # 빌드된 .bat 대상 152개 자동 단위/GUI 레이아웃/버전 정합성 테스트
 docs/
   DIRECTION_AND_DECISIONS.md             # 방향 전환 결정 사항 및 단계별 진행 현황
 HANDOVER.md                              # 본 인수인계서
@@ -108,7 +112,7 @@ HANDOVER.md                              # 본 인수인계서
   * **릴리스 절차:**
     1. `modules/` 수정 후 아래 빌드 명령(필요 시 `-Bump Patch|Minor|Major` 사용)으로 버전 갱신 및 `.bat` 재생성
     2. [`CHANGELOG.md`](CHANGELOG.md)에 `[vX.Y.Z]` 섹션 기록
-    3. `tools\Test-Tool.ps1`으로 132개 테스트(버전·`CHANGELOG.md` 정합성 포함) 전항목 통과 확인
+    3. `tools\Test-Tool.ps1`으로 152개 테스트(레이아웃 감사·버전·`CHANGELOG.md` 정합성 포함) 전항목 통과 확인
     4. Git 커밋 후 `git tag -a vX.Y.Z -m "..."` 주석 태그 생성 및 원격 푸시(`--follow-tags`)
 * **빌드 및 검증 명령:**
   ```powershell
@@ -116,7 +120,7 @@ HANDOVER.md                              # 본 인수인계서
   powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1
   # 버전 자동 증가(Patch / Minor / Major) 후 빌드
   powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1 -Bump Patch
-  # 전체 자동 테스트 (132개: 코어 + BIOS 교차 검증 + WinForms GUI + 버전 정합성)
+  # 전체 자동 테스트 (152개: 코어 + BIOS 교차 검증 + WinForms GUI 레이아웃 감사 + 버전 정합성)
   powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Test-Tool.ps1
   ```
 * **부가 운영 팁:** USB 루트 상대 경로 바로가기(`.lnk`) — 대상: `cmd.exe /c start "" "\유틸리티\SID_Change_Aux_Tool.bat"`, 시작 위치: `\`, 실행: 최소화. 콘솔 전용 실행이 필요할 때는 `--cli` 인자 추가.
@@ -144,9 +148,13 @@ HANDOVER.md                              # 본 인수인계서
   * `VERSION` + `CHANGELOG.md` + `Build-Tool.ps1 -Bump Major|Minor|Patch` 자동 버전 주입·검증 체계 구축 및 Git 태그(`v2.1.1`) 적용.
   * PowerShell 동적 스코프로 인해 `New-SidAuxMainForm` 반환 후 `OnFormClosed`/클릭 핸들러에서 로컬 변수가 `$null`이 되던 결함을 `$ui`/`$form.Tag` + `.GetNewClosure()` + Null-Safe `Dispose()`로 근본 해결. 실제 `ShowDialog()` → `Close()` → `OnFormClosed` 및 버튼 `PerformClick()` 자동 테스트를 추가하여 회귀 차단.
 
+* **아산병원 데스크톱 디자인 시스템(`asan-desktop-ui`) 전면 개편 및 재귀 코드·시각 감사 (`v2.2.0`):**
+  * 4영역 고정 셸(`#005658`/`#006769`/`#F68B1F`/`#0B4F51`), 자체 GDI+ 벡터 심볼·창 아이콘, `OwnerDrawFixed` 번호형 탭, `DataGridView` 단일 통합 USB 표, 점선 비활성 버튼 + 부모 라우팅 사유 툴팁, 비동기 Runspace 프린터 스풀러 초기화, 오류 자동 진단 리포트 저장(민감정보 `[REDACTED]` 마스킹), 상용 한국어 UX 라이팅 전면 적용.
+  * 재귀 코드 리뷰 및 실제 렌더링 스크린샷 시각 감사로 발견한 항목 반영: 내장 디스크 `DiskNumber` 오름차순 정렬, 비-OEM 보드 `Standard` 대신 실제 보드사 표기, `NVRAM 미등록` 컬럼 잘림 해소, 선택된 충돌 행 적색 유지, 모달 창 아이콘 통일, `Save-LocalDiagnosticReportFile` 원본 폴더 쓰기 차단, `1040×720`/`960×640`(확장 로그 포함) 자동 레이아웃 감사 포함 **152개 테스트 전체 통과**.
+
 ### 다른 PC AI 에이전트 이어받기 가이드
-* **코드 수정 원칙:** `SID_Change_Aux_Tool.bat`를 직접 수정하지 말고 반드시 `modules/*.{bat,ps1}`를 수정한 뒤 `tools/Build-Tool.ps1`(기능·버그 변경 시 `-Bump Patch|Minor|Major` 병행 및 `CHANGELOG.md` 갱신)로 재생성·검증하고 `tools/Test-Tool.ps1`을 실행할 것.
-* **현재 위치:** `v2.1.1` (1~4단계 구현, 3종 실행 환경 하드닝, WinForms GUI, BIOS 다중 신호 교차 검증, 체계적 SemVer 버저닝, **132개 자동 테스트** 통과 상태). 사용자가 5단계 실장비 테스트 결과를 공유하면 발견된 현장 이슈/튜닝을 `modules/`에 반영하고 버전을 올려 재빌드·재검증 후 6단계(최종 문서 확정)를 마무리하면 됨.
+* **코드 수정 원칙:** `SID_Change_Aux_Tool.bat`를 직접 수정하지 말고 반드시 `modules/*.{bat,ps1}`를 수정한 뒤 `tools/Build-Tool.ps1`(기능·버그 변경 시 `-Bump Patch|Minor|Major` 병행 및 `CHANGELOG.md` 갱신)로 재생성·검증하고 `tools/Test-Tool.ps1`을 실행할 것. UI 변경 시 반드시 `asan-desktop-ui` 스킬 지침에 따라 자동 레이아웃 감사 및 실제 렌더링 스크린샷 시각 감사를 수행할 것.
+* **현재 위치:** `v2.2.0` (1~4단계 구현, 3종 실행 환경 하드닝, 아산병원 디자인 시스템 기반 WinForms GUI 전면 개편, BIOS 다중 신호 교차 검증, 체계적 SemVer 버저닝, **152개 자동 테스트** 및 픽셀 시각 감사 통과 상태). 사용자가 5단계 실장비 테스트 결과를 공유하면 발견된 현장 이슈/튜닝을 `modules/`에 반영하고 버전을 올려 재빌드·재검증 후 6단계(최종 문서 확정)를 마무리하면 됨.
 
 ### 남은 작업 — 5단계 실장비 검증 체크리스트
 1. **실행 환경 3종 + WinForms GUI 기본 동작 검증 (쓰기 금지 USB / 로컬 / 공유폴더):**

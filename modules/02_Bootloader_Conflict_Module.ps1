@@ -173,9 +173,9 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
   $usbDisks = @($allDisks | Where-Object {
    -not $_.IsBoot -and -not $_.IsSystem -and
    ($_.BusType -in @('USB','SD','MMC') -or $_.IsRemovable -or [string]$_.Path -match "USBSTOR|UASP")
-  })
+  } | Sort-Object Number)
   $usbNums = @($usbDisks | Select-Object -ExpandProperty Number)
-  $internalDisks = @($allDisks | Where-Object { $usbNums -notcontains $_.Number })
+  $internalDisks = @($allDisks | Where-Object { $usbNums -notcontains $_.Number } | Sort-Object Number)
   return [PSCustomObject]@{
    UsedFallback = $false
    UsbDisks = $usbDisks
@@ -208,8 +208,8 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
 
  return [PSCustomObject]@{
   UsedFallback = $true
-  UsbDisks = $usbDisks
-  InternalDisks = $internalDisks
+  UsbDisks = @($usbDisks | Sort-Object Number)
+  InternalDisks = @($internalDisks | Sort-Object Number)
  }
 }
 
@@ -633,9 +633,10 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
   }
 
   $sizeGB = if ($d.Size -gt 0) { [math]::Round($d.Size / 1GB, 1) } else { 0.0 }
+  $modelLabel = if ($d.FriendlyName -and $d.FriendlyName.Trim() -ne "") { $d.FriendlyName.Trim() } else { U "\uB0B4\uC7A5 \uB514\uC2A4\uD06C" }
   $items += [PSCustomObject]@{
    DiskNumber = $d.Number
-   Model = $d.FriendlyName
+   Model = $modelLabel
    SizeGB = $sizeGB
    PartitionStyle = $style
    IsProtected = ($isProt -or $isWinPEMediaDisk -or $isDiskReadOnly)
@@ -696,6 +697,31 @@ function Get-BootloaderStateColor($item) {
  if ($item.State -eq "DISABLED") { return "Cyan" }
  if ($item.State -in @("OS_BLOCKED","WINPE_BLOCKED","MOUNT_FAIL")) { return "Yellow" }
  return "Gray"
+}
+
+# Clean commercial UX status text, semantic category, and hover tooltip for WinForms GUI
+function Format-BootloaderGuiStatus($item) {
+ switch ($item.State) {
+  "PROTECTED"          { return [PSCustomObject]@{ Text = (U "\uD604\uC7AC Windows \uBCF4\uD638\uB428"); Kind = "OK"; Tip = (U "\uD604\uC7AC Windows\uAC00 \uC2E4\uD589 \uC911\uC778 \uB514\uC2A4\uD06C\uC774\uBBC0\uB85C \uBCC0\uACBD \uB300\uC0C1\uC5D0\uC11C \uC790\uB3D9 \uC81C\uC678\uB429\uB2C8\uB2E4.") } }
+  "PROTECTED_OS"       { return [PSCustomObject]@{ Text = (U "\uD604\uC7AC Windows \uBCF4\uD638\uB428"); Kind = "OK"; Tip = (U "\uD604\uC7AC Windows\uAC00 \uC2E4\uD589 \uC911\uC778 \uB514\uC2A4\uD06C\uC774\uBBC0\uB85C \uBCC0\uACBD \uB300\uC0C1\uC5D0\uC11C \uC790\uB3D9 \uC81C\uC678\uB429\uB2C8\uB2E4.") } }
+  "WINPE_MEDIA"        { return [PSCustomObject]@{ Text = (U "WinPE \uB9E4\uCCB4 \uBCF4\uD638\uB428"); Kind = "Info"; Tip = (U "WinPE \uB610\uB294 \uC124\uCE58 \uB9E4\uCCB4\uB85C \uAC10\uC9C0\uB418\uC5B4 \uC790\uB3D9\uC73C\uB85C \uBCF4\uD638\uB429\uB2C8\uB2E4.") } }
+  "READONLY_PROTECTED" { return [PSCustomObject]@{ Text = (U "\uC77D\uAE30 \uC804\uC6A9 \uBCF4\uD638\uB428"); Kind = "Info"; Tip = (U "\uC4F0\uAE30 \uAE08\uC9C0 \uB514\uC2A4\uD06C\uC774\uBBC0\uB85C \uBCC0\uACBD \uB300\uC0C1\uC5D0\uC11C \uC790\uB3D9\uC73C\uB85C \uBCF4\uD638\uB429\uB2C8\uB2E4.") } }
+  "ACTIVE"             {
+   if ($item.BootType -eq "MBR_ACTIVE") {
+    return [PSCustomObject]@{ Text = (U "\uCDA9\uB3CC \uC704\uD5D8 \u00B7 \uC794\uC874 MBR"); Kind = "Error"; Tip = (U "\uBCF4\uC870 \uB514\uC2A4\uD06C\uC5D0 \uD65C\uC131 MBR \uBD80\uD2B8\uB85C\uB354\uAC00 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. SID \uBCC0\uACBD \uD6C4 \uBD80\uD305 \uCDA9\uB3CC\uC744 \uB9C9\uAE30 \uC704\uD574 \uC815\uB9AC\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4.") }
+   }
+   return [PSCustomObject]@{ Text = (U "\uCDA9\uB3CC \uC704\uD5D8 \u00B7 \uC794\uC874 EFI"); Kind = "Error"; Tip = (U "\uBCF4\uC870 \uB514\uC2A4\uD06C\uC5D0 \uC794\uC874 EFI \uBD80\uD2B8\uB85C\uB354\uAC00 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. SID \uBCC0\uACBD \uD6C4 \uBD80\uD305 \uCDA9\uB3CC\uC744 \uB9C9\uAE30 \uC704\uD574 \uC815\uB9AC\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4.") }
+  }
+  "BOTH"               { return [PSCustomObject]@{ Text = (U "\uC218\uB3D9 \uD655\uC778 \uD544\uC694"); Kind = "Warn"; Tip = (U "\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uC640 \uBE44\uD65C\uC131 \uBC31\uC5C5 \uD3F4\uB354\uAC00 \uD568\uAED8 \uC788\uC5B4 \uC790\uB3D9 \uBCC0\uACBD\uC744 \uC911\uB2E8\uD588\uC2B5\uB2C8\uB2E4.") } }
+  "MBR_OS_BLOCKED"     { return [PSCustomObject]@{ Text = (U "\uAD6C\uD615 OS \uACF5\uC874 \uC8FC\uC758"); Kind = "Warn"; Tip = (U "\uAD6C\uD615 Windows\uC640 \uBD80\uD2B8\uB85C\uB354\uAC00 \uAC19\uC740 \uD30C\uD2F0\uC158\uC5D0 \uD568\uAED8 \uC788\uC5B4 \uC790\uB3D9 \uBCC0\uACBD\uC744 \uCC28\uB2E8\uD588\uC2B5\uB2C8\uB2E4.") } }
+  "DISABLED"           { return [PSCustomObject]@{ Text = (U "\uC815\uB9AC \uC644\uB8CC \u00B7 \uBCF5\uAD6C \uAC00\uB2A5"); Kind = "Info"; Tip = (U "\uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uAC00 \uBE44\uD30C\uAD34 \uBC29\uC2DD\uC73C\uB85C \uBE44\uD65C\uC131\uD654\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uD544\uC694 \uC2DC \uC5B8\uC81C\uB4E0 \uC6D0\uB798\uB300\uB85C \uBCF5\uAD6C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.") } }
+  "OS_BLOCKED"         { return [PSCustomObject]@{ Text = (U "OS \uD30C\uD2F0\uC158 \uBCF4\uD638\uB428"); Kind = "Info"; Tip = (U "Windows \uC2DC\uC2A4\uD15C \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC5B4 \uBCC0\uACBD\uC744 \uCC28\uB2E8\uD588\uC2B5\uB2C8\uB2E4.") } }
+  "WINPE_BLOCKED"      { return [PSCustomObject]@{ Text = (U "WinPE \uB9E4\uCCB4 \uBCF4\uD638\uB428"); Kind = "Info"; Tip = (U "WinPE \uB610\uB294 \uC124\uCE58 \uB9E4\uCCB4\uB85C \uAC10\uC9C0\uB418\uC5B4 \uBCC0\uACBD\uC744 \uCC28\uB2E8\uD588\uC2B5\uB2C8\uB2E4.") } }
+  "EMPTY"              { return [PSCustomObject]@{ Text = (U "\uC774\uC0C1 \uC5C6\uC74C"); Kind = "Neutral"; Tip = (U "\uBE48 \uBD80\uD2B8 \uD30C\uD2F0\uC158\uC73C\uB85C \uBD80\uD305 \uCDA9\uB3CC \uC704\uD5D8\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") } }
+  "NO_BOOTLOADER"      { return [PSCustomObject]@{ Text = (U "\uC774\uC0C1 \uC5C6\uC74C"); Kind = "Neutral"; Tip = (U "\uCDA9\uB3CC\uC744 \uC77C\uC73C\uD0AC \uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uAC00 \uBC1C\uACAC\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") } }
+  "MOUNT_FAIL"         { return [PSCustomObject]@{ Text = (U "\uC811\uADFC \uBD88\uAC00"); Kind = "Warn"; Tip = (U "\uBD80\uD2B8 \uD30C\uD2F0\uC158\uC5D0 \uC784\uC2DC\uB85C \uC811\uADFC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uB514\uC2A4\uD06C \uC0C1\uD0DC\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.") } }
+  default              { return [PSCustomObject]@{ Text = [string]$item.State; Kind = "Neutral"; Tip = "" } }
+ }
 }
 
 # Headless helper: Inspect root folder listing of target partition (for GUI confirmation preview)

@@ -155,7 +155,11 @@ function Invoke-SafeReboot([string]$shutdownArgs, [string]$targetLabel = "") {
 function Get-ExecutionSourceInfo {
  $p = [string]$env:SELF_PATH
  if ($env:SID_TOOL_STAGED -eq "1" -or ($p -and $p.StartsWith("\\"))) {
-  return [PSCustomObject]@{ Mode = "Network"; Label = (U "\uACF5\uC720\uD3F4\uB354/\uB124\uD2B8\uC6CC\uD06C (\uBA54\uBAA8\uB9AC \uB85C\uB4DC, \uC6D0\uBCF8 \uBB34\uBCC0\uACBD)") }
+  return [PSCustomObject]@{
+   Mode = "Network"
+   Label = (U "\uACF5\uC720\uD3F4\uB354 \uC2E4\uD589")
+   Detail = (U "\uACF5\uC720\uD3F4\uB354\uC5D0\uC11C \uBA54\uBAA8\uB9AC\uB85C \uB85C\uB4DC\uB418\uC5C8\uC73C\uBA70 \uC6D0\uBCF8 \uD30C\uC77C\uC740 \uBCC0\uACBD\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.")
+  }
  }
  if ($p) {
   try {
@@ -163,14 +167,34 @@ function Get-ExecutionSourceInfo {
    if ($rt) {
     $di = New-Object System.IO.DriveInfo ($rt)
     if ($di.DriveType -eq "Network") {
-     return [PSCustomObject]@{ Mode = "Network"; Label = (U "\uB124\uD2B8\uC6CC\uD06C \uB4DC\uB77C\uC774\uBE0C (\uBA54\uBAA8\uB9AC \uB85C\uB4DC, \uC6D0\uBCF8 \uBB34\uBCC0\uACBD)") }
+     return [PSCustomObject]@{
+      Mode = "Network"
+      Label = (U "\uB124\uD2B8\uC6CC\uD06C \uC2E4\uD589")
+      Detail = (U "\uB124\uD2B8\uC6CC\uD06C \uB4DC\uB77C\uC774\uBE0C\uC5D0\uC11C \uBA54\uBAA8\uB9AC\uB85C \uB85C\uB4DC\uB418\uC5C8\uC73C\uBA70 \uC6D0\uBCF8 \uD30C\uC77C\uC740 \uBCC0\uACBD\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.")
+     }
     } elseif ($di.DriveType -eq "Removable" -or $di.DriveType -eq "CDRom") {
-     return [PSCustomObject]@{ Mode = "USB"; Label = (U "\uC678\uC7A5 USB/\uC77D\uAE30 \uC804\uC6A9 \uB9E4\uCCB4 (\uC6D0\uBCF8 \uC4F0\uAE30 \uC5C6\uC74C)") }
+     return [PSCustomObject]@{
+      Mode = "USB"
+      Label = (U "\uC678\uC7A5 USB \uC2E4\uD589")
+      Detail = (U "\uC678\uC7A5 USB \uB610\uB294 \uC77D\uAE30 \uC804\uC6A9 \uB9E4\uCCB4\uC5D0 \uC4F0\uAE30 \uC791\uC5C5 \uC5C6\uC774 \uC2E4\uD589\uB429\uB2C8\uB2E4.")
+     }
     }
    }
   } catch {}
  }
- return [PSCustomObject]@{ Mode = "Local"; Label = (U "\uB85C\uCEEC \uB4DC\uB77C\uC774\uBE0C") }
+ return [PSCustomObject]@{
+  Mode = "Local"
+  Label = (U "\uB85C\uCEEC PC \uC2E4\uD589")
+  Detail = (U "\uC774 PC\uC758 \uB85C\uCEEC \uB4DC\uB77C\uC774\uBE0C\uC5D0\uC11C \uC2E4\uD589 \uC911\uC785\uB2C8\uB2E4.")
+ }
+}
+
+# Mask sensitive credentials/tokens in exported diagnostic reports
+function ConvertTo-MaskedDiagnosticText([string]$raw) {
+ if ([string]::IsNullOrEmpty($raw)) { return "" }
+ $out = [regex]::Replace($raw, '(?i)(password|passwd|pwd|secret|token|apikey|credential)\s*([:=])\s*([^\r\n\s,;"'']+)', '$1$2[REDACTED]')
+ $out = [regex]::Replace($out, '(?i)("?(?:password|passwd|secret|token)"?\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)(")', '$1[REDACTED]$3')
+ return $out
 }
 
 function Get-DiskDebugText {

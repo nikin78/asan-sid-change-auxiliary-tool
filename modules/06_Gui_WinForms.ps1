@@ -1,6 +1,8 @@
 # ==============================================================================
-# Module 06: WinForms Desktop GUI (Pure GAC Assemblies, Zero Temp DLLs)
-#            Guided UX, Intuitive USB List, BIOS Cross-Check Viewer, Post-SID
+# Module 06: WinForms Desktop GUI (Asan Desktop UI Design System)
+#            Pure GAC Assemblies (Zero Temp DLLs / Zero csc.exe)
+#            4-Zone Shell, GDI+ Vector Symbol, Dashed Disabled Buttons + Tooltips,
+#            DataGridView, Unified USB Flow, Async Spooler Reset, Error Report
 # ==============================================================================
 
 function Test-WinFormsAvailable {
@@ -14,250 +16,877 @@ function Test-WinFormsAvailable {
  }
 }
 
-function Get-GuiPalette {
+function Get-AsanTheme {
  return @{
-  AppBg       = [System.Drawing.Color]::FromArgb(245, 247, 250)
-  CardBg      = [System.Drawing.Color]::White
-  HeaderBg    = [System.Drawing.Color]::FromArgb(30, 41, 59)
-  HeaderFg    = [System.Drawing.Color]::White
-  HeaderSub   = [System.Drawing.Color]::FromArgb(203, 213, 225)
-  Border      = [System.Drawing.Color]::FromArgb(220, 226, 234)
-  TextDark    = [System.Drawing.Color]::FromArgb(15, 23, 42)
-  TextMuted   = [System.Drawing.Color]::FromArgb(71, 85, 105)
-  OkBg        = [System.Drawing.Color]::FromArgb(232, 247, 238)
-  OkFg        = [System.Drawing.Color]::FromArgb(19, 115, 51)
-  OkAccent    = [System.Drawing.Color]::FromArgb(22, 163, 74)
-  InfoBg      = [System.Drawing.Color]::FromArgb(232, 240, 254)
-  InfoFg      = [System.Drawing.Color]::FromArgb(25, 103, 210)
-  InfoAccent  = [System.Drawing.Color]::FromArgb(37, 99, 235)
-  WarnBg      = [System.Drawing.Color]::FromArgb(254, 247, 224)
-  WarnFg      = [System.Drawing.Color]::FromArgb(161, 83, 0)
-  WarnAccent  = [System.Drawing.Color]::FromArgb(217, 119, 6)
-  ErrBg       = [System.Drawing.Color]::FromArgb(252, 232, 230)
-  ErrFg       = [System.Drawing.Color]::FromArgb(180, 35, 24)
-  ErrAccent   = [System.Drawing.Color]::FromArgb(220, 38, 38)
-  BtnNeutral  = [System.Drawing.Color]::FromArgb(241, 245, 249)
-  BtnDisabled = [System.Drawing.Color]::FromArgb(226, 232, 240)
-  RowAlt      = [System.Drawing.Color]::FromArgb(248, 250, 252)
+  AsanGreen      = [System.Drawing.Color]::FromArgb(0, 103, 105)
+  AsanDeep       = [System.Drawing.Color]::FromArgb(0, 77, 79)
+  HeaderBg       = [System.Drawing.Color]::FromArgb(0, 86, 88)
+  HeaderSubFg    = [System.Drawing.Color]::FromArgb(202, 232, 231)
+  HeaderUtilBg   = [System.Drawing.Color]::FromArgb(16, 112, 114)
+  HeaderUtilHov  = [System.Drawing.Color]::FromArgb(24, 132, 134)
+  HeaderUtilBord = [System.Drawing.Color]::FromArgb(95, 170, 169)
+  GridHeadBg     = [System.Drawing.Color]::FromArgb(11, 79, 81)
+  GridHeadFg     = [System.Drawing.Color]::White
+  AsanLight      = [System.Drawing.Color]::FromArgb(2, 128, 168)
+  InfoTint       = [System.Drawing.Color]::FromArgb(226, 243, 249)
+  InfoBord       = [System.Drawing.Color]::FromArgb(124, 192, 214)
+  AsanMint       = [System.Drawing.Color]::FromArgb(228, 242, 241)
+  AsanMintSoft   = [System.Drawing.Color]::FromArgb(217, 231, 230)
+  AsanMintHover  = [System.Drawing.Color]::FromArgb(204, 229, 227)
+  AsanMintBorder = [System.Drawing.Color]::FromArgb(95, 160, 158)
+  MetaBarBg      = [System.Drawing.Color]::FromArgb(237, 243, 243)
+  BadgeOnlineBg  = [System.Drawing.Color]::FromArgb(20, 138, 94)
+  AsanOrange     = [System.Drawing.Color]::FromArgb(224, 112, 8)
+  AsanOrangeDeep = [System.Drawing.Color]::FromArgb(191, 90, 4)
+  AsanOrangeLine = [System.Drawing.Color]::FromArgb(246, 139, 31)
+  AsanOrangeText = [System.Drawing.Color]::FromArgb(154, 71, 0)
+  AsanOrangeTint = [System.Drawing.Color]::FromArgb(255, 241, 222)
+  AsanOrangeBord = [System.Drawing.Color]::FromArgb(224, 156, 82)
+  DangerRed      = [System.Drawing.Color]::FromArgb(192, 57, 43)
+  DangerRedDeep  = [System.Drawing.Color]::FromArgb(158, 38, 28)
+  DangerRedTint  = [System.Drawing.Color]::FromArgb(253, 236, 234)
+  DangerRedBord  = [System.Drawing.Color]::FromArgb(217, 130, 121)
+  SpecialPurple  = [System.Drawing.Color]::FromArgb(98, 36, 198)
+  SpecialTint    = [System.Drawing.Color]::FromArgb(242, 236, 255)
+  CanvasBg       = [System.Drawing.Color]::FromArgb(231, 238, 238)
+  CardBg         = [System.Drawing.Color]::White
+  RowAltBg       = [System.Drawing.Color]::FromArgb(244, 248, 248)
+  Border         = [System.Drawing.Color]::FromArgb(198, 212, 211)
+  GridLine       = [System.Drawing.Color]::FromArgb(211, 223, 223)
+  BorderBtn      = [System.Drawing.Color]::FromArgb(142, 165, 164)
+  InkPrimary     = [System.Drawing.Color]::FromArgb(20, 34, 35)
+  InkSecondary   = [System.Drawing.Color]::FromArgb(47, 66, 68)
+  InkMuted       = [System.Drawing.Color]::FromArgb(80, 99, 101)
+  DisabledBg     = [System.Drawing.Color]::FromArgb(241, 243, 243)
+  DisabledFg     = [System.Drawing.Color]::FromArgb(148, 160, 162)
+  DisabledBorder = [System.Drawing.Color]::FromArgb(192, 204, 204)
+  LogBg          = [System.Drawing.Color]::FromArgb(22, 34, 35)
+  LogFg          = [System.Drawing.Color]::FromArgb(226, 236, 235)
  }
 }
 
-function Set-GuiButtonStyle($btn, [string]$kind, $pal) {
+function New-AsanFontSet {
+ return @{
+  Base     = New-Object System.Drawing.Font("Malgun Gothic", 9, [System.Drawing.FontStyle]::Regular)
+  Bold     = New-Object System.Drawing.Font("Malgun Gothic", 9, [System.Drawing.FontStyle]::Bold)
+  Tab      = New-Object System.Drawing.Font("Malgun Gothic", 9.5, [System.Drawing.FontStyle]::Bold)
+  TabIdle  = New-Object System.Drawing.Font("Malgun Gothic", 9.5, [System.Drawing.FontStyle]::Regular)
+  Title    = New-Object System.Drawing.Font("Malgun Gothic", 12.5, [System.Drawing.FontStyle]::Bold)
+  Subtitle = New-Object System.Drawing.Font("Malgun Gothic", 8.5, [System.Drawing.FontStyle]::Regular)
+  Small    = New-Object System.Drawing.Font("Malgun Gothic", 8.5, [System.Drawing.FontStyle]::Regular)
+  SmallB   = New-Object System.Drawing.Font("Malgun Gothic", 8.5, [System.Drawing.FontStyle]::Bold)
+  Metric   = New-Object System.Drawing.Font("Malgun Gothic", 10, [System.Drawing.FontStyle]::Bold)
+  Mono     = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Regular)
+ }
+}
+
+function New-RoundedRectPath([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
+ $d = $r * 2.0
+ $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+ $path.AddArc($x, $y, $d, $d, 180, 90)
+ $path.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
+ $path.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
+ $path.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
+ $path.CloseFigure()
+ return $path
+}
+
+# Custom GDI+ Vector Symbol (no copyrighted logos; clean disk/boot + orange check badge)
+function New-SidToolSymbolBitmap([int]$size = 40) {
+ $bmp = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+ $g = [System.Drawing.Graphics]::FromImage($bmp)
+ try {
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $g.Clear([System.Drawing.Color]::Transparent)
+
+  $s = [float]$size
+  $pad = $s * 0.05
+  $bgPath = New-RoundedRectPath $pad $pad ($s - $pad * 2) ($s - $pad * 2) ($s * 0.22)
+  $bgBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(16, 112, 114))
+  $bgPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(95, 170, 169), [math]::Max(1.0, $s * 0.03))
+  try {
+   $g.FillPath($bgBrush, $bgPath)
+   $g.DrawPath($bgPen, $bgPath)
+  } finally {
+   $bgPath.Dispose(); $bgBrush.Dispose(); $bgPen.Dispose()
+  }
+
+  # Crisp white drive / boot silhouette
+  $wBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+  $tBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 86, 88))
+  $wPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [math]::Max(1.5, $s * 0.055))
+  $wPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $wPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $wPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  try {
+   # Drive body
+   $drvPath = New-RoundedRectPath ($s * 0.20) ($s * 0.50) ($s * 0.54) ($s * 0.24) ($s * 0.06)
+   try { $g.FillPath($wBrush, $drvPath) } finally { $drvPath.Dispose() }
+   # Drive LED dot
+   $g.FillEllipse($tBrush, ($s * 0.27), ($s * 0.59), ($s * 0.07), ($s * 0.07))
+   # Boot arrow rising above drive
+   $g.DrawLine($wPen, ($s * 0.47), ($s * 0.44), ($s * 0.47), ($s * 0.22))
+   $g.DrawLine($wPen, ($s * 0.34), ($s * 0.34), ($s * 0.47), ($s * 0.21))
+   $g.DrawLine($wPen, ($s * 0.60), ($s * 0.34), ($s * 0.47), ($s * 0.21))
+  } finally {
+   $wBrush.Dispose(); $tBrush.Dispose(); $wPen.Dispose()
+  }
+
+  # Asan Orange status badge dot + white check
+  $bSize = $s * 0.34
+  $bx = $s - $bSize - ($s * 0.04)
+  $by = $s - $bSize - ($s * 0.04)
+  $oBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(246, 139, 31))
+  $oPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(0, 86, 88), [math]::Max(1.2, $s * 0.035))
+  $cPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [math]::Max(1.5, $s * 0.05))
+  $cPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $cPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $cPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  try {
+   $g.FillEllipse($oBrush, $bx, $by, $bSize, $bSize)
+   $g.DrawEllipse($oPen, $bx, $by, $bSize, $bSize)
+   $g.DrawLine($cPen, ($bx + $bSize * 0.26), ($by + $bSize * 0.52), ($bx + $bSize * 0.45), ($by + $bSize * 0.70))
+   $g.DrawLine($cPen, ($bx + $bSize * 0.45), ($by + $bSize * 0.70), ($bx + $bSize * 0.74), ($by + $bSize * 0.34))
+  } finally {
+   $oBrush.Dispose(); $oPen.Dispose(); $cPen.Dispose()
+  }
+ } finally {
+  $g.Dispose()
+ }
+ return $bmp
+}
+
+# PNG-in-ICO 22-byte header conversion (zero GetHicon() native handle leak)
+function New-AsanIconFromBitmap([System.Drawing.Bitmap]$bmp) {
+ $pngMs = New-Object System.IO.MemoryStream
+ $icoMs = New-Object System.IO.MemoryStream
+ try {
+  $bmp.Save($pngMs, [System.Drawing.Imaging.ImageFormat]::Png)
+  $pngBytes = $pngMs.ToArray()
+  $wByte = if ($bmp.Width -ge 256) { [byte]0 } else { [byte]$bmp.Width }
+  $hByte = if ($bmp.Height -ge 256) { [byte]0 } else { [byte]$bmp.Height }
+  $len = [int]$pngBytes.Length
+  $hdr = [byte[]]@(
+   0, 0, 1, 0, 1, 0,
+   $wByte, $hByte, 0, 0, 1, 0, 32, 0,
+   [byte]($len -band 0xFF),
+   [byte](($len -shr 8) -band 0xFF),
+   [byte](($len -shr 16) -band 0xFF),
+   [byte](($len -shr 24) -band 0xFF),
+   22, 0, 0, 0
+  )
+  $icoMs.Write($hdr, 0, $hdr.Length)
+  $icoMs.Write($pngBytes, 0, $pngBytes.Length)
+  $icoMs.Position = 0
+  return (New-Object System.Drawing.Icon($icoMs))
+ } finally {
+  $pngMs.Dispose()
+  $icoMs.Dispose()
+ }
+}
+
+function Get-AsanButtonStyleSpec([string]$variant, $theme) {
+ switch ($variant) {
+  "Primary"       { return @{ Bg = $theme.AsanGreen;     Fg = [System.Drawing.Color]::White; Hover = $theme.AsanDeep;       Border = $theme.AsanDeep;       BorderSize = 1; Bold = $true } }
+  "SoftTeal"      { return @{ Bg = $theme.AsanMint;      Fg = $theme.AsanDeep;               Hover = $theme.AsanMintHover;  Border = $theme.AsanMintBorder; BorderSize = 1; Bold = $true } }
+  "Orange"        { return @{ Bg = $theme.AsanOrange;    Fg = [System.Drawing.Color]::White; Hover = $theme.AsanOrangeDeep; Border = $theme.AsanOrangeDeep; BorderSize = 1; Bold = $true } }
+  "SoftOrange"    { return @{ Bg = $theme.AsanOrangeTint;Fg = $theme.AsanOrangeText;         Hover = $theme.AsanOrangeBord; Border = $theme.AsanOrangeBord; BorderSize = 1; Bold = $true } }
+  "Danger"        { return @{ Bg = $theme.DangerRed;     Fg = [System.Drawing.Color]::White; Hover = $theme.DangerRedDeep;  Border = $theme.DangerRedDeep;  BorderSize = 1; Bold = $true } }
+  "DangerOutline" { return @{ Bg = $theme.DangerRedTint; Fg = $theme.DangerRedDeep;          Hover = $theme.DangerRedBord;  Border = $theme.DangerRedBord;  BorderSize = 1; Bold = $true } }
+  "HeaderUtil"    { return @{ Bg = $theme.HeaderUtilBg;  Fg = [System.Drawing.Color]::White; Hover = $theme.HeaderUtilHov;  Border = $theme.HeaderUtilBord; BorderSize = 1; Bold = $true } }
+  default         { return @{ Bg = $theme.CardBg;        Fg = $theme.InkPrimary;             Hover = $theme.RowAltBg;       Border = $theme.BorderBtn;      BorderSize = 1; Bold = $true } }
+ }
+}
+
+function Apply-AsanButtonVisual($btn, $uiCtx) {
+ if (-not $btn -or $btn.IsDisposed -or -not $uiCtx) { return }
+ if (-not $uiCtx.ButtonStyles.ContainsKey($btn)) { return }
+ $st = $uiCtx.ButtonStyles[$btn]
+ $t = $uiCtx.Theme
+ if ($btn.Enabled) {
+  $btn.BackColor = $st.Bg
+  $btn.ForeColor = $st.Fg
+  $btn.FlatAppearance.BorderSize = $st.BorderSize
+  $btn.FlatAppearance.BorderColor = $st.Border
+  $btn.FlatAppearance.MouseOverBackColor = $st.Hover
+  $btn.FlatAppearance.MouseDownBackColor = $st.Hover
+  $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+ } else {
+  $btn.BackColor = $t.DisabledBg
+  $btn.ForeColor = $t.DisabledFg
+  $btn.FlatAppearance.BorderSize = 0
+  $btn.FlatAppearance.BorderColor = $t.DisabledBorder
+  $btn.FlatAppearance.MouseOverBackColor = $t.DisabledBg
+  $btn.FlatAppearance.MouseDownBackColor = $t.DisabledBg
+  $btn.Cursor = [System.Windows.Forms.Cursors]::Default
+ }
+ $btn.Invalidate()
+}
+
+function Set-AsanButtonVariant($btn, [string]$variant, $uiCtx) {
+ if (-not $btn -or $btn.IsDisposed -or -not $uiCtx) { return }
+ $uiCtx.ButtonStyles[$btn] = Get-AsanButtonStyleSpec $variant $uiCtx.Theme
+ Apply-AsanButtonVisual $btn $uiCtx
+}
+
+function Set-AsanButtonState($btn, [bool]$enabled, [string]$disabledReason, $uiCtx, [string]$variant = "") {
+ if (-not $btn -or $btn.IsDisposed -or -not $uiCtx) { return }
+ if ($variant) {
+  $uiCtx.ButtonStyles[$btn] = Get-AsanButtonStyleSpec $variant $uiCtx.Theme
+ }
+ if ($enabled) {
+  if ($uiCtx.DisabledReasons.ContainsKey($btn)) { $uiCtx.DisabledReasons.Remove($btn) }
+  if ($uiCtx.LastDisabledBtn -eq $btn -and $uiCtx.LastDisabledHost -and $uiCtx.ToolTip) {
+   try { $uiCtx.ToolTip.Hide($uiCtx.LastDisabledHost) } catch {}
+   $uiCtx.LastDisabledBtn = $null
+   $uiCtx.LastDisabledHost = $null
+  }
+ } elseif (-not [string]::IsNullOrWhiteSpace($disabledReason)) {
+  $uiCtx.DisabledReasons[$btn] = $disabledReason
+ }
+ if ($btn.Enabled -ne $enabled) { $btn.Enabled = $enabled }
+ Apply-AsanButtonVisual $btn $uiCtx
+}
+
+function New-AsanButton([string]$text, [int]$width, [int]$height, [string]$variant, $uiCtx, [bool]$smallFont = $false) {
+ $btn = New-Object System.Windows.Forms.Button
+ $btn.Text = $text
+ $btn.Size = New-Object System.Drawing.Size($width, $height)
  $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
- $btn.FlatAppearance.BorderSize = 1
- $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
- switch ($kind) {
-  "PrimaryGreen" {
-   $btn.BackColor = $pal.OkAccent
-   $btn.ForeColor = [System.Drawing.Color]::White
-   $btn.FlatAppearance.BorderColor = $pal.OkFg
+ $btn.UseVisualStyleBackColor = $false
+ $btn.TabStop = $true
+ $btn.Font = if ($smallFont) { $uiCtx.Fonts.SmallB } else { $uiCtx.Fonts.Bold }
+ $uiCtx.ButtonStyles[$btn] = Get-AsanButtonStyleSpec $variant $uiCtx.Theme
+ Apply-AsanButtonVisual $btn $uiCtx
+
+ $localCtx = $uiCtx
+ $btn.Add_EnabledChanged({
+  param($sender, $e)
+  Apply-AsanButtonVisual $sender $localCtx
+ }.GetNewClosure())
+
+ # Custom dashed disabled button renderer (never relies on WinForms GrayText)
+ $btn.Add_Paint({
+  param($sender, $e)
+  if ($sender.Enabled) { return }
+  $t = $localCtx.Theme
+  $rect = New-Object System.Drawing.Rectangle(0, 0, $sender.Width, $sender.Height)
+  $bgBrush = New-Object System.Drawing.SolidBrush($t.DisabledBg)
+  $dashPen = New-Object System.Drawing.Pen($t.DisabledBorder, 1)
+  $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+  try {
+   $e.Graphics.FillRectangle($bgBrush, $rect)
+   $e.Graphics.DrawRectangle($dashPen, 0, 0, ($sender.Width - 1), ($sender.Height - 1))
+   $drawFont = if ($sender.Font.Size -lt 8.8) { $localCtx.Fonts.Small } else { $localCtx.Fonts.Base }
+   $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+   [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $drawFont, $rect, $t.DisabledFg, $flags)
+  } finally {
+   $bgBrush.Dispose()
+   $dashPen.Dispose()
   }
-  "PrimaryBlue" {
-   $btn.BackColor = $pal.InfoAccent
-   $btn.ForeColor = [System.Drawing.Color]::White
-   $btn.FlatAppearance.BorderColor = $pal.InfoFg
-  }
-  "PrimaryAmber" {
-   $btn.BackColor = $pal.WarnAccent
-   $btn.ForeColor = [System.Drawing.Color]::White
-   $btn.FlatAppearance.BorderColor = $pal.WarnFg
-  }
-  "PrimaryRed" {
-   $btn.BackColor = $pal.ErrAccent
-   $btn.ForeColor = [System.Drawing.Color]::White
-   $btn.FlatAppearance.BorderColor = $pal.ErrFg
-  }
-  "Header" {
-   $btn.BackColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
-   $btn.ForeColor = [System.Drawing.Color]::White
-   $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
-  }
-  "Disabled" {
-   $btn.BackColor = $pal.BtnDisabled
-   $btn.ForeColor = $pal.TextMuted
-   $btn.FlatAppearance.BorderColor = $pal.Border
-  }
-  default {
-   $btn.BackColor = $pal.BtnNeutral
-   $btn.ForeColor = $pal.TextDark
-   $btn.FlatAppearance.BorderColor = $pal.Border
-  }
+ }.GetNewClosure())
+
+ return $btn
+}
+
+# Route MouseMove/MouseLeave on parent containers so disabled buttons still show reason tooltips
+function Register-AsanDisabledTooltipTree($root, $uiCtx) {
+ if (-not $root -or $root.IsDisposed) { return }
+ $hasChildBtn = $false
+ foreach ($ch in $root.Controls) {
+  if ($ch -is [System.Windows.Forms.Button]) { $hasChildBtn = $true }
+  if ($ch.Controls.Count -gt 0) { Register-AsanDisabledTooltipTree $ch $uiCtx }
+ }
+ if ($hasChildBtn) {
+  $localCtx = $uiCtx
+  $root.Add_MouseMove({
+   param($sender, $e)
+   if (-not $localCtx.ToolTip) { return }
+   $hit = $sender.GetChildAtPoint($e.Location)
+   if ($hit -and ($hit -is [System.Windows.Forms.Button]) -and (-not $hit.Enabled)) {
+    $reason = ""
+    if ($localCtx.DisabledReasons.ContainsKey($hit)) {
+     $reason = [string]$localCtx.DisabledReasons[$hit]
+    } elseif ($localCtx.State -and $localCtx.State.IsBusy) {
+     $reason = U "\uD604\uC7AC \uC791\uC5C5\uC774 \uC9C4\uD589 \uC911\uC785\uB2C8\uB2E4. \uC644\uB8CC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($reason)) {
+     if ($localCtx.LastDisabledBtn -ne $hit) {
+      if ($localCtx.LastDisabledHost) { try { $localCtx.ToolTip.Hide($localCtx.LastDisabledHost) } catch {} }
+      try {
+       $localCtx.ToolTip.Show($reason, $sender, ($hit.Left + 4), ($hit.Bottom + 4), 7000)
+       $localCtx.LastDisabledBtn = $hit
+       $localCtx.LastDisabledHost = $sender
+      } catch {}
+     }
+     return
+    }
+   }
+   if ($localCtx.LastDisabledBtn -and $localCtx.LastDisabledHost) {
+    try { $localCtx.ToolTip.Hide($localCtx.LastDisabledHost) } catch {}
+    $localCtx.LastDisabledBtn = $null
+    $localCtx.LastDisabledHost = $null
+   }
+  }.GetNewClosure())
+
+  $root.Add_MouseLeave({
+   param($sender, $e)
+   if ($localCtx.LastDisabledHost -eq $sender -and $localCtx.ToolTip) {
+    try { $localCtx.ToolTip.Hide($sender) } catch {}
+    $localCtx.LastDisabledBtn = $null
+    $localCtx.LastDisabledHost = $null
+   }
+  }.GetNewClosure())
  }
 }
 
-function Set-BannerVisual($panel, $accentBar, $lblTitle, $lblMsg, $guidance, $pal) {
- $bg = $pal.InfoBg; $fg = $pal.InfoFg; $ac = $pal.InfoAccent
+# DPI-safe right-aligned flow strip (NEVER uses Anchor=Right!)
+function New-RightFlowStrip([int]$padTop = 0, [int]$padRight = 0, [int]$padBottom = 0) {
+ $flp = New-Object System.Windows.Forms.FlowLayoutPanel
+ $flp.Dock = [System.Windows.Forms.DockStyle]::Right
+ $flp.FlowDirection = [System.Windows.Forms.FlowDirection]::RightToLeft
+ $flp.WrapContents = $false
+ $flp.AutoSize = $true
+ $flp.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+ $flp.BackColor = [System.Drawing.Color]::Transparent
+ $flp.Margin = New-Object System.Windows.Forms.Padding(0)
+ $flp.Padding = New-Object System.Windows.Forms.Padding(0, $padTop, $padRight, $padBottom)
+ return $flp
+}
+
+# Padded multiline TextBox wrapper so text never touches borders
+function New-PaddedTextBoxPanel($backColor, $foreColor, $font, [int]$padX = 10, [int]$padY = 6, [bool]$readOnly = $true, [string]$initialText = "", [System.Windows.Forms.ScrollBars]$scrollBars = [System.Windows.Forms.ScrollBars]::Vertical, [bool]$wordWrap = $true) {
+ $wrap = New-Object System.Windows.Forms.Panel
+ $wrap.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $wrap.BackColor = $backColor
+ $wrap.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+ $wrap.Padding = New-Object System.Windows.Forms.Padding($padX, $padY, ([math]::Max(4, $padX - 2)), $padY)
+
+ $tb = New-Object System.Windows.Forms.TextBox
+ $tb.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $tb.Multiline = $true
+ $tb.ReadOnly = $readOnly
+ $tb.WordWrap = $wordWrap
+ $tb.ScrollBars = $scrollBars
+ $tb.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+ $tb.BackColor = $backColor
+ $tb.ForeColor = $foreColor
+ $tb.Font = $font
+ if (-not [string]::IsNullOrEmpty($initialText)) { $tb.Text = $initialText }
+
+ $wrap.Controls.Add($tb)
+ return [PSCustomObject]@{ Panel = $wrap; TextBox = $tb }
+}
+
+# High-contrast Asan DataGridView factory (deep teal header, 32px rows, double-buffered)
+function New-AsanGrid($theme, $fonts) {
+ $dgv = New-Object System.Windows.Forms.DataGridView
+ $dgv.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $dgv.BackgroundColor = $theme.CardBg
+ $dgv.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+ $dgv.GridColor = $theme.GridLine
+ $dgv.CellBorderStyle = [System.Windows.Forms.DataGridViewCellBorderStyle]::SingleHorizontal
+ $dgv.ColumnHeadersBorderStyle = [System.Windows.Forms.DataGridViewHeaderBorderStyle]::None
+ $dgv.EnableHeadersVisualStyles = $false
+ $dgv.RowHeadersVisible = $false
+ $dgv.AllowUserToAddRows = $false
+ $dgv.AllowUserToDeleteRows = $false
+ $dgv.AllowUserToResizeRows = $false
+ $dgv.AllowUserToOrderColumns = $false
+ $dgv.ReadOnly = $true
+ $dgv.MultiSelect = $false
+ $dgv.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+ $dgv.ShowCellToolTips = $true
+ $dgv.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::None
+ $dgv.ColumnHeadersHeightSizeMode = [System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode]::DisableResizing
+ $dgv.ColumnHeadersHeight = 34
+ $dgv.RowTemplate.Height = 32
+
+ $dgv.ColumnHeadersDefaultCellStyle.BackColor = $theme.GridHeadBg
+ $dgv.ColumnHeadersDefaultCellStyle.ForeColor = $theme.GridHeadFg
+ $dgv.ColumnHeadersDefaultCellStyle.Font = $fonts.Bold
+ $dgv.ColumnHeadersDefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
+ $dgv.ColumnHeadersDefaultCellStyle.Padding = New-Object System.Windows.Forms.Padding(8, 2, 8, 2)
+ $dgv.ColumnHeadersDefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleLeft
+ $dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = $theme.GridHeadBg
+ $dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = $theme.GridHeadFg
+
+ $dgv.DefaultCellStyle.BackColor = $theme.CardBg
+ $dgv.DefaultCellStyle.ForeColor = $theme.InkPrimary
+ $dgv.DefaultCellStyle.Font = $fonts.Base
+ $dgv.DefaultCellStyle.Padding = New-Object System.Windows.Forms.Padding(8, 2, 8, 2)
+ $dgv.DefaultCellStyle.SelectionBackColor = $theme.AsanMint
+ $dgv.DefaultCellStyle.SelectionForeColor = $theme.AsanDeep
+ $dgv.AlternatingRowsDefaultCellStyle.BackColor = $theme.RowAltBg
+ $dgv.AlternatingRowsDefaultCellStyle.ForeColor = $theme.InkPrimary
+
+ try {
+  $prop = [System.Windows.Forms.DataGridView].GetProperty("DoubleBuffered", [System.Reflection.BindingFlags]"Instance,NonPublic")
+  if ($prop) { $prop.SetValue($dgv, $true, $null) }
+ } catch {}
+
+ return $dgv
+}
+
+function Add-AsanGridColumn($dgv, [string]$name, [string]$headerText, [int]$width, [bool]$isFill = $false, [int]$minWidth = 54) {
+ $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+ $col.Name = $name
+ $col.HeaderText = $headerText
+ $col.SortMode = [System.Windows.Forms.DataGridViewColumnSortMode]::NotSortable
+ $col.MinimumWidth = $minWidth
+ if ($isFill) {
+  $col.AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
+ } else {
+  $col.Width = $width
+ }
+ [void]$dgv.Columns.Add($col)
+}
+
+function Set-AsanCellSemanticStyle($cell, [string]$kind, $theme, $fonts, [bool]$bold = $true) {
+ if (-not $cell) { return }
+ if ($bold) { $cell.Style.Font = $fonts.Bold }
+ switch ($kind) {
+  "OK"      { $cell.Style.BackColor = $theme.AsanMint;       $cell.Style.ForeColor = $theme.AsanDeep }
+  "Info"    { $cell.Style.BackColor = $theme.InfoTint;       $cell.Style.ForeColor = $theme.AsanLight }
+  "Warn"    { $cell.Style.BackColor = $theme.AsanOrangeTint; $cell.Style.ForeColor = $theme.AsanOrangeText }
+  "Error"   { $cell.Style.BackColor = $theme.DangerRedTint;  $cell.Style.ForeColor = $theme.DangerRedDeep }
+  "Special" { $cell.Style.BackColor = $theme.SpecialTint;    $cell.Style.ForeColor = $theme.SpecialPurple }
+  default   { $cell.Style.ForeColor = $theme.InkMuted; $cell.Style.Font = $fonts.Base }
+ }
+}
+
+function Set-AsanGuidanceBannerVisual($panel, $accentBar, $lblTitle, $lblMsg, $guidance, $theme) {
+ $bg = $theme.InfoTint; $fg = $theme.AsanLight; $ac = $theme.AsanLight
  switch ($guidance.Level) {
-  "OK"    { $bg = $pal.OkBg;   $fg = $pal.OkFg;   $ac = $pal.OkAccent }
-  "Warn"  { $bg = $pal.WarnBg; $fg = $pal.WarnFg; $ac = $pal.WarnAccent }
-  "Error" { $bg = $pal.ErrBg;  $fg = $pal.ErrFg;  $ac = $pal.ErrAccent }
+  "OK"    { $bg = $theme.AsanMint;       $fg = $theme.AsanDeep;       $ac = $theme.AsanGreen }
+  "Warn"  { $bg = $theme.AsanOrangeTint; $fg = $theme.AsanOrangeText; $ac = $theme.AsanOrange }
+  "Error" { $bg = $theme.DangerRedTint;  $fg = $theme.DangerRedDeep;  $ac = $theme.DangerRed }
  }
  $panel.BackColor = $bg
  $accentBar.BackColor = $ac
  $lblTitle.ForeColor = $fg
  $lblTitle.Text = [string]$guidance.Title
- $lblMsg.ForeColor = $pal.TextDark
+ $lblMsg.ForeColor = $theme.InkPrimary
  $lblMsg.Text = [string]$guidance.Message
 }
 
-# Modal dialog: Require typing IGNORE to bypass STEP 1 blocking risk
-function Show-GuiIgnoreConfirmDialog($ownerForm, $pal) {
+# OwnerDrawFixed numbered tabs matching Asan Desktop UI
+function Enable-AsanOwnerDrawTabs($tabControl, $theme, $fonts) {
+ $tabControl.DrawMode = [System.Windows.Forms.TabDrawMode]::OwnerDrawFixed
+ $tabControl.SizeMode = [System.Windows.Forms.TabSizeMode]::Fixed
+ $tabControl.ItemSize = New-Object System.Drawing.Size(220, 34)
+ $tabControl.Padding = New-Object System.Drawing.Point(18, 6)
+
+ $localTheme = $theme
+ $localFonts = $fonts
+ $tabControl.Add_DrawItem({
+  param($sender, $e)
+  $tp = $sender.TabPages[$e.Index]
+  $rect = $e.Bounds
+  $isSel = ($sender.SelectedIndex -eq $e.Index)
+  $bgCol = if ($isSel) { $localTheme.CardBg } else { $localTheme.AsanMintSoft }
+  $fgCol = if ($isSel) { $localTheme.AsanDeep } else { $localTheme.InkSecondary }
+  $fnt = if ($isSel) { $localFonts.Tab } else { $localFonts.TabIdle }
+
+  $bgBrush = New-Object System.Drawing.SolidBrush($bgCol)
+  $barBrush = New-Object System.Drawing.SolidBrush($localTheme.AsanGreen)
+  $borderPen = New-Object System.Drawing.Pen($localTheme.Border, 1)
+  try {
+   $e.Graphics.FillRectangle($bgBrush, $rect)
+   if ($isSel) {
+    $e.Graphics.FillRectangle($barBrush, $rect.X, $rect.Y, $rect.Width, 4)
+   }
+   $e.Graphics.DrawRectangle($borderPen, $rect.X, $rect.Y, ($rect.Width - 1), ($rect.Height - 1))
+   $textRect = New-Object System.Drawing.Rectangle($rect.X, ($rect.Y + 2), $rect.Width, ($rect.Height - 2))
+   $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+   [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $tp.Text.Trim(), $fnt, $textRect, $fgCol, $flags)
+  } finally {
+   $bgBrush.Dispose()
+   $barBrush.Dispose()
+   $borderPen.Dispose()
+  }
+ }.GetNewClosure())
+}
+
+function Build-FullDiagnosticBundleText($sysInfo, $step2Snap, $postStatus, [string]$logText) {
+ $sb = New-Object System.Text.StringBuilder
+ $biosText = if ($step2Snap -and $step2Snap.BiosDiag) {
+  Format-BiosCrossCheckReport $sysInfo $step2Snap.BiosDiag $step2Snap.UsbInfo $step2Snap.MatchedEntries
+ } else {
+  U "BIOS \uC9C4\uB2E8 \uC815\uBCF4\uAC00 \uC544\uC9C1 \uC218\uC9D1\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4."
+ }
+ $nvramText = if ($step2Snap -and $step2Snap.BcdOutput -and $step2Snap.BcdOutput.Count -gt 0) {
+  ($step2Snap.BcdOutput -join "`r`n")
+ } else {
+  U "UEFI NVRAM \uCD9C\uB825\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."
+ }
+ $diskText = Get-DiskDebugText
+
+ [void]$sb.AppendLine($biosText)
+ [void]$sb.AppendLine("")
+ [void]$sb.AppendLine("=== UEFI NVRAM (bcdedit /enum firmware) ===")
+ [void]$sb.AppendLine($nvramText)
+ [void]$sb.AppendLine("")
+ [void]$sb.AppendLine("=== Disk and Partition Layout ===")
+ [void]$sb.AppendLine($diskText)
+ if ($postStatus) {
+  [void]$sb.AppendLine("")
+  [void]$sb.AppendLine("=== Post-SID Printer Spooler Summary ===")
+  [void]$sb.AppendLine(("ComputerName : " + $postStatus.ComputerName))
+  [void]$sb.AppendLine(("MachineSID   : " + $postStatus.MachineSid))
+  [void]$sb.AppendLine(("Role         : " + $postStatus.Role))
+  [void]$sb.AppendLine(("Spooler      : " + $postStatus.SpoolerStatus + " / " + $postStatus.SpoolerStartMode))
+  [void]$sb.AppendLine(("QueueFiles   : " + $postStatus.QueueTotalCount + " (SPL/SHD=" + $postStatus.QueueSplShdCount + ")"))
+  [void]$sb.AppendLine(("Printers     : " + $postStatus.Printers.Count + " | Shared=" + $postStatus.SharedPrinters.Count + " | Network=" + $postStatus.NetworkPrinters.Count))
+ }
+ if (-not [string]::IsNullOrWhiteSpace($logText)) {
+  [void]$sb.AppendLine("")
+  [void]$sb.AppendLine("=== Session Log ===")
+  [void]$sb.AppendLine($logText)
+ }
+ return (ConvertTo-MaskedDiagnosticText $sb.ToString())
+}
+
+# Save sanitized local diagnostic report (never writes to source USB/share folder)
+function Save-LocalDiagnosticReportFile([string]$content) {
+ $stamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
+ $fileName = "SID_Aux_Diag_" + $env:COMPUTERNAME + "_" + $stamp + ".txt"
+ $srcDir = ""
+ if ($env:SELF_PATH) { try { $srcDir = Split-Path -Parent $env:SELF_PATH } catch {} }
+ $candidates = @(
+  ([Environment]::GetFolderPath("Desktop")),
+  ([Environment]::GetFolderPath("MyDocuments")),
+  $env:TEMP
+ )
+ foreach ($dir in $candidates) {
+  if ([string]::IsNullOrWhiteSpace($dir)) { continue }
+  if ($srcDir -and ($dir.TrimEnd('\') -ieq $srcDir.TrimEnd('\'))) { continue }
+  try {
+   if (-not (Test-Path -LiteralPath $dir)) { continue }
+   $fullPath = Join-Path $dir $fileName
+   $utf8Bom = New-Object System.Text.UTF8Encoding($true)
+   [System.IO.File]::WriteAllText($fullPath, (ConvertTo-MaskedDiagnosticText $content), $utf8Bom)
+   return [PSCustomObject]@{ Success = $true; Path = $fullPath; Folder = $dir; Error = "" }
+  } catch {}
+ }
+ return [PSCustomObject]@{ Success = $false; Path = ""; Folder = ""; Error = (U "\uB85C\uCEEC \uD3F4\uB354\uC5D0 \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8\uB97C \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.") }
+}
+
+# Build Diagnostic & Error Report Dialog (testable factory + modal wrapper)
+function New-GuiDiagnosticsDialog($sysInfo, $step2Snap, $postStatus, [string]$logText, [string]$errorSummary = "") {
+ Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+ Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+ $theme = Get-AsanTheme
+ $fonts = New-AsanFontSet
+ $dlgIconBmp = New-SidToolSymbolBitmap 64
+ $dlgIcon = New-AsanIconFromBitmap $dlgIconBmp
+ $dlgIconBmp.Dispose()
  $dlg = New-Object System.Windows.Forms.Form
- $dlg.Text = U "STEP 1 \uC704\uD5D8 \uD655\uC778 (IGNORE)"
- $dlg.Size = New-Object System.Drawing.Size(470, 230)
+ $dlg.Icon = $dlgIcon
+ $dlg.Text = if ($errorSummary) { U "\uC624\uB958 \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8 \uC800\uC7A5" } else { U "BIOS \uAD50\uCC28 \uAC80\uC99D \uBC0F \uC2DC\uC2A4\uD15C \uC9C4\uB2E8" }
+ $dlg.Size = New-Object System.Drawing.Size(880, 620)
+ $dlg.MinimumSize = New-Object System.Drawing.Size(720, 480)
+ $dlg.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
+ $dlg.BackColor = $theme.CanvasBg
+ $dlg.Font = $fonts.Base
+ $dlg.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
+
+ $dlgCtx = @{
+  Theme = $theme; Fonts = $fonts; ToolTip = (New-Object System.Windows.Forms.ToolTip)
+  ButtonStyles = @{}; DisabledReasons = @{}; LastDisabledBtn = $null; LastDisabledHost = $null; State = $null
+ }
+
+ # Header
+ $hdr = New-Object System.Windows.Forms.Panel
+ $hdr.Dock = [System.Windows.Forms.DockStyle]::Top
+ $hdr.Height = 52
+ $hdr.BackColor = $theme.HeaderBg
+ $hdr.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 8)
+ $lblT = New-Object System.Windows.Forms.Label
+ $lblT.Text = if ($errorSummary) { U "\uC624\uB958 \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8" } else { U "BIOS \uAD50\uCC28 \uAC80\uC99D \uBC0F \uC2DC\uC2A4\uD15C \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8" }
+ $lblT.Font = $fonts.Title
+ $lblT.ForeColor = [System.Drawing.Color]::White
+ $lblT.AutoSize = $true
+ $lblT.Location = New-Object System.Drawing.Point(16, 6)
+ $lblS = New-Object System.Windows.Forms.Label
+ $lblS.Text = U "\uBBFC\uAC10\uD55C \uC790\uACA9 \uC99D\uBA85 \uC815\uBCF4\uB294 \uC790\uB3D9\uC73C\uB85C \uAC00\uB824\uC9D1\uB2C8\uB2E4. \uB2F4\uB2F9\uC790\uC5D0\uAC8C \uD30C\uC77C \uB610\uB294 \uBCF5\uC0AC \uB0B4\uC6A9\uC744 \uC804\uB2EC\uD574 \uC8FC\uC138\uC694."
+ $lblS.Font = $fonts.Subtitle
+ $lblS.ForeColor = $theme.HeaderSubFg
+ $lblS.AutoSize = $true
+ $lblS.Location = New-Object System.Drawing.Point(17, 30)
+ $hdr.Controls.Add($lblT)
+ $hdr.Controls.Add($lblS)
+
+ $oLine = New-Object System.Windows.Forms.Panel
+ $oLine.Dock = [System.Windows.Forms.DockStyle]::Top
+ $oLine.Height = 2
+ $oLine.BackColor = $theme.AsanOrangeLine
+
+ $errBanner = New-Object System.Windows.Forms.Panel
+ $errBanner.Dock = [System.Windows.Forms.DockStyle]::Top
+ $errBanner.Height = 40
+ $errBanner.BackColor = $theme.AsanOrangeTint
+ $errBanner.Padding = New-Object System.Windows.Forms.Padding(16, 10, 16, 8)
+ $errBanner.Visible = (-not [string]::IsNullOrWhiteSpace($errorSummary))
+ $lblErr = New-Object System.Windows.Forms.Label
+ $lblErr.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblErr.ForeColor = $theme.AsanOrangeText
+ $lblErr.Font = $fonts.Bold
+ $lblErr.Text = (U "\uC624\uB958 \uC694\uC57D: ") + $errorSummary
+ $errBanner.Controls.Add($lblErr)
+
+ $biosText = if ($step2Snap -and $step2Snap.BiosDiag) {
+  ConvertTo-MaskedDiagnosticText (Format-BiosCrossCheckReport $sysInfo $step2Snap.BiosDiag $step2Snap.UsbInfo $step2Snap.MatchedEntries)
+ } else {
+  U "BIOS \uC9C4\uB2E8 \uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4."
+ }
+ $nvramText = if ($step2Snap -and $step2Snap.BcdOutput -and $step2Snap.BcdOutput.Count -gt 0) {
+  ConvertTo-MaskedDiagnosticText ($step2Snap.BcdOutput -join "`r`n")
+ } else {
+  U "UEFI NVRAM \uCD9C\uB825\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."
+ }
+ $diskText = ConvertTo-MaskedDiagnosticText (Get-DiskDebugText)
+ $safeLog = if ([string]::IsNullOrWhiteSpace($logText)) { U "\uAE30\uB85D\uB41C \uC791\uC5C5 \uB85C\uADF8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." } else { ConvertTo-MaskedDiagnosticText $logText }
+ if ($errorSummary) { $safeLog = (U "\uBC1C\uC0DD \uC624\uB958: ") + $errorSummary + "`r`n`r`n" + $safeLog }
+ $copyPayload = Build-FullDiagnosticBundleText $sysInfo $step2Snap $postStatus $safeLog
+
+ $bodyWrap = New-Object System.Windows.Forms.Panel
+ $bodyWrap.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $bodyWrap.Padding = New-Object System.Windows.Forms.Padding(12, 10, 12, 10)
+
+ $tabs = New-Object System.Windows.Forms.TabControl
+ $tabs.Dock = [System.Windows.Forms.DockStyle]::Fill
+ Enable-AsanOwnerDrawTabs $tabs $theme $fonts
+ $tabs.ItemSize = New-Object System.Drawing.Size(165, 32)
+
+ $addTab = {
+  param([string]$tName, [string]$tBody)
+  $tp = New-Object System.Windows.Forms.TabPage
+  $tp.Text = $tName
+  $tp.BackColor = $theme.CardBg
+  $tp.Padding = New-Object System.Windows.Forms.Padding(8)
+  $pTb = New-PaddedTextBoxPanel $theme.CardBg $theme.InkPrimary $fonts.Mono 12 8 $true $tBody ([System.Windows.Forms.ScrollBars]::Both) $false
+  $tp.Controls.Add($pTb.Panel)
+  [void]$tabs.TabPages.Add($tp)
+ }
+ & $addTab (U "BIOS \uAD50\uCC28 \uAC80\uC99D") $biosText
+ & $addTab (U "UEFI NVRAM \uC6D0\uBCF8") $nvramText
+ & $addTab (U "\uB514\uC2A4\uD06C \uAD6C\uC131") $diskText
+ & $addTab (U "\uC791\uC5C5 \uB85C\uADF8") $safeLog
+ if ($errorSummary) { $tabs.SelectedIndex = 3 }
+ $bodyWrap.Controls.Add($tabs)
+
+ $footer = New-Object System.Windows.Forms.Panel
+ $footer.Dock = [System.Windows.Forms.DockStyle]::Bottom
+ $footer.Height = 50
+ $footer.BackColor = $theme.CardBg
+ $footer.Padding = New-Object System.Windows.Forms.Padding(16, 9, 16, 9)
+
+ $leftStrip = New-Object System.Windows.Forms.FlowLayoutPanel
+ $leftStrip.Dock = [System.Windows.Forms.DockStyle]::Left
+ $leftStrip.AutoSize = $true
+ $leftStrip.WrapContents = $false
+
+ $btnSave = New-AsanButton (U "\uB85C\uCEEC \uD3F4\uB354\uC5D0 \uC800\uC7A5") 150 32 "Primary" $dlgCtx $false
+ $btnSave.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $btnCopy = New-AsanButton (U "\uD074\uB9BD\uBCF4\uB4DC\uC5D0 \uBCF5\uC0AC") 138 32 "SoftTeal" $dlgCtx $false
+ $btnCopy.Margin = New-Object System.Windows.Forms.Padding(0, 0, 12, 0)
+ $lblFeedback = New-Object System.Windows.Forms.Label
+ $lblFeedback.AutoSize = $true
+ $lblFeedback.ForeColor = $theme.AsanDeep
+ $lblFeedback.Font = $fonts.SmallB
+ $lblFeedback.Margin = New-Object System.Windows.Forms.Padding(0, 8, 0, 0)
+ $lblFeedback.Text = ""
+
+ $leftStrip.Controls.Add($btnSave)
+ $leftStrip.Controls.Add($btnCopy)
+ $leftStrip.Controls.Add($lblFeedback)
+
+ $rightStrip = New-RightFlowStrip 0 0 0
+ $btnClose = New-AsanButton (U "\uB2EB\uAE30") 88 32 "Secondary" $dlgCtx $false
+ $btnClose.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+ $rightStrip.Controls.Add($btnClose)
+
+ $footer.Controls.Add($leftStrip)
+ $footer.Controls.Add($rightStrip)
+
+ $btnCopy.Add_Click({
+  try {
+   [System.Windows.Forms.Clipboard]::SetText($copyPayload)
+   $lblFeedback.ForeColor = $theme.AsanDeep
+   $lblFeedback.Text = U "\uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8\uAC00 \uD074\uB9BD\uBCF4\uB4DC\uC5D0 \uBCF5\uC0AC\uB418\uC5C8\uC2B5\uB2C8\uB2E4."
+  } catch {
+   $lblFeedback.ForeColor = $theme.DangerRedDeep
+   $lblFeedback.Text = (U "\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: ") + $_.Exception.Message
+  }
+ }.GetNewClosure())
+
+ $btnSave.Add_Click({
+  $saved = Save-LocalDiagnosticReportFile $copyPayload
+  if ($saved.Success) {
+   $lblFeedback.ForeColor = $theme.AsanDeep
+   $lblFeedback.Text = (U "\uC800\uC7A5 \uC644\uB8CC: ") + [System.IO.Path]::GetFileName($saved.Path)
+   $openQ = (U "\uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`r`n") + $saved.Path + (U "`r`n`r`n\uC800\uC7A5\uB41C \uD3F4\uB354\uB97C \uBC14\uB85C \uC5F4\uC5B4 \uD655\uC778\uD560\uAE4C\uC694?")
+   $dr = [System.Windows.Forms.MessageBox]::Show($dlg, $openQ, (U "\uB9AC\uD3EC\uD2B8 \uC800\uC7A5 \uC644\uB8CC"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Information)
+   if ($dr -eq [System.Windows.Forms.DialogResult]::Yes) {
+    try { Start-Process "explorer.exe" -ArgumentList ('/select,"' + $saved.Path + '"') } catch {}
+   }
+  } else {
+   $lblFeedback.ForeColor = $theme.DangerRedDeep
+   $lblFeedback.Text = $saved.Error
+  }
+ }.GetNewClosure())
+
+ $dlg.Controls.Add($bodyWrap)
+ $dlg.Controls.Add($footer)
+ $dlg.Controls.Add($errBanner)
+ $dlg.Controls.Add($oLine)
+ $dlg.Controls.Add($hdr)
+ $dlg.CancelButton = $btnClose
+
+ $dlgDisposables = @($dlgCtx.ToolTip, $dlgIcon) + @($fonts.Values)
+ $dlg.Tag = $dlgDisposables
+ $dlg.Add_FormClosed({
+  param($sender, $e)
+  $arr = if ($sender -and $sender.Tag) { $sender.Tag } else { $dlgDisposables }
+  if ($arr) {
+   foreach ($o in $arr) { if ($null -ne $o) { try { $o.Dispose() } catch {} } }
+  }
+ }.GetNewClosure())
+ return $dlg
+}
+
+function Show-GuiDiagnosticsDialog($ownerForm, $sysInfo, $step2Snap, $postStatus, [string]$logText, [string]$errorSummary = "") {
+ $dlg = New-GuiDiagnosticsDialog $sysInfo $step2Snap $postStatus $logText $errorSummary
+ try {
+  [void]$dlg.ShowDialog($ownerForm)
+ } finally {
+  try { $dlg.Dispose() } catch {}
+ }
+}
+
+# Auto-report prompt on operational errors (Asan Desktop UI Section 6)
+function Invoke-GuiErrorReportPrompt($uiCtx, [string]$title, [string]$message, [string]$detail) {
+ $prompt = $message + "`r`n`r`n" + (U "\uC624\uB958 \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8\uB97C \uC790\uB3D9\uC73C\uB85C \uAD6C\uC131\uD574 \uB85C\uCEEC \uD3F4\uB354\uC5D0 \uC800\uC7A5\uD558\uAC70\uB098 \uBCF5\uC0AC\uD560\uAE4C\uC694?`r`nPC \uD658\uACBD\uACFC \uC791\uC5C5 \uB85C\uADF8\uAC00 \uC790\uB3D9 \uCCA8\uBD80\uB418\uBA70 \uBBFC\uAC10 \uC815\uBCF4\uB294 \uC548\uC804\uD558\uAC8C \uAC00\uB824\uC9D1\uB2C8\uB2E4.")
+ $ans = [System.Windows.Forms.MessageBox]::Show($uiCtx.Form, $prompt, $title, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Error)
+ if ($ans -eq [System.Windows.Forms.DialogResult]::Yes) {
+  Show-GuiDiagnosticsDialog $uiCtx.Form $uiCtx.State.SysInfo $uiCtx.State.Step2Snap $uiCtx.State.PostStatus $uiCtx.TbLog.Text $detail
+ }
+}
+
+# Modal dialog: Require typing IGNORE to bypass STEP 1 blocking risk (DPI-safe Dock layout)
+function Show-GuiIgnoreConfirmDialog($ownerForm) {
+ $theme = Get-AsanTheme
+ $fonts = New-AsanFontSet
+ $dlg = New-Object System.Windows.Forms.Form
+ if ($ownerForm -and $ownerForm.Icon) { $dlg.Icon = $ownerForm.Icon }
+ $dlg.Text = U "1\uB2E8\uACC4 \uC704\uD5D8 \uD655\uC778 \uD6C4 \uAC74\uB108\uB6F0\uAE30"
+ $dlg.Size = New-Object System.Drawing.Size(500, 260)
  $dlg.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
  $dlg.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
  $dlg.MaximizeBox = $false
  $dlg.MinimizeBox = $false
- $dlg.BackColor = $pal.CardBg
- $dlg.Font = New-Object System.Drawing.Font("Malgun Gothic", 9.5)
+ $dlg.BackColor = $theme.CardBg
+ $dlg.Font = $fonts.Base
+ $dlg.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
 
- $lbl = New-Object System.Windows.Forms.Label
- $lbl.Text = U "\uBCF4\uC870 \uB514\uC2A4\uD06C\uC758 \uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uB97C \uC815\uB9AC\uD558\uC9C0 \uC54A\uACE0 USB \uBD80\uD305\uC744 \uC9C4\uD589\uD558\uBA74 SID \uBCC0\uACBD \uD6C4 \uBD80\uD305 \uCDA9\uB3CC\uC774 \uBC1C\uC0DD\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.`r`n`r`n\uC704\uD5D8\uC744 \uC774\uD574\uD558\uACE0 STEP 2 \uC7A0\uAE08\uC744 \uD574\uC81C\uD558\uB824\uBA74 \uC544\uB798\uC5D0 \uC601\uBB38 IGNORE \uB97C \uC785\uB825\uD558\uC138\uC694."
- $lbl.Location = New-Object System.Drawing.Point(16, 16)
- $lbl.Size = New-Object System.Drawing.Size(425, 86)
- $lbl.ForeColor = $pal.ErrFg
- $dlg.Controls.Add($lbl)
+ $dlgCtx = @{
+  Theme = $theme; Fonts = $fonts; ToolTip = (New-Object System.Windows.Forms.ToolTip)
+  ButtonStyles = @{}; DisabledReasons = @{}; LastDisabledBtn = $null; LastDisabledHost = $null; State = $null
+ }
 
+ $hdr = New-Object System.Windows.Forms.Panel
+ $hdr.Dock = [System.Windows.Forms.DockStyle]::Top
+ $hdr.Height = 44
+ $hdr.BackColor = $theme.DangerRed
+ $hdr.Padding = New-Object System.Windows.Forms.Padding(16, 11, 16, 8)
+ $lblH = New-Object System.Windows.Forms.Label
+ $lblH.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblH.ForeColor = [System.Drawing.Color]::White
+ $lblH.Font = $fonts.Bold
+ $lblH.Text = U "\uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uB97C \uC815\uB9AC\uD558\uC9C0 \uC54A\uACE0 \uC9C4\uD589\uD558\uBA74 \uBD80\uD305 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4"
+ $hdr.Controls.Add($lblH)
+
+ $body = New-Object System.Windows.Forms.Panel
+ $body.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $body.Padding = New-Object System.Windows.Forms.Padding(16, 14, 16, 10)
+
+ $lblDesc = New-Object System.Windows.Forms.Label
+ $lblDesc.Dock = [System.Windows.Forms.DockStyle]::Top
+ $lblDesc.Height = 56
+ $lblDesc.ForeColor = $theme.InkPrimary
+ $lblDesc.Text = U "\uBCF4\uC870 \uB514\uC2A4\uD06C\uC758 \uBD80\uD2B8\uB85C\uB354\uB97C \uADF8\uB300\uB85C \uB450\uACE0 USB \uBD80\uD305\uC744 \uC9C4\uD589\uD569\uB2C8\uB2E4.`r`n\uC704\uD5D8\uC744 \uD655\uC778\uD558\uC168\uB2E4\uBA74 \uC544\uB798 \uC785\uB825\uCE78\uC5D0 \uC601\uBB38 IGNORE \uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694."
+
+ $tbWrap = New-Object System.Windows.Forms.Panel
+ $tbWrap.Dock = [System.Windows.Forms.DockStyle]::Top
+ $tbWrap.Height = 32
+ $tbWrap.BackColor = $theme.CardBg
+ $tbWrap.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+ $tbWrap.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
  $tb = New-Object System.Windows.Forms.TextBox
- $tb.Location = New-Object System.Drawing.Point(16, 110)
- $tb.Size = New-Object System.Drawing.Size(422, 26)
- $dlg.Controls.Add($tb)
+ $tb.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $tb.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+ $tb.Font = $fonts.Bold
+ $tbWrap.Controls.Add($tb)
 
- $btnOk = New-Object System.Windows.Forms.Button
- $btnOk.Text = U "\uC7A0\uAE08 \uD574\uC81C"
- $btnOk.Location = New-Object System.Drawing.Point(258, 148)
- $btnOk.Size = New-Object System.Drawing.Size(88, 30)
- Set-GuiButtonStyle $btnOk "PrimaryRed" $pal
- $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
- $dlg.Controls.Add($btnOk)
+ $body.Controls.Add($tbWrap)
+ $body.Controls.Add($lblDesc)
 
- $btnCancel = New-Object System.Windows.Forms.Button
- $btnCancel.Text = U "\uCDE8\uC18C"
- $btnCancel.Location = New-Object System.Drawing.Point(354, 148)
- $btnCancel.Size = New-Object System.Drawing.Size(84, 30)
- Set-GuiButtonStyle $btnCancel "Neutral" $pal
+ $footer = New-Object System.Windows.Forms.Panel
+ $footer.Dock = [System.Windows.Forms.DockStyle]::Bottom
+ $footer.Height = 50
+ $footer.BackColor = $theme.MetaBarBg
+ $footer.Padding = New-Object System.Windows.Forms.Padding(16, 9, 16, 9)
+
+ $rightStrip = New-RightFlowStrip 0 0 0
+ $btnCancel = New-AsanButton (U "\uCDE8\uC18C") 88 32 "Secondary" $dlgCtx $false
  $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
- $dlg.Controls.Add($btnCancel)
+ $btnOk = New-AsanButton (U "\uC7A0\uAE08 \uD574\uC81C") 104 32 "Danger" $dlgCtx $false
+ $btnOk.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
+ Set-AsanButtonState $btnOk $false (U "\uC704 \uC785\uB825\uCE78\uC5D0 \uC601\uBB38 IGNORE\uB97C \uC785\uB825\uD558\uBA74 \uD65C\uC131\uD654\uB429\uB2C8\uB2E4.") $dlgCtx
 
+ $rightStrip.Controls.Add($btnCancel)
+ $rightStrip.Controls.Add($btnOk)
+ $footer.Controls.Add($rightStrip)
+
+ $tb.Add_TextChanged({
+  $ready = ($tb.Text.Trim() -ieq "IGNORE")
+  Set-AsanButtonState $btnOk $ready (U "\uC704 \uC785\uB825\uCE78\uC5D0 \uC601\uBB38 IGNORE\uB97C \uC785\uB825\uD558\uBA74 \uD65C\uC131\uD654\uB429\uB2C8\uB2E4.") $dlgCtx
+ }.GetNewClosure())
+
+ $dlg.Controls.Add($body)
+ $dlg.Controls.Add($footer)
+ $dlg.Controls.Add($hdr)
  $dlg.AcceptButton = $btnOk
  $dlg.CancelButton = $btnCancel
+ Register-AsanDisabledTooltipTree $dlg $dlgCtx
 
  try {
   $dr = $dlg.ShowDialog($ownerForm)
   return ($dr -eq [System.Windows.Forms.DialogResult]::OK -and $tb.Text.Trim() -ieq "IGNORE")
  } finally {
+  try { $dlgCtx.ToolTip.Dispose() } catch {}
+  foreach ($f in $fonts.Values) { try { $f.Dispose() } catch {} }
   try { $dlg.Dispose() } catch {}
  }
 }
 
-# Modal dialog: Tabbed Diagnostic Viewer (BIOS Cross-Check / NVRAM Raw / Disk Table) + Copy to Clipboard
-function Show-GuiDiagnosticsDialog($ownerForm, $sysInfo, $step2Snap, $pal) {
- $dlg = New-Object System.Windows.Forms.Form
- $dlg.Text = U "BIOS \uAD50\uCC28 \uAC80\uC99D \uBC0F \uC2DC\uC2A4\uD15C \uC9C4\uB2E8 \uC0C1\uC138"
- $dlg.Size = New-Object System.Drawing.Size(860, 600)
- $dlg.MinimumSize = New-Object System.Drawing.Size(680, 460)
- $dlg.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
- $dlg.BackColor = $pal.AppBg
- $dlg.Font = New-Object System.Drawing.Font("Malgun Gothic", 9.5)
-
- $monoFont = New-Object System.Drawing.Font("Consolas", 9)
-
- $biosText = if ($step2Snap -and $step2Snap.BiosDiag) {
-  Format-BiosCrossCheckReport $sysInfo $step2Snap.BiosDiag $step2Snap.UsbInfo $step2Snap.MatchedEntries
- } else {
-  "(BIOS diagnostics not available)"
- }
- $nvramText = if ($step2Snap -and $step2Snap.BcdOutput -and $step2Snap.BcdOutput.Count -gt 0) {
-  ($step2Snap.BcdOutput -join "`r`n")
- } else {
-  "(No bcdedit /enum firmware output)"
- }
- $diskText = Get-DiskDebugText
-
- $tabs = New-Object System.Windows.Forms.TabControl
- $tabs.Dock = [System.Windows.Forms.DockStyle]::Fill
- $tabs.Padding = New-Object System.Drawing.Point(10, 5)
-
- $addLogTab = {
-  param([string]$title, [string]$body)
-  $tp = New-Object System.Windows.Forms.TabPage
-  $tp.Text = $title
-  $tp.Padding = New-Object System.Windows.Forms.Padding(6)
-  $tb = New-Object System.Windows.Forms.TextBox
-  $tb.Multiline = $true
-  $tb.ReadOnly = $true
-  $tb.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
-  $tb.WordWrap = $false
-  $tb.Dock = [System.Windows.Forms.DockStyle]::Fill
-  $tb.Font = $monoFont
-  $tb.BackColor = [System.Drawing.Color]::White
-  $tb.Text = $body
-  $tp.Controls.Add($tb)
-  [void]$tabs.TabPages.Add($tp)
- }
-
- & $addLogTab (U "BIOS \uAD50\uCC28 \uAC80\uC99D \uBCF4\uACE0\uC11C") $biosText
- & $addLogTab (U "UEFI NVRAM \uC6D0\uBCF8 (bcdedit)") $nvramText
- & $addLogTab (U "\uB514\uC2A4\uD06C/\uD30C\uD2F0\uC158 \uC9C4\uB2E8") $diskText
-
- $bottomBar = New-Object System.Windows.Forms.Panel
- $bottomBar.Dock = [System.Windows.Forms.DockStyle]::Bottom
- $bottomBar.Height = 46
- $bottomBar.Padding = New-Object System.Windows.Forms.Padding(10, 8, 10, 8)
- $bottomBar.BackColor = $pal.CardBg
-
- $copyPayload = $biosText + "`r`n`r`n=== [bcdedit /enum firmware] ===`r`n" + $nvramText + "`r`n`r`n=== [Disk / Partition] ===`r`n" + $diskText
- $btnCopy = New-Object System.Windows.Forms.Button
- $btnCopy.Text = U "\uC804\uCCB4 \uC9C4\uB2E8 \uACB0\uACFC \uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC"
- $btnCopy.Size = New-Object System.Drawing.Size(210, 30)
- $btnCopy.Dock = [System.Windows.Forms.DockStyle]::Left
- Set-GuiButtonStyle $btnCopy "PrimaryBlue" $pal
- $btnCopy.Add_Click({
-  try {
-   [System.Windows.Forms.Clipboard]::SetText($copyPayload)
-   [System.Windows.Forms.MessageBox]::Show($dlg, (U "\uC804\uCCB4 \uC9C4\uB2E8 \uBCF4\uACE0\uC11C\uAC00 \uD074\uB9BD\uBCF4\uB4DC\uC5D0 \uBCF5\uC0AC\uB418\uC5C8\uC2B5\uB2C8\uB2E4."), (U "\uBCF5\uC0AC \uC644\uB8CC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-  } catch {
-   [System.Windows.Forms.MessageBox]::Show($dlg, $_.Exception.Message, (U "\uBCF5\uC0AC \uC2E4\uD328"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-  }
- }.GetNewClosure())
-
- $btnClose = New-Object System.Windows.Forms.Button
- $btnClose.Text = U "\uB2EB\uAE30"
- $btnClose.Size = New-Object System.Drawing.Size(90, 30)
- $btnClose.Dock = [System.Windows.Forms.DockStyle]::Right
- Set-GuiButtonStyle $btnClose "Neutral" $pal
- $btnClose.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-
- $bottomBar.Controls.Add($btnCopy)
- $bottomBar.Controls.Add($btnClose)
- $dlg.Controls.Add($tabs)
- $dlg.Controls.Add($bottomBar)
- $dlg.CancelButton = $btnClose
-
- try {
-  [void]$dlg.ShowDialog($ownerForm)
- } finally {
-  try { $monoFont.Dispose() } catch {}
-  try { $dlg.Dispose() } catch {}
- }
-}
-
-# Build the main WinForms Form using a single $ui reference context + .GetNewClosure()
-# so EVERY event handler and FormClosed disposal stays valid after New-SidAuxMainForm returns.
+# Build the main WinForms Form using Asan Desktop UI 4-Zone Fixed Shell
 function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
+ Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+ Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
  [System.Windows.Forms.Application]::EnableVisualStyles()
- $pal = Get-GuiPalette
+ $theme = Get-AsanTheme
+ $fonts = New-AsanFontSet
  $srcInfo = Get-ExecutionSourceInfo
  $verStr = [string]$script:ToolVersion
  $buildMeta = [string]$script:BuildDate
-
- $fontRegular = New-Object System.Drawing.Font("Malgun Gothic", 9.5)
- $fontBold    = New-Object System.Drawing.Font("Malgun Gothic", 9.5, [System.Drawing.FontStyle]::Bold)
- $fontTitle   = New-Object System.Drawing.Font("Malgun Gothic", 12.5, [System.Drawing.FontStyle]::Bold)
- $fontBannerT = New-Object System.Drawing.Font("Malgun Gothic", 10.5, [System.Drawing.FontStyle]::Bold)
- $fontSmall   = New-Object System.Drawing.Font("Malgun Gothic", 8.5)
- $fontMono    = New-Object System.Drawing.Font("Consolas", 9)
+ $symbolBmp = New-SidToolSymbolBitmap 40
+ $appIconBmp = New-SidToolSymbolBitmap 64
+ $appIcon = New-AsanIconFromBitmap $appIconBmp
+ $appIconBmp.Dispose()
 
  $state = @{
   SysInfo = $sysInfo
@@ -265,130 +894,311 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
   Step2Snap = $null
   PostStatus = $null
   Step1Bypassed = $false
-  Palette = $pal
+  Step1Collapsed = $false
+  LogExpanded = $false
+  IsBusy = $false
+  AsyncPs = $null
+  AsyncRs = $null
+  AsyncHandle = $null
+  AsyncQueue = $null
  }
 
  $form = New-Object System.Windows.Forms.Form
- $form.Text = (U "SID \uBCC0\uACBD \uC0AC\uC804\u00B7\uC0AC\uD6C4 \uBCF4\uC870 \uD234") + " v" + $verStr
- $form.Size = New-Object System.Drawing.Size(1060, 810)
- $form.MinimumSize = New-Object System.Drawing.Size(940, 710)
+ $form.Text = (U "SID \uBCC0\uACBD \uBCF4\uC870 \uB3C4\uAD6C") + " v" + $verStr
+ $form.Size = New-Object System.Drawing.Size(1040, 720)
+ $form.MinimumSize = New-Object System.Drawing.Size(960, 640)
  $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
  $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
- $form.BackColor = $pal.AppBg
- $form.Font = $fontRegular
+ $form.BackColor = $theme.CanvasBg
+ $form.Font = $fonts.Base
+ $form.KeyPreview = $true
+ $form.Icon = $appIcon
 
  $toolTip = New-Object System.Windows.Forms.ToolTip
- $toolTip.AutoPopDelay = 10000
+ $toolTip.AutoPopDelay = 12000
  $toolTip.InitialDelay = 250
  $toolTip.ReshowDelay = 150
  $toolTip.ShowAlways = $true
 
- # ==================== TOP HEADER BAR ====================
- $header = New-Object System.Windows.Forms.Panel
- $header.Dock = [System.Windows.Forms.DockStyle]::Top
- $header.Height = 66
- $header.BackColor = $pal.HeaderBg
- $header.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 8)
+ $copyResetTimer = New-Object System.Windows.Forms.Timer
+ $copyResetTimer.Interval = 1500
+ $asyncPollTimer = New-Object System.Windows.Forms.Timer
+ $asyncPollTimer.Interval = 180
 
- $headerRight = New-Object System.Windows.Forms.FlowLayoutPanel
- $headerRight.Dock = [System.Windows.Forms.DockStyle]::Right
- $headerRight.AutoSize = $true
- $headerRight.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
- $headerRight.WrapContents = $false
- $headerRight.Padding = New-Object System.Windows.Forms.Padding(0, 8, 0, 0)
+ # Pre-declare shared UI context so all helpers/handlers reference the exact same object
+ $ui = @{
+  Form             = $form
+  Theme            = $theme
+  Fonts            = $fonts
+  SrcInfo          = $srcInfo
+  State            = $state
+  ToolTip          = $toolTip
+  ButtonStyles     = @{}
+  DisabledReasons  = @{}
+  LastDisabledBtn  = $null
+  LastDisabledHost = $null
+  CopyResetTimer   = $copyResetTimer
+  AsyncPollTimer   = $asyncPollTimer
+  Disposables      = @($toolTip, $copyResetTimer, $asyncPollTimer, $symbolBmp, $appIcon) + @($fonts.Values)
+ }
+ $form.Tag = $ui
 
- $btnTopDiag = New-Object System.Windows.Forms.Button
- $btnTopDiag.Text = U "BIOS \uAD50\uCC28 \uAC80\uC99D / \uC9C4\uB2E8 \uC0C1\uC138"
- $btnTopDiag.Size = New-Object System.Drawing.Size(172, 32)
- Set-GuiButtonStyle $btnTopDiag "Header" $pal
- $btnTopDiag.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ # ==============================================================================
+ # ZONE 1: TOP 2-ROW BRAND HEADER (52px Brand + 2px Orange Line + 28px Meta Bar)
+ # ==============================================================================
+ $topShell = New-Object System.Windows.Forms.Panel
+ $topShell.Dock = [System.Windows.Forms.DockStyle]::Top
+ $topShell.Height = 82
+ $topShell.BackColor = $theme.HeaderBg
 
- $btnTopRefresh = New-Object System.Windows.Forms.Button
- $btnTopRefresh.Text = U "\uC804\uCCB4 \uC0C8\uB85C\uACE0\uCE68"
- $btnTopRefresh.Size = New-Object System.Drawing.Size(106, 32)
- Set-GuiButtonStyle $btnTopRefresh "PrimaryBlue" $pal
+ # Row 1: Brand Bar (52px)
+ $brandBar = New-Object System.Windows.Forms.Panel
+ $brandBar.Dock = [System.Windows.Forms.DockStyle]::Top
+ $brandBar.Height = 52
+ $brandBar.BackColor = $theme.HeaderBg
+ $brandBar.Padding = New-Object System.Windows.Forms.Padding(16, 6, 16, 6)
 
- $headerRight.Controls.Add($btnTopDiag)
- $headerRight.Controls.Add($btnTopRefresh)
+ $brandRight = New-RightFlowStrip 4 0 0
+ $btnTopDiag = New-AsanButton (U "\uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8") 96 30 "HeaderUtil" $ui $true
+ $btnTopDiag.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0)
+ $toolTip.SetToolTip($btnTopDiag, (U "BIOS \uAD50\uCC28 \uAC80\uC99D, NVRAM, \uB514\uC2A4\uD06C \uBC0F \uC791\uC5C5 \uB85C\uADF8\uB97C \uD655\uC778\uD558\uACE0 \uC800\uC7A5\uD569\uB2C8\uB2E4."))
 
- $headerLeft = New-Object System.Windows.Forms.Panel
- $headerLeft.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $btnTopRefresh = New-AsanButton (U "\uC0C8\uB85C\uACE0\uCE68") 82 30 "HeaderUtil" $ui $true
+ $btnTopRefresh.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0)
+ $toolTip.SetToolTip($btnTopRefresh, (U "\uB514\uC2A4\uD06C, USB, \uD504\uB9B0\uD130 \uC0C1\uD0DC\uB97C \uB2E4\uC2DC \uBD88\uB7EC\uC635\uB2C8\uB2E4. \uB2E8\uCD95\uD0A4 F5"))
+
+ $lblExecBadge = New-Object System.Windows.Forms.Label
+ $lblExecBadge.AutoSize = $true
+ $lblExecBadge.Font = $fonts.SmallB
+ $lblExecBadge.ForeColor = [System.Drawing.Color]::White
+ $lblExecBadge.BackColor = if ($srcInfo.Mode -eq "Network") { $theme.AsanLight } elseif ($srcInfo.Mode -eq "USB") { $theme.AsanGreen } else { $theme.BadgeOnlineBg }
+ $lblExecBadge.Padding = New-Object System.Windows.Forms.Padding(9, 5, 9, 5)
+ $lblExecBadge.Margin = New-Object System.Windows.Forms.Padding(0, 2, 0, 0)
+ $lblExecBadge.Text = $srcInfo.Label
+ $toolTip.SetToolTip($lblExecBadge, $srcInfo.Detail)
+
+ # RightToLeft order: first added is rightmost
+ $brandRight.Controls.Add($btnTopDiag)
+ $brandRight.Controls.Add($btnTopRefresh)
+ $brandRight.Controls.Add($lblExecBadge)
+
+ $brandLeft = New-Object System.Windows.Forms.Panel
+ $brandLeft.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $brandLeft.BackColor = [System.Drawing.Color]::Transparent
+
+ $picLogo = New-Object System.Windows.Forms.PictureBox
+ $picLogo.Image = $symbolBmp
+ $picLogo.Size = New-Object System.Drawing.Size(40, 40)
+ $picLogo.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+ $picLogo.Location = New-Object System.Drawing.Point(0, 0)
 
  $lblAppTitle = New-Object System.Windows.Forms.Label
- $lblAppTitle.Text = (U "SID \uBCC0\uACBD \uC0AC\uC804\u00B7\uC0AC\uD6C4 \uBCF4\uC870 \uD234") + "  v" + $verStr + " (" + $buildMeta + ")"
- $lblAppTitle.Font = $fontTitle
- $lblAppTitle.ForeColor = $pal.HeaderFg
+ $lblAppTitle.Text = U "SID \uBCC0\uACBD \uBCF4\uC870 \uB3C4\uAD6C"
+ $lblAppTitle.Font = $fonts.Title
+ $lblAppTitle.ForeColor = [System.Drawing.Color]::White
  $lblAppTitle.AutoSize = $true
- $lblAppTitle.Location = New-Object System.Drawing.Point(0, 2)
+ $lblAppTitle.Location = New-Object System.Drawing.Point(50, 0)
 
- $lblSysSub = New-Object System.Windows.Forms.Label
- $lblSysSub.Text = ("[" + $sysInfo.Vendor + "] " + $sysInfo.ModelName + "  |  " + (U "\uC2E4\uD589 \uC704\uCE58: ") + $srcInfo.Label)
- $lblSysSub.Font = $fontSmall
- $lblSysSub.ForeColor = $pal.HeaderSub
- $lblSysSub.AutoSize = $true
- $lblSysSub.Location = New-Object System.Drawing.Point(2, 30)
+ $lblAppSub = New-Object System.Windows.Forms.Label
+ $lblAppSub.Text = (U "WinPE \uBD80\uD305 \uC900\uBE44\uC640 \uD504\uB9B0\uD130 \uBCF5\uAD6C\uB97C \uC548\uB0B4\uD569\uB2C8\uB2E4 \u00B7 v") + $verStr
+ $lblAppSub.Font = $fonts.Subtitle
+ $lblAppSub.ForeColor = $theme.HeaderSubFg
+ $lblAppSub.AutoSize = $true
+ $lblAppSub.Location = New-Object System.Drawing.Point(51, 24)
+ $toolTip.SetToolTip($lblAppSub, ("Build " + $buildMeta + " / " + $script:BuildCommit))
 
- $headerLeft.Controls.Add($lblAppTitle)
- $headerLeft.Controls.Add($lblSysSub)
- $header.Controls.Add($headerLeft)
- $header.Controls.Add($headerRight)
+ $brandLeft.Controls.Add($picLogo)
+ $brandLeft.Controls.Add($lblAppTitle)
+ $brandLeft.Controls.Add($lblAppSub)
+ $brandBar.Controls.Add($brandLeft)
+ $brandBar.Controls.Add($brandRight)
 
- # ==================== MAIN 2-TAB CONTROL ====================
+ # 2px Orange Accent Line
+ $orangeLine = New-Object System.Windows.Forms.Panel
+ $orangeLine.Dock = [System.Windows.Forms.DockStyle]::Top
+ $orangeLine.Height = 2
+ $orangeLine.BackColor = $theme.AsanOrangeLine
+
+ # Row 2: Meta Summary Bar (28px)
+ $metaBar = New-Object System.Windows.Forms.Panel
+ $metaBar.Dock = [System.Windows.Forms.DockStyle]::Top
+ $metaBar.Height = 28
+ $metaBar.BackColor = $theme.MetaBarBg
+ $metaBar.Padding = New-Object System.Windows.Forms.Padding(16, 3, 16, 3)
+
+ $metaRight = New-RightFlowStrip 0 0 0
+ $btnCopySid = New-AsanButton (U "SID \uBCF5\uC0AC") 68 22 "Secondary" $ui $true
+ $btnCopySid.Margin = New-Object System.Windows.Forms.Padding(6, 0, 0, 0)
+ $toolTip.SetToolTip($btnCopySid, (U "\uD604\uC7AC PC\uC758 Machine SID\uB97C \uD074\uB9BD\uBCF4\uB4DC\uC5D0 \uBCF5\uC0AC\uD569\uB2C8\uB2E4."))
+
+ $lblMetaSid = New-Object System.Windows.Forms.Label
+ $lblMetaSid.AutoSize = $true
+ $lblMetaSid.Font = $fonts.Small
+ $lblMetaSid.ForeColor = $theme.InkMuted
+ $lblMetaSid.Margin = New-Object System.Windows.Forms.Padding(0, 4, 0, 0)
+ $lblMetaSid.Text = U "SID \uD655\uC778 \uC911"
+
+ $metaRight.Controls.Add($btnCopySid)
+ $metaRight.Controls.Add($lblMetaSid)
+
+ $lblMetaLeft = New-Object System.Windows.Forms.Label
+ $lblMetaLeft.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblMetaLeft.Font = $fonts.Small
+ $lblMetaLeft.ForeColor = $theme.InkSecondary
+ $lblMetaLeft.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+ $lblMetaLeft.AutoEllipsis = $true
+ $osTxt = if ($sysInfo.OsSummary) { $sysInfo.OsSummary } else { "Windows" }
+ $initDot = [string][char]0x00B7
+ $dispModel = if ($sysInfo.DisplayVendor) { $sysInfo.DisplayVendor + " " + $sysInfo.ModelName } else { [string]$sysInfo.ModelName }
+ $lblMetaLeft.Text = ($env:COMPUTERNAME + "  " + $initDot + "  " + $dispModel + "  " + $initDot + "  " + $osTxt)
+
+ $metaBar.Controls.Add($lblMetaLeft)
+ $metaBar.Controls.Add($metaRight)
+
+ # Dock Top stacking: add bottom-most first so Top order is brandBar -> orangeLine -> metaBar
+ $topShell.Controls.Add($metaBar)
+ $topShell.Controls.Add($orangeLine)
+ $topShell.Controls.Add($brandBar)
+
+ # ==============================================================================
+ # ZONE 2: CONDITIONAL CRITICAL WARNING BANNER (36px, default hidden)
+ # ==============================================================================
+ $critBanner = New-Object System.Windows.Forms.Panel
+ $critBanner.Dock = [System.Windows.Forms.DockStyle]::Top
+ $critBanner.Height = 36
+ $critBanner.BackColor = $theme.DangerRed
+ $critBanner.Padding = New-Object System.Windows.Forms.Padding(16, 4, 16, 4)
+ $critBanner.Visible = $false
+
+ $critRight = New-RightFlowStrip 1 0 0
+ $btnCritDetail = New-AsanButton (U "\uC9C4\uB2E8 \uC0C1\uC138 \uBCF4\uAE30") 104 26 "Secondary" $ui $true
+ $btnCritDetail.Margin = New-Object System.Windows.Forms.Padding(0)
+ $critRight.Controls.Add($btnCritDetail)
+
+ $lblCritMsg = New-Object System.Windows.Forms.Label
+ $lblCritMsg.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblCritMsg.Font = $fonts.Bold
+ $lblCritMsg.ForeColor = [System.Drawing.Color]::White
+ $lblCritMsg.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+ $lblCritMsg.AutoEllipsis = $true
+
+ $critBanner.Controls.Add($lblCritMsg)
+ $critBanner.Controls.Add($critRight)
+
+ # ==============================================================================
+ # ZONE 4: BOTTOM SLIM STATUS BAR + COLLAPSIBLE LOG CONSOLE (38px <-> 114px)
+ # ==============================================================================
+ $bottomDock = New-Object System.Windows.Forms.Panel
+ $bottomDock.Dock = [System.Windows.Forms.DockStyle]::Bottom
+ $bottomDock.Height = 38
+ $bottomDock.BackColor = $theme.CardBg
+
+ $bottomSep = New-Object System.Windows.Forms.Panel
+ $bottomSep.Dock = [System.Windows.Forms.DockStyle]::Top
+ $bottomSep.Height = 1
+ $bottomSep.BackColor = $theme.Border
+
+ $statusStrip = New-Object System.Windows.Forms.Panel
+ $statusStrip.Dock = [System.Windows.Forms.DockStyle]::Top
+ $statusStrip.Height = 37
+ $statusStrip.BackColor = $theme.CardBg
+ $statusStrip.Padding = New-Object System.Windows.Forms.Padding(16, 5, 16, 5)
+
+ $statusRight = New-RightFlowStrip 0 0 0
+ $btnToggleLog = New-AsanButton (U "\uC0C1\uC138 \uB85C\uADF8 \uBCF4\uAE30") 108 26 "Secondary" $ui $true
+ $btnToggleLog.Margin = New-Object System.Windows.Forms.Padding(0)
+ $statusRight.Controls.Add($btnToggleLog)
+
+ $lblStatusText = New-Object System.Windows.Forms.Label
+ $lblStatusText.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblStatusText.Font = $fonts.SmallB
+ $lblStatusText.ForeColor = $theme.InkSecondary
+ $lblStatusText.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+ $lblStatusText.AutoEllipsis = $true
+ $lblStatusText.Text = U "\uC900\uBE44 \uC644\uB8CC"
+
+ $statusStrip.Controls.Add($lblStatusText)
+ $statusStrip.Controls.Add($statusRight)
+
+ $logDrawerWrap = New-Object System.Windows.Forms.Panel
+ $logDrawerWrap.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $logDrawerWrap.Padding = New-Object System.Windows.Forms.Padding(16, 0, 16, 6)
+ $logDrawerWrap.BackColor = $theme.CardBg
+ $logDrawerWrap.Visible = $false
+
+ $logBoxObj = New-PaddedTextBoxPanel $theme.LogBg $theme.LogFg $fonts.Mono 10 5 $true "" ([System.Windows.Forms.ScrollBars]::Vertical) $true
+ $logDrawerWrap.Controls.Add($logBoxObj.Panel)
+
+ $bottomDock.Controls.Add($logDrawerWrap)
+ $bottomDock.Controls.Add($statusStrip)
+ $bottomDock.Controls.Add($bottomSep)
+
+ # ==============================================================================
+ # ZONE 3: MAIN WORKSPACE (CanvasBg, Padding 12, OwnerDrawFixed Numbered Tabs)
+ # ==============================================================================
+ $mainCanvas = New-Object System.Windows.Forms.Panel
+ $mainCanvas.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $mainCanvas.BackColor = $theme.CanvasBg
+ $mainCanvas.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 8)
+
  $tabControl = New-Object System.Windows.Forms.TabControl
  $tabControl.Dock = [System.Windows.Forms.DockStyle]::Fill
- $tabControl.Padding = New-Object System.Drawing.Point(16, 7)
- $tabControl.Font = $fontBold
+ Enable-AsanOwnerDrawTabs $tabControl $theme $fonts
 
  $tabPre = New-Object System.Windows.Forms.TabPage
- $tabPre.Text = U "  1. SID \uBCC0\uACBD \uC0AC\uC804 \uC791\uC5C5 (\uBD80\uD2B8\uB85C\uB354 \uC815\uB9AC -> USB \uBD80\uD305)  "
- $tabPre.BackColor = $pal.AppBg
- $tabPre.Padding = New-Object System.Windows.Forms.Padding(12)
- $tabPre.Font = $fontRegular
+ $tabPre.Text = U "1. SID \uBCC0\uACBD \uC804 \uC900\uBE44"
+ $tabPre.BackColor = $theme.CanvasBg
+ $tabPre.Padding = New-Object System.Windows.Forms.Padding(10, 8, 10, 8)
+ $tabPre.Font = $fonts.Base
 
  $tabPost = New-Object System.Windows.Forms.TabPage
- $tabPost.Text = U "  2. SID \uBCC0\uACBD \uC0AC\uD6C4 \uC791\uC5C5 (\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B)  "
- $tabPost.BackColor = $pal.AppBg
- $tabPost.Padding = New-Object System.Windows.Forms.Padding(12)
- $tabPost.Font = $fontRegular
+ $tabPost.Text = U "2. SID \uBCC0\uACBD \uD6C4 \uD504\uB9B0\uD130 \uBCF5\uAD6C"
+ $tabPost.BackColor = $theme.CanvasBg
+ $tabPost.Padding = New-Object System.Windows.Forms.Padding(10, 8, 10, 8)
+ $tabPost.Font = $fonts.Base
 
  [void]$tabControl.TabPages.Add($tabPre)
  [void]$tabControl.TabPages.Add($tabPost)
+ $mainCanvas.Controls.Add($tabControl)
 
- # ==============================================================================
- # TAB 1: PRE-SID (Guidance Banner -> STEP 1 Bootloader -> STEP 2 BIOS & USB)
- # ==============================================================================
+ # ------------------------------------------------------------------------------
+ # TAB 1: PRE-SID (Guidance Banner -> 1?? Bootloader Card -> 2?? USB Card)
+ # ------------------------------------------------------------------------------
  $preRoot = New-Object System.Windows.Forms.TableLayoutPanel
  $preRoot.Dock = [System.Windows.Forms.DockStyle]::Fill
  $preRoot.ColumnCount = 1
  $preRoot.RowCount = 3
+ $preRoot.BackColor = $theme.CanvasBg
  [void]$preRoot.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
- [void]$preRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 86)))
- [void]$preRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 35)))
- [void]$preRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 65)))
+ [void]$preRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 56)))
+ [void]$preRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 38)))
+ [void]$preRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 62)))
  $tabPre.Controls.Add($preRoot)
 
- # Pre-SID Contextual Guidance Banner
+ # Tab 1 Top Guidance Banner (height 50px + 6px bottom margin = 56px)
  $preBanner = New-Object System.Windows.Forms.Panel
  $preBanner.Dock = [System.Windows.Forms.DockStyle]::Fill
- $preBanner.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 8)
+ $preBanner.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
  $preBanner.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
  $preAccent = New-Object System.Windows.Forms.Panel
  $preAccent.Dock = [System.Windows.Forms.DockStyle]::Left
- $preAccent.Width = 6
+ $preAccent.Width = 4
 
  $preBannerBody = New-Object System.Windows.Forms.Panel
  $preBannerBody.Dock = [System.Windows.Forms.DockStyle]::Fill
- $preBannerBody.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 6)
+ $preBannerBody.Padding = New-Object System.Windows.Forms.Padding(12, 6, 12, 5)
 
  $lblPreBanTitle = New-Object System.Windows.Forms.Label
  $lblPreBanTitle.Dock = [System.Windows.Forms.DockStyle]::Top
- $lblPreBanTitle.Height = 22
- $lblPreBanTitle.Font = $fontBannerT
+ $lblPreBanTitle.Height = 20
+ $lblPreBanTitle.Font = $fonts.Bold
+ $lblPreBanTitle.AutoEllipsis = $true
 
  $lblPreBanMsg = New-Object System.Windows.Forms.Label
  $lblPreBanMsg.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lblPreBanMsg.Font = $fontRegular
+ $lblPreBanMsg.Font = $fonts.Small
+ $lblPreBanMsg.AutoEllipsis = $true
 
  $preBannerBody.Controls.Add($lblPreBanMsg)
  $preBannerBody.Controls.Add($lblPreBanTitle)
@@ -396,282 +1206,281 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $preBanner.Controls.Add($preAccent)
  $preRoot.Controls.Add($preBanner, 0, 0)
 
- # STEP 1 GroupBox
- $gbStep1 = New-Object System.Windows.Forms.GroupBox
- $gbStep1.Text = U " STEP 1. C\uB4DC\uB77C\uC774\uBE0C \uC678 \uB0B4\uC7A5 \uB514\uC2A4\uD06C \uC794\uC874 \uBD80\uD2B8\uB85C\uB354 \uC810\uAC80 (\uD544\uC218 \uC120\uD589 \u00B7 \uC678\uC7A5 USB/WinPE \uC790\uB3D9 \uBCF4\uD638) "
- $gbStep1.Dock = [System.Windows.Forms.DockStyle]::Fill
- $gbStep1.BackColor = $pal.CardBg
- $gbStep1.Font = $fontBold
- $gbStep1.Padding = New-Object System.Windows.Forms.Padding(10, 6, 10, 8)
- $gbStep1.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 8)
+ # Card 1: Step 1 Internal Disk Bootloader Check
+ $cardStep1 = New-Object System.Windows.Forms.Panel
+ $cardStep1.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $cardStep1.BackColor = $theme.CardBg
+ $cardStep1.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+ $cardStep1.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
 
- $lvDisks = New-Object System.Windows.Forms.ListView
- $lvDisks.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lvDisks.View = [System.Windows.Forms.View]::Details
- $lvDisks.FullRowSelect = $true
- $lvDisks.GridLines = $true
- $lvDisks.HideSelection = $false
- $lvDisks.MultiSelect = $false
- $lvDisks.Font = $fontRegular
- [void]$lvDisks.Columns.Add((U "\uB514\uC2A4\uD06C"), 64)
- [void]$lvDisks.Columns.Add((U "\uBAA8\uB378\uBA85"), 225)
- [void]$lvDisks.Columns.Add((U "\uC6A9\uB7C9"), 75)
- [void]$lvDisks.Columns.Add((U "\uD30C\uD2F0\uC158 \uBC29\uC2DD"), 85)
- [void]$lvDisks.Columns.Add((U "\uB300\uC0C1 \uD30C\uD2F0\uC158"), 120)
- [void]$lvDisks.Columns.Add((U "\uBD80\uD2B8\uB85C\uB354 \uC0C1\uD0DC"), 355)
+ $step1Hdr = New-Object System.Windows.Forms.Panel
+ $step1Hdr.Dock = [System.Windows.Forms.DockStyle]::Top
+ $step1Hdr.Height = 36
+ $step1Hdr.BackColor = $theme.CardBg
+ $step1Hdr.Padding = New-Object System.Windows.Forms.Padding(10, 4, 10, 4)
 
- $step1Bar = New-Object System.Windows.Forms.FlowLayoutPanel
- $step1Bar.Dock = [System.Windows.Forms.DockStyle]::Bottom
- $step1Bar.Height = 38
- $step1Bar.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
- $step1Bar.WrapContents = $false
- $step1Bar.Padding = New-Object System.Windows.Forms.Padding(0, 6, 0, 0)
- $step1Bar.Font = $fontRegular
+ $step1Left = New-Object System.Windows.Forms.FlowLayoutPanel
+ $step1Left.Dock = [System.Windows.Forms.DockStyle]::Left
+ $step1Left.AutoSize = $true
+ $step1Left.WrapContents = $false
+ $step1Left.Padding = New-Object System.Windows.Forms.Padding(0, 3, 0, 0)
 
- $btnOneStop = New-Object System.Windows.Forms.Button
- $btnOneStop.Text = U "\uC6D0\uC2A4\uD1B1 \uC815\uB9AC (\uC794\uC874 \uBD80\uD2B8\uB85C\uB354 \uBE44\uD65C\uC131\uD654 + SSD NVRAM \uB4F1\uB85D)"
- $btnOneStop.Size = New-Object System.Drawing.Size(340, 30)
- Set-GuiButtonStyle $btnOneStop "Disabled" $pal
- $btnOneStop.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $lblBadge1 = New-Object System.Windows.Forms.Label
+ $lblBadge1.AutoSize = $true
+ $lblBadge1.BackColor = $theme.AsanGreen
+ $lblBadge1.ForeColor = [System.Drawing.Color]::White
+ $lblBadge1.Font = $fonts.SmallB
+ $lblBadge1.Padding = New-Object System.Windows.Forms.Padding(7, 2, 7, 2)
+ $lblBadge1.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $lblBadge1.Text = U "1\uB2E8\uACC4"
 
- $btnToggleDisk = New-Object System.Windows.Forms.Button
- $btnToggleDisk.Text = U "\uC120\uD0DD \uB514\uC2A4\uD06C \uAC1C\uBCC4 \uC804\uD658 (\uBE44\uD65C\uC131\uD654/\uBCF5\uAD6C)"
- $btnToggleDisk.Size = New-Object System.Drawing.Size(225, 30)
- Set-GuiButtonStyle $btnToggleDisk "Disabled" $pal
- $btnToggleDisk.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $lblStep1Title = New-Object System.Windows.Forms.Label
+ $lblStep1Title.AutoSize = $true
+ $lblStep1Title.Font = $fonts.Bold
+ $lblStep1Title.ForeColor = $theme.InkPrimary
+ $lblStep1Title.Margin = New-Object System.Windows.Forms.Padding(0, 2, 10, 0)
+ $lblStep1Title.Text = U "\uB0B4\uC7A5 \uB514\uC2A4\uD06C \uBD80\uD2B8\uB85C\uB354 \uC810\uAC80"
 
- $btnIgnoreStep1 = New-Object System.Windows.Forms.Button
- $btnIgnoreStep1.Text = U "\uC704\uD5D8 \uBB34\uC2DC \uD6C4 STEP 2 \uC7A0\uAE08 \uD574\uC81C (IGNORE)"
- $btnIgnoreStep1.Size = New-Object System.Drawing.Size(250, 30)
- Set-GuiButtonStyle $btnIgnoreStep1 "PrimaryAmber" $pal
+ $lblStep1Chip = New-Object System.Windows.Forms.Label
+ $lblStep1Chip.AutoSize = $true
+ $lblStep1Chip.Font = $fonts.SmallB
+ $lblStep1Chip.Padding = New-Object System.Windows.Forms.Padding(7, 2, 7, 2)
+ $lblStep1Chip.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
+ $lblStep1Chip.Text = U "\uD655\uC778 \uC911"
+
+ $step1Left.Controls.Add($lblBadge1)
+ $step1Left.Controls.Add($lblStep1Title)
+ $step1Left.Controls.Add($lblStep1Chip)
+
+ $step1Right = New-RightFlowStrip 1 0 0
+ $btnStep1Fold = New-AsanButton (U "\uC811\uAE30") 56 26 "Secondary" $ui $true
+ $btnStep1Fold.Margin = New-Object System.Windows.Forms.Padding(6, 0, 0, 0)
+
+ $btnIgnoreStep1 = New-AsanButton (U "\uC704\uD5D8 \uD655\uC778 \uAC74\uB108\uB6F0\uAE30") 126 26 "SoftOrange" $ui $true
+ $btnIgnoreStep1.Margin = New-Object System.Windows.Forms.Padding(6, 0, 0, 0)
  $btnIgnoreStep1.Visible = $false
 
- $step1Bar.Controls.Add($btnOneStop)
- $step1Bar.Controls.Add($btnToggleDisk)
- $step1Bar.Controls.Add($btnIgnoreStep1)
+ $btnToggleDisk = New-AsanButton (U "\uC120\uD0DD \uB514\uC2A4\uD06C \uC804\uD658") 116 26 "Secondary" $ui $true
+ $btnToggleDisk.Margin = New-Object System.Windows.Forms.Padding(6, 0, 0, 0)
 
- $gbStep1.Controls.Add($lvDisks)
- $gbStep1.Controls.Add($step1Bar)
- $preRoot.Controls.Add($gbStep1, 0, 1)
+ $btnOneStop = New-AsanButton (U "\uC794\uC874 \uBD80\uD2B8\uB85C\uB354 \uC815\uB9AC") 138 26 "Orange" $ui $true
+ $btnOneStop.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
 
- # STEP 2 GroupBox
- $gbStep2 = New-Object System.Windows.Forms.GroupBox
- $gbStep2.Text = U " STEP 2. BIOS \uAD50\uCC28 \uC9C4\uB2E8 \uBC0F WinPE USB \uC120\uD0DD / 1\uD68C\uC131 \uBD80\uD305 "
- $gbStep2.Dock = [System.Windows.Forms.DockStyle]::Fill
- $gbStep2.BackColor = $pal.CardBg
- $gbStep2.Font = $fontBold
- $gbStep2.Padding = New-Object System.Windows.Forms.Padding(10, 6, 10, 8)
+ # RightToLeft order
+ $step1Right.Controls.Add($btnStep1Fold)
+ $step1Right.Controls.Add($btnIgnoreStep1)
+ $step1Right.Controls.Add($btnToggleDisk)
+ $step1Right.Controls.Add($btnOneStop)
 
- $step2Layout = New-Object System.Windows.Forms.TableLayoutPanel
- $step2Layout.Dock = [System.Windows.Forms.DockStyle]::Fill
- $step2Layout.ColumnCount = 1
- $step2Layout.RowCount = 6
- $step2Layout.Font = $fontRegular
- [void]$step2Layout.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
- [void]$step2Layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
- [void]$step2Layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 68)))
- [void]$step2Layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 22)))
- [void]$step2Layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 42)))
- [void]$step2Layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 58)))
- [void]$step2Layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 44)))
+ $step1Hdr.Controls.Add($step1Left)
+ $step1Hdr.Controls.Add($step1Right)
 
- # Lock banner (visible when STEP 1 blocks STEP 2)
- $lblStep2Lock = New-Object System.Windows.Forms.Label
- $lblStep2Lock.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lblStep2Lock.AutoSize = $true
- $lblStep2Lock.BackColor = $pal.ErrBg
- $lblStep2Lock.ForeColor = $pal.ErrFg
- $lblStep2Lock.Font = $fontBold
- $lblStep2Lock.Padding = New-Object System.Windows.Forms.Padding(8, 5, 8, 5)
- $lblStep2Lock.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 4)
- $lblStep2Lock.Text = U "[\uC7A0\uAE40] STEP 1\uC758 \uC794\uC874 \uBD80\uD2B8\uB85C\uB354 \uCDA9\uB3CC\uC744 \uBA3C\uC800 \uC815\uB9AC\uD558\uAC70\uB098 IGNORE \uD655\uC778 \uD6C4\uC5D0\uB9CC USB \uBD80\uD305\uC774 \uD65C\uC131\uD654\uB429\uB2C8\uB2E4."
- $lblStep2Lock.Visible = $false
- $step2Layout.Controls.Add($lblStep2Lock, 0, 0)
+ $dgvDisks = New-AsanGrid $theme $fonts
+ Add-AsanGridColumn $dgvDisks "Disk"      (U "\uB514\uC2A4\uD06C") 68 $false 64
+ Add-AsanGridColumn $dgvDisks "Model"     (U "\uBAA8\uB378\uBA85") 220 $false 140
+ Add-AsanGridColumn $dgvDisks "Size"      (U "\uC6A9\uB7C9") 78 $false 68
+ Add-AsanGridColumn $dgvDisks "Style"     (U "\uBC29\uC2DD") 60 $false 54
+ Add-AsanGridColumn $dgvDisks "BootPart"  (U "\uBD80\uD2B8 \uC601\uC5ED") 100 $false 86
+ Add-AsanGridColumn $dgvDisks "Status"    (U "\uC810\uAC80 \uC0C1\uD0DC") 180 $true 150
 
- # BIOS Cross-Check Strip
+ $cardStep1.Controls.Add($dgvDisks)
+ $cardStep1.Controls.Add($step1Hdr)
+ $preRoot.Controls.Add($cardStep1, 0, 1)
+
+ # Card 2: Step 2 BIOS Summary + Unified USB Selection & Reboot
+ $cardStep2 = New-Object System.Windows.Forms.Panel
+ $cardStep2.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $cardStep2.BackColor = $theme.CardBg
+ $cardStep2.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+
+ $step2Hdr = New-Object System.Windows.Forms.Panel
+ $step2Hdr.Dock = [System.Windows.Forms.DockStyle]::Top
+ $step2Hdr.Height = 36
+ $step2Hdr.BackColor = $theme.CardBg
+ $step2Hdr.Padding = New-Object System.Windows.Forms.Padding(10, 4, 10, 4)
+
+ $step2Left = New-Object System.Windows.Forms.FlowLayoutPanel
+ $step2Left.Dock = [System.Windows.Forms.DockStyle]::Left
+ $step2Left.AutoSize = $true
+ $step2Left.WrapContents = $false
+ $step2Left.Padding = New-Object System.Windows.Forms.Padding(0, 3, 0, 0)
+
+ $lblBadge2 = New-Object System.Windows.Forms.Label
+ $lblBadge2.AutoSize = $true
+ $lblBadge2.BackColor = $theme.AsanGreen
+ $lblBadge2.ForeColor = [System.Drawing.Color]::White
+ $lblBadge2.Font = $fonts.SmallB
+ $lblBadge2.Padding = New-Object System.Windows.Forms.Padding(7, 2, 7, 2)
+ $lblBadge2.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $lblBadge2.Text = U "2\uB2E8\uACC4"
+
+ $lblStep2Title = New-Object System.Windows.Forms.Label
+ $lblStep2Title.AutoSize = $true
+ $lblStep2Title.Font = $fonts.Bold
+ $lblStep2Title.ForeColor = $theme.InkPrimary
+ $lblStep2Title.Margin = New-Object System.Windows.Forms.Padding(0, 2, 10, 0)
+ $lblStep2Title.Text = U "WinPE USB \uC120\uD0DD \uBC0F \uC7AC\uBD80\uD305"
+
+ $lblStep2LockChip = New-Object System.Windows.Forms.Label
+ $lblStep2LockChip.AutoSize = $true
+ $lblStep2LockChip.BackColor = $theme.DangerRedTint
+ $lblStep2LockChip.ForeColor = $theme.DangerRedDeep
+ $lblStep2LockChip.Font = $fonts.SmallB
+ $lblStep2LockChip.Padding = New-Object System.Windows.Forms.Padding(7, 2, 7, 2)
+ $lblStep2LockChip.Text = U "1\uB2E8\uACC4 \uC815\uB9AC \uD6C4 \uD65C\uC131\uD654"
+ $lblStep2LockChip.Visible = $false
+
+ $step2Left.Controls.Add($lblBadge2)
+ $step2Left.Controls.Add($lblStep2Title)
+ $step2Left.Controls.Add($lblStep2LockChip)
+
+ $step2Right = New-RightFlowStrip 1 0 0
+ $btnInlineDiag = New-AsanButton (U "BIOS \uC9C4\uB2E8 \uC0C1\uC138") 108 26 "Secondary" $ui $true
+ $btnInlineDiag.Margin = New-Object System.Windows.Forms.Padding(6, 0, 0, 0)
+ $btnRescanUsb = New-AsanButton (U "USB \uB2E4\uC2DC \uCC3E\uAE30") 104 26 "Secondary" $ui $true
+ $btnRescanUsb.Margin = New-Object System.Windows.Forms.Padding(0)
+ $step2Right.Controls.Add($btnInlineDiag)
+ $step2Right.Controls.Add($btnRescanUsb)
+
+ $step2Hdr.Controls.Add($step2Left)
+ $step2Hdr.Controls.Add($step2Right)
+
+ # Compact BIOS + Physical USB Status Strip (30px)
  $biosStrip = New-Object System.Windows.Forms.Panel
- $biosStrip.Dock = [System.Windows.Forms.DockStyle]::Fill
- $biosStrip.BackColor = $pal.RowAlt
- $biosStrip.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
- $biosStrip.Padding = New-Object System.Windows.Forms.Padding(8, 5, 8, 4)
- $biosStrip.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 4)
+ $biosStrip.Dock = [System.Windows.Forms.DockStyle]::Top
+ $biosStrip.Height = 30
+ $biosStrip.BackColor = $theme.RowAltBg
+ $biosStrip.Padding = New-Object System.Windows.Forms.Padding(10, 3, 10, 3)
 
  $biosPills = New-Object System.Windows.Forms.FlowLayoutPanel
- $biosPills.Dock = [System.Windows.Forms.DockStyle]::Top
- $biosPills.Height = 32
+ $biosPills.Dock = [System.Windows.Forms.DockStyle]::Left
+ $biosPills.AutoSize = $true
  $biosPills.WrapContents = $false
 
  $lblPillSec = New-Object System.Windows.Forms.Label
- $lblPillSec.AutoSize = $true
- $lblPillSec.Font = $fontBold
+ $lblPillSec.AutoSize = $true; $lblPillSec.Font = $fonts.SmallB
  $lblPillSec.Padding = New-Object System.Windows.Forms.Padding(7, 3, 7, 3)
- $lblPillSec.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $lblPillSec.Margin = New-Object System.Windows.Forms.Padding(0, 1, 6, 0)
 
  $lblPillUsb = New-Object System.Windows.Forms.Label
- $lblPillUsb.AutoSize = $true
- $lblPillUsb.Font = $fontBold
+ $lblPillUsb.AutoSize = $true; $lblPillUsb.Font = $fonts.SmallB
  $lblPillUsb.Padding = New-Object System.Windows.Forms.Padding(7, 3, 7, 3)
- $lblPillUsb.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $lblPillUsb.Margin = New-Object System.Windows.Forms.Padding(0, 1, 6, 0)
 
  $lblPillFast = New-Object System.Windows.Forms.Label
- $lblPillFast.AutoSize = $true
- $lblPillFast.Font = $fontBold
+ $lblPillFast.AutoSize = $true; $lblPillFast.Font = $fonts.SmallB
  $lblPillFast.Padding = New-Object System.Windows.Forms.Padding(7, 3, 7, 3)
- $lblPillFast.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
-
- $btnInlineDiag = New-Object System.Windows.Forms.Button
- $btnInlineDiag.Text = U "\uAD50\uCC28 \uAC80\uC99D \uC0C1\uC138"
- $btnInlineDiag.Size = New-Object System.Drawing.Size(102, 24)
- $btnInlineDiag.Font = $fontSmall
- Set-GuiButtonStyle $btnInlineDiag "Neutral" $pal
- $btnInlineDiag.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
+ $lblPillFast.Margin = New-Object System.Windows.Forms.Padding(0, 1, 0, 0)
 
  $biosPills.Controls.Add($lblPillSec)
  $biosPills.Controls.Add($lblPillUsb)
  $biosPills.Controls.Add($lblPillFast)
- $biosPills.Controls.Add($btnInlineDiag)
 
- $lblBiosHint = New-Object System.Windows.Forms.Label
- $lblBiosHint.Dock = [System.Windows.Forms.DockStyle]::Bottom
- $lblBiosHint.Height = 22
- $lblBiosHint.Font = $fontSmall
- $lblBiosHint.ForeColor = $pal.TextMuted
- $lblBiosHint.Text = ("BIOS Hint: " + $sysInfo.BiosHint)
+ $lblPhysSummary = New-Object System.Windows.Forms.Label
+ $lblPhysSummary.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblPhysSummary.Font = $fonts.Small
+ $lblPhysSummary.ForeColor = $theme.InkSecondary
+ $lblPhysSummary.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+ $lblPhysSummary.AutoEllipsis = $true
+ $lblPhysSummary.Text = U "\uC5F0\uACB0\uB41C USB \uD655\uC778 \uC911"
 
+ $biosStrip.Controls.Add($lblPhysSummary)
  $biosStrip.Controls.Add($biosPills)
- $biosStrip.Controls.Add($lblBiosHint)
- $step2Layout.Controls.Add($biosStrip, 0, 1)
 
- # Sub-label for Physical USB
- $lblPhysHdr = New-Object System.Windows.Forms.Label
- $lblPhysHdr.Text = U "[2-1] \uD604\uC7AC \uC5F0\uACB0\uB41C \uBB3C\uB9AC USB \uB514\uC2A4\uD06C"
- $lblPhysHdr.Font = $fontBold
- $lblPhysHdr.ForeColor = $pal.TextDark
- $lblPhysHdr.Dock = [System.Windows.Forms.DockStyle]::Fill
- $step2Layout.Controls.Add($lblPhysHdr, 0, 2)
+ # Unified USB Selection DataGridView
+ $dgvUsb = New-AsanGrid $theme $fonts
+ Add-AsanGridColumn $dgvUsb "Kind"   (U "\uAD6C\uBD84") 80 $false 74
+ Add-AsanGridColumn $dgvUsb "Match"  (U "\uC77C\uCE58 \uC218\uC900") 126 $false 116
+ Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 230 $false 155
+ Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 135 $false 105
+ Add-AsanGridColumn $dgvUsb "Guide"  (U "\uC0C1\uD0DC \uC548\uB0B4") 180 $true 150
 
- # Physical USB ListView (columns sized to avoid horizontal scrollbar at default width)
- $lvPhysUsb = New-Object System.Windows.Forms.ListView
- $lvPhysUsb.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lvPhysUsb.View = [System.Windows.Forms.View]::Details
- $lvPhysUsb.FullRowSelect = $true
- $lvPhysUsb.GridLines = $true
- $lvPhysUsb.HideSelection = $false
- $lvPhysUsb.MultiSelect = $false
- $lvPhysUsb.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
- [void]$lvPhysUsb.Columns.Add((U "\uB514\uC2A4\uD06C"), 62)
- [void]$lvPhysUsb.Columns.Add((U "USB \uBAA8\uB378\uBA85"), 220)
- [void]$lvPhysUsb.Columns.Add((U "\uC6A9\uB7C9"), 75)
- [void]$lvPhysUsb.Columns.Add((U "\uD30C\uD2F0\uC158 \uAD6C\uC131"), 315)
- [void]$lvPhysUsb.Columns.Add((U "\uC18D\uC131"), 82)
- [void]$lvPhysUsb.Columns.Add((U "UEFI \uBD80\uD305"), 125)
- $step2Layout.Controls.Add($lvPhysUsb, 0, 3)
+ # Step 2 Bottom Action Bar (46px)
+ $step2Bar = New-Object System.Windows.Forms.Panel
+ $step2Bar.Dock = [System.Windows.Forms.DockStyle]::Bottom
+ $step2Bar.Height = 46
+ $step2Bar.BackColor = $theme.CardBg
+ $step2Bar.Padding = New-Object System.Windows.Forms.Padding(10, 7, 10, 7)
 
- # NVRAM USB Panel (header + ListView)
- $nvramBox = New-Object System.Windows.Forms.Panel
- $nvramBox.Dock = [System.Windows.Forms.DockStyle]::Fill
- $nvramBox.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 4)
+ $step2Actions = New-Object System.Windows.Forms.FlowLayoutPanel
+ $step2Actions.Dock = [System.Windows.Forms.DockStyle]::Left
+ $step2Actions.AutoSize = $true
+ $step2Actions.WrapContents = $false
+ $step2Actions.Margin = New-Object System.Windows.Forms.Padding(0)
 
- $lblNvramHdr = New-Object System.Windows.Forms.Label
- $lblNvramHdr.Text = U "[2-2] \uBD80\uD305 \uAC00\uB2A5\uD55C UEFI USB \uB300\uC0C1 \uC120\uD0DD (NVRAM \uAD50\uCC28 \uB9E4\uCE6D \uACB0\uACFC)"
- $lblNvramHdr.Font = $fontBold
- $lblNvramHdr.ForeColor = $pal.TextDark
- $lblNvramHdr.Dock = [System.Windows.Forms.DockStyle]::Top
- $lblNvramHdr.Height = 20
-
- $lvNvramUsb = New-Object System.Windows.Forms.ListView
- $lvNvramUsb.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lvNvramUsb.View = [System.Windows.Forms.View]::Details
- $lvNvramUsb.FullRowSelect = $true
- $lvNvramUsb.GridLines = $true
- $lvNvramUsb.HideSelection = $false
- $lvNvramUsb.MultiSelect = $false
- [void]$lvNvramUsb.Columns.Add((U "\uBC88\uD638"), 48)
- [void]$lvNvramUsb.Columns.Add((U "\uB9E4\uCE6D \uC2E0\uB8B0\uB3C4"), 145)
- [void]$lvNvramUsb.Columns.Add((U "\uBD80\uD305 \uD56D\uBAA9 \uC774\uB984 (Description)"), 325)
- [void]$lvNvramUsb.Columns.Add((U "\uC7A5\uCE58 (Device)"), 155)
- [void]$lvNvramUsb.Columns.Add("GUID", 235)
-
- $nvramBox.Controls.Add($lvNvramUsb)
- $nvramBox.Controls.Add($lblNvramHdr)
- $step2Layout.Controls.Add($nvramBox, 0, 4)
-
- # STEP 2 Bottom Action Buttons
- $step2Bar = New-Object System.Windows.Forms.FlowLayoutPanel
- $step2Bar.Dock = [System.Windows.Forms.DockStyle]::Fill
- $step2Bar.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
- $step2Bar.WrapContents = $false
- $step2Bar.Padding = New-Object System.Windows.Forms.Padding(0, 6, 0, 0)
-
- $btnUsbReboot = New-Object System.Windows.Forms.Button
- $btnUsbReboot.Text = U "\uC120\uD0DD\uD55C USB\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305"
- $btnUsbReboot.Size = New-Object System.Drawing.Size(220, 32)
- $btnUsbReboot.Font = $fontBold
- Set-GuiButtonStyle $btnUsbReboot "Disabled" $pal
+ $btnUsbReboot = New-AsanButton (U "\uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305") 166 32 "Primary" $ui $false
  $btnUsbReboot.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
 
- $btnAdvBoot = New-Object System.Windows.Forms.Button
- $btnAdvBoot.Text = U "Windows \uACE0\uAE09 \uBD80\uD305('\uC7A5\uCE58 \uC0AC\uC6A9')"
- $btnAdvBoot.Size = New-Object System.Drawing.Size(220, 32)
- Set-GuiButtonStyle $btnAdvBoot "Disabled" $pal
+ $btnAdvBoot = New-AsanButton (U "\uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9") 146 32 "Secondary" $ui $false
  $btnAdvBoot.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $toolTip.SetToolTip($btnAdvBoot, (U "Windows \uC7A5\uCE58 \uC0AC\uC6A9 \uBA54\uB274\uB85C \uC7AC\uBD80\uD305\uD574 \uC5F0\uACB0\uB41C USB\uB97C \uC9C1\uC811 \uACE8\uB77C \uBD80\uD305\uD569\uB2C8\uB2E4."))
 
- $btnBiosBoot = New-Object System.Windows.Forms.Button
- $btnBiosBoot.Text = U "BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815 \uC9C4\uC785"
- $btnBiosBoot.Size = New-Object System.Drawing.Size(172, 32)
- Set-GuiButtonStyle $btnBiosBoot "Disabled" $pal
- $btnBiosBoot.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $btnBiosBoot = New-AsanButton (U "BIOS \uC124\uC815 \uC5F4\uAE30") 122 32 "Secondary" $ui $false
+ $btnBiosBoot.Margin = New-Object System.Windows.Forms.Padding(0)
+ $toolTip.SetToolTip($btnBiosBoot, $sysInfo.BiosHint)
 
- $btnRescanUsb = New-Object System.Windows.Forms.Button
- $btnRescanUsb.Text = U "USB \uB2E4\uC2DC \uC2A4\uCE94"
- $btnRescanUsb.Size = New-Object System.Drawing.Size(116, 32)
- Set-GuiButtonStyle $btnRescanUsb "Neutral" $pal
+ $step2Actions.Controls.Add($btnUsbReboot)
+ $step2Actions.Controls.Add($btnAdvBoot)
+ $step2Actions.Controls.Add($btnBiosBoot)
 
- $step2Bar.Controls.Add($btnUsbReboot)
- $step2Bar.Controls.Add($btnAdvBoot)
- $step2Bar.Controls.Add($btnBiosBoot)
- $step2Bar.Controls.Add($btnRescanUsb)
- $step2Layout.Controls.Add($step2Bar, 0, 5)
+ $lblBiosCue = New-Object System.Windows.Forms.Label
+ $lblBiosCue.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblBiosCue.Font = $fonts.Small
+ $lblBiosCue.ForeColor = $theme.InkMuted
+ $lblBiosCue.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+ $lblBiosCue.AutoEllipsis = $true
+ $lblBiosCue.Text = if ($sysInfo.BiosGuideShort) { $sysInfo.BiosGuideShort } else { $sysInfo.BiosHint }
+ $toolTip.SetToolTip($lblBiosCue, $sysInfo.BiosHint)
 
- $gbStep2.Controls.Add($step2Layout)
- $preRoot.Controls.Add($gbStep2, 0, 2)
+ $step2Bar.Controls.Add($lblBiosCue)
+ $step2Bar.Controls.Add($step2Actions)
 
- # ==============================================================================
- # TAB 2: POST-SID (Guidance Banner -> Status Card -> Printers -> Reset & Log)
- # ==============================================================================
+ # Dock order inside Card 2: Fill first, then Bottom, then Top (bottom-up: biosStrip then step2Hdr)
+ $cardStep2.Controls.Add($dgvUsb)
+ $cardStep2.Controls.Add($step2Bar)
+ $cardStep2.Controls.Add($biosStrip)
+ $cardStep2.Controls.Add($step2Hdr)
+ $preRoot.Controls.Add($cardStep2, 0, 2)
+
+ # ------------------------------------------------------------------------------
+ # TAB 2: POST-SID (Guidance Banner -> 4 Metric Tiles -> Printers Grid -> Action)
+ # ------------------------------------------------------------------------------
  $postRoot = New-Object System.Windows.Forms.TableLayoutPanel
  $postRoot.Dock = [System.Windows.Forms.DockStyle]::Fill
  $postRoot.ColumnCount = 1
  $postRoot.RowCount = 4
+ $postRoot.BackColor = $theme.CanvasBg
  [void]$postRoot.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
- [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 86)))
- [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 134)))
- [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 52)))
- [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 48)))
+ [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 56)))
+ [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 76)))
+ [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+ [void]$postRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 56)))
  $tabPost.Controls.Add($postRoot)
 
- # Post-SID Contextual Guidance Banner
+ # Tab 2 Guidance Banner
  $postBanner = New-Object System.Windows.Forms.Panel
  $postBanner.Dock = [System.Windows.Forms.DockStyle]::Fill
- $postBanner.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 8)
+ $postBanner.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
  $postBanner.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
  $postAccent = New-Object System.Windows.Forms.Panel
  $postAccent.Dock = [System.Windows.Forms.DockStyle]::Left
- $postAccent.Width = 6
+ $postAccent.Width = 4
 
  $postBannerBody = New-Object System.Windows.Forms.Panel
  $postBannerBody.Dock = [System.Windows.Forms.DockStyle]::Fill
- $postBannerBody.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 6)
+ $postBannerBody.Padding = New-Object System.Windows.Forms.Padding(12, 6, 12, 5)
 
  $lblPostBanTitle = New-Object System.Windows.Forms.Label
  $lblPostBanTitle.Dock = [System.Windows.Forms.DockStyle]::Top
- $lblPostBanTitle.Height = 22
- $lblPostBanTitle.Font = $fontBannerT
+ $lblPostBanTitle.Height = 20
+ $lblPostBanTitle.Font = $fonts.Bold
+ $lblPostBanTitle.AutoEllipsis = $true
 
  $lblPostBanMsg = New-Object System.Windows.Forms.Label
  $lblPostBanMsg.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lblPostBanMsg.Font = $fontRegular
+ $lblPostBanMsg.Font = $fonts.Small
+ $lblPostBanMsg.AutoEllipsis = $true
 
  $postBannerBody.Controls.Add($lblPostBanMsg)
  $postBannerBody.Controls.Add($lblPostBanTitle)
@@ -679,167 +1488,344 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $postBanner.Controls.Add($postAccent)
  $postRoot.Controls.Add($postBanner, 0, 0)
 
- # Post-SID Status Summary Card
- $gbPostInfo = New-Object System.Windows.Forms.GroupBox
- $gbPostInfo.Text = U " PC \uC5ED\uD560 \uBC0F \uC2A4\uD480\uB7EC/\uB124\uD2B8\uC6CC\uD06C \uC0C1\uD0DC \uC9C4\uB2E8 "
- $gbPostInfo.Dock = [System.Windows.Forms.DockStyle]::Fill
- $gbPostInfo.BackColor = $pal.CardBg
- $gbPostInfo.Font = $fontBold
- $gbPostInfo.Padding = New-Object System.Windows.Forms.Padding(12, 6, 12, 6)
- $gbPostInfo.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 8)
+ # 4 Clean Horizontal Metric Tiles
+ $tileGrid = New-Object System.Windows.Forms.TableLayoutPanel
+ $tileGrid.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $tileGrid.ColumnCount = 4
+ $tileGrid.RowCount = 1
+ $tileGrid.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
+ for ($c = 0; $c -lt 4; $c++) {
+  [void]$tileGrid.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 25)))
+ }
+ [void]$tileGrid.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)))
 
- $postGrid = New-Object System.Windows.Forms.TableLayoutPanel
- $postGrid.Dock = [System.Windows.Forms.DockStyle]::Fill
- $postGrid.ColumnCount = 2
- $postGrid.RowCount = 4
- $postGrid.Font = $fontRegular
- [void]$postGrid.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50)))
- [void]$postGrid.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50)))
- for ($r = 0; $r -lt 4; $r++) {
-  [void]$postGrid.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 25)))
+ $makeTile = {
+  param([string]$cap, [int]$colIdx)
+  $card = New-Object System.Windows.Forms.Panel
+  $card.Dock = [System.Windows.Forms.DockStyle]::Fill
+  $card.BackColor = $theme.CardBg
+  $card.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+  $rightM = if ($colIdx -lt 3) { 6 } else { 0 }
+  $card.Margin = New-Object System.Windows.Forms.Padding(0, 0, $rightM, 0)
+  $card.Padding = New-Object System.Windows.Forms.Padding(12, 7, 12, 6)
+
+  $lCap = New-Object System.Windows.Forms.Label
+  $lCap.Dock = [System.Windows.Forms.DockStyle]::Top
+  $lCap.Height = 16
+  $lCap.Font = $fonts.Small
+  $lCap.ForeColor = $theme.InkMuted
+  $lCap.Text = $cap
+
+  $lVal = New-Object System.Windows.Forms.Label
+  $lVal.Dock = [System.Windows.Forms.DockStyle]::Top
+  $lVal.Height = 22
+  $lVal.Font = $fonts.Metric
+  $lVal.ForeColor = $theme.InkPrimary
+  $lVal.AutoEllipsis = $true
+  $lVal.Text = "-"
+
+  $lSub = New-Object System.Windows.Forms.Label
+  $lSub.Dock = [System.Windows.Forms.DockStyle]::Fill
+  $lSub.Font = $fonts.Small
+  $lSub.ForeColor = $theme.InkSecondary
+  $lSub.AutoEllipsis = $true
+  $lSub.Text = ""
+
+  $card.Controls.Add($lSub)
+  $card.Controls.Add($lVal)
+  $card.Controls.Add($lCap)
+  $tileGrid.Controls.Add($card, $colIdx, 0)
+  return [PSCustomObject]@{ Card = $card; Caption = $lCap; Value = $lVal; Sub = $lSub }
  }
 
- $lblPostRole   = New-Object System.Windows.Forms.Label; $lblPostRole.Dock = [System.Windows.Forms.DockStyle]::Fill; $lblPostRole.Font = $fontBold
- $lblPostComp   = New-Object System.Windows.Forms.Label; $lblPostComp.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lblPostSpool  = New-Object System.Windows.Forms.Label; $lblPostSpool.Dock = [System.Windows.Forms.DockStyle]::Fill; $lblPostSpool.Font = $fontBold
- $lblPostQueue  = New-Object System.Windows.Forms.Label; $lblPostQueue.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lblPostSid    = New-Object System.Windows.Forms.Label; $lblPostSid.Dock = [System.Windows.Forms.DockStyle]::Fill; $lblPostSid.ForeColor = $pal.TextMuted
- $lblPostExtra1 = New-Object System.Windows.Forms.Label; $lblPostExtra1.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lblPostExtra2 = New-Object System.Windows.Forms.Label; $lblPostExtra2.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lblPostNote   = New-Object System.Windows.Forms.Label; $lblPostNote.Dock = [System.Windows.Forms.DockStyle]::Fill; $lblPostNote.ForeColor = $pal.TextMuted
- $lblPostNote.Text = U "\uC548\uB0B4: \uAE30\uC874 \uD504\uB9B0\uD130, \uB4DC\uB77C\uC774\uBC84, \uACF5\uC720 \uC124\uC815\uC740 \uC0AD\uC81C\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
+ $tileRole  = & $makeTile (U "PC \uC5ED\uD560") 0
+ $tileSpool = & $makeTile (U "\uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4") 1
+ $tileQueue = & $makeTile (U "\uC778\uC1C4 \uB300\uAE30\uC5F4") 2
+ $tileShare = & $makeTile (U "\uACF5\uC720 \uC5F0\uACB0 \uC0C1\uD0DC") 3
+ $postRoot.Controls.Add($tileGrid, 0, 1)
 
- $postGrid.Controls.Add($lblPostRole, 0, 0)
- $postGrid.Controls.Add($lblPostComp, 1, 0)
- $postGrid.Controls.Add($lblPostSpool, 0, 1)
- $postGrid.Controls.Add($lblPostQueue, 1, 1)
- $postGrid.Controls.Add($lblPostExtra1, 0, 2)
- $postGrid.Controls.Add($lblPostExtra2, 1, 2)
- $postGrid.Controls.Add($lblPostSid, 0, 3)
- $postGrid.Controls.Add($lblPostNote, 1, 3)
- $gbPostInfo.Controls.Add($postGrid)
- $postRoot.Controls.Add($gbPostInfo, 0, 1)
+ # Printers Card
+ $cardPrinters = New-Object System.Windows.Forms.Panel
+ $cardPrinters.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $cardPrinters.BackColor = $theme.CardBg
+ $cardPrinters.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+ $cardPrinters.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
 
- # Printers ListView
- $gbPrinters = New-Object System.Windows.Forms.GroupBox
- $gbPrinters.Text = U " \uC124\uCE58\uB41C \uD504\uB9B0\uD130 \uBC0F \uACF5\uC720/\uB124\uD2B8\uC6CC\uD06C \uC5F0\uACB0 \uBAA9\uB85D "
- $gbPrinters.Dock = [System.Windows.Forms.DockStyle]::Fill
- $gbPrinters.BackColor = $pal.CardBg
- $gbPrinters.Font = $fontBold
- $gbPrinters.Padding = New-Object System.Windows.Forms.Padding(10, 6, 10, 8)
- $gbPrinters.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 8)
+ $prHdr = New-Object System.Windows.Forms.Panel
+ $prHdr.Dock = [System.Windows.Forms.DockStyle]::Top
+ $prHdr.Height = 32
+ $prHdr.BackColor = $theme.CardBg
+ $prHdr.Padding = New-Object System.Windows.Forms.Padding(12, 6, 12, 4)
 
- $lvPrinters = New-Object System.Windows.Forms.ListView
- $lvPrinters.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lvPrinters.View = [System.Windows.Forms.View]::Details
- $lvPrinters.FullRowSelect = $true
- $lvPrinters.GridLines = $true
- $lvPrinters.Font = $fontRegular
- [void]$lvPrinters.Columns.Add((U "\uD504\uB9B0\uD130 \uC774\uB984"), 265)
- [void]$lvPrinters.Columns.Add((U "\uC720\uD615"), 110)
- [void]$lvPrinters.Columns.Add((U "\uACF5\uC720 \uACBD\uB85C / \uC6D0\uACA9 \uD638\uC2A4\uD2B8"), 220)
- [void]$lvPrinters.Columns.Add((U "\uD3EC\uD2B8"), 155)
- [void]$lvPrinters.Columns.Add((U "\uBE44\uACE0"), 165)
- $gbPrinters.Controls.Add($lvPrinters)
- $postRoot.Controls.Add($gbPrinters, 0, 2)
+ $lblPrTitle = New-Object System.Windows.Forms.Label
+ $lblPrTitle.Dock = [System.Windows.Forms.DockStyle]::Left
+ $lblPrTitle.AutoSize = $true
+ $lblPrTitle.Font = $fonts.Bold
+ $lblPrTitle.ForeColor = $theme.InkPrimary
+ $lblPrTitle.Text = U "\uC124\uCE58\uB41C \uD504\uB9B0\uD130 \uBAA9\uB85D"
 
- # Post-SID Action & Live Log Panel
- $gbReset = New-Object System.Windows.Forms.GroupBox
- $gbReset.Text = U " \uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589 \uBC0F \uACB0\uACFC \uB85C\uADF8 "
- $gbReset.Dock = [System.Windows.Forms.DockStyle]::Fill
- $gbReset.BackColor = $pal.CardBg
- $gbReset.Font = $fontBold
- $gbReset.Padding = New-Object System.Windows.Forms.Padding(10, 6, 10, 8)
+ $lblPrSafeNote = New-Object System.Windows.Forms.Label
+ $lblPrSafeNote.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblPrSafeNote.Font = $fonts.Small
+ $lblPrSafeNote.ForeColor = $theme.InkMuted
+ $lblPrSafeNote.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+ $lblPrSafeNote.AutoEllipsis = $true
+ $lblPrSafeNote.Text = U "\uCD08\uAE30\uD654\uB97C \uC2E4\uD589\uD574\uB3C4 \uAE30\uC874 \uD504\uB9B0\uD130, \uB4DC\uB77C\uC774\uBC84, \uACF5\uC720 \uC124\uC815\uC740 \uC0AD\uC81C\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
 
- $resetBar = New-Object System.Windows.Forms.FlowLayoutPanel
- $resetBar.Dock = [System.Windows.Forms.DockStyle]::Top
- $resetBar.Height = 42
- $resetBar.WrapContents = $false
- $resetBar.Padding = New-Object System.Windows.Forms.Padding(0, 2, 0, 6)
- $resetBar.Font = $fontRegular
+ $prHdr.Controls.Add($lblPrSafeNote)
+ $prHdr.Controls.Add($lblPrTitle)
 
- $btnSpoolerReset = New-Object System.Windows.Forms.Button
- $btnSpoolerReset.Text = U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589 (\uB300\uAE30\uC5F4 \uBE44\uC6B0\uAE30 + \uC11C\uBE44\uC2A4 \uC7AC\uC2DC\uC791)"
- $btnSpoolerReset.Size = New-Object System.Drawing.Size(390, 34)
- $btnSpoolerReset.Font = $fontBold
- Set-GuiButtonStyle $btnSpoolerReset "PrimaryGreen" $pal
- $btnSpoolerReset.Margin = New-Object System.Windows.Forms.Padding(0, 0, 10, 0)
+ $dgvPrinters = New-AsanGrid $theme $fonts
+ Add-AsanGridColumn $dgvPrinters "Type"   (U "\uAD6C\uBD84") 94 $false 84
+ Add-AsanGridColumn $dgvPrinters "Name"   (U "\uD504\uB9B0\uD130 \uC774\uB984") 230 $false 150
+ Add-AsanGridColumn $dgvPrinters "Share"  (U "\uACF5\uC720 \uACBD\uB85C") 190 $false 120
+ Add-AsanGridColumn $dgvPrinters "Port"   (U "\uD3EC\uD2B8") 130 $false 90
+ Add-AsanGridColumn $dgvPrinters "Driver" (U "\uB4DC\uB77C\uC774\uBC84") 160 $true 130
 
- $btnPostRefresh = New-Object System.Windows.Forms.Button
- $btnPostRefresh.Text = U "\uC0C1\uD0DC \uC0C8\uB85C\uACE0\uCE68"
- $btnPostRefresh.Size = New-Object System.Drawing.Size(120, 34)
- Set-GuiButtonStyle $btnPostRefresh "Neutral" $pal
+ $cardPrinters.Controls.Add($dgvPrinters)
+ $cardPrinters.Controls.Add($prHdr)
+ $postRoot.Controls.Add($cardPrinters, 0, 2)
 
- $resetBar.Controls.Add($btnSpoolerReset)
- $resetBar.Controls.Add($btnPostRefresh)
+ # Post-SID Bottom Action Card (56px)
+ $cardPostAct = New-Object System.Windows.Forms.Panel
+ $cardPostAct.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $cardPostAct.BackColor = $theme.CardBg
+ $cardPostAct.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+ $cardPostAct.Margin = New-Object System.Windows.Forms.Padding(0)
+ $cardPostAct.Padding = New-Object System.Windows.Forms.Padding(12, 10, 12, 10)
 
- $tbResetLog = New-Object System.Windows.Forms.TextBox
- $tbResetLog.Dock = [System.Windows.Forms.DockStyle]::Fill
- $tbResetLog.Multiline = $true
- $tbResetLog.ReadOnly = $true
- $tbResetLog.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
- $tbResetLog.Font = $fontMono
- $tbResetLog.BackColor = $pal.RowAlt
- $tbResetLog.Text = U "[\uB300\uAE30] \uC704 [\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC2E4\uD589] \uBC84\uD2BC\uC744 \uB204\uB974\uBA74 \uC9C4\uD589 \uACFC\uC815\uACFC \uACB0\uACFC\uAC00 \uC5EC\uAE30\uC5D0 \uD45C\uC2DC\uB429\uB2C8\uB2E4."
+ $postActLeft = New-Object System.Windows.Forms.FlowLayoutPanel
+ $postActLeft.Dock = [System.Windows.Forms.DockStyle]::Left
+ $postActLeft.AutoSize = $true
+ $postActLeft.WrapContents = $false
+ $postActLeft.Margin = New-Object System.Windows.Forms.Padding(0)
 
- $gbReset.Controls.Add($tbResetLog)
- $gbReset.Controls.Add($resetBar)
- $postRoot.Controls.Add($gbReset, 0, 3)
+ $btnSpoolerReset = New-AsanButton (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654") 176 34 "Primary" $ui $false
+ $btnSpoolerReset.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $toolTip.SetToolTip($btnSpoolerReset, (U "\uC778\uC1C4 \uB300\uAE30\uC5F4\uC744 \uBE44\uC6B0\uACE0 \uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4\uB97C \uC7AC\uC2DC\uC791\uD569\uB2C8\uB2E4."))
 
- $form.Controls.Add($tabControl)
- $form.Controls.Add($header)
+ $btnPostRefresh = New-AsanButton (U "\uC0C1\uD0DC \uB2E4\uC2DC \uD655\uC778") 116 34 "Secondary" $ui $false
+ $btnPostRefresh.Margin = New-Object System.Windows.Forms.Padding(0)
 
- # ==================== SINGLE SHARED UI CONTEXT ($ui) ====================
- # Held by reference in $form.Tag and captured by .GetNewClosure() across all handlers
- $ui = @{
-  Form            = $form
-  Pal             = $pal
-  SrcInfo         = $srcInfo
-  State           = $state
-  ToolTip         = $toolTip
-  LblSysSub       = $lblSysSub
-  PreBanner       = $preBanner
-  PreAccent       = $preAccent
-  LblPreBanTitle  = $lblPreBanTitle
-  LblPreBanMsg    = $lblPreBanMsg
-  LvDisks         = $lvDisks
-  BtnOneStop      = $btnOneStop
-  BtnToggleDisk   = $btnToggleDisk
-  BtnIgnoreStep1  = $btnIgnoreStep1
-  LblStep2Lock    = $lblStep2Lock
-  LblPillSec      = $lblPillSec
-  LblPillUsb      = $lblPillUsb
-  LblPillFast     = $lblPillFast
-  LvPhysUsb       = $lvPhysUsb
-  LvNvramUsb      = $lvNvramUsb
-  BtnUsbReboot    = $btnUsbReboot
-  BtnAdvBoot      = $btnAdvBoot
-  BtnBiosBoot     = $btnBiosBoot
-  PostBanner      = $postBanner
-  PostAccent      = $postAccent
-  LblPostBanTitle = $lblPostBanTitle
-  LblPostBanMsg   = $lblPostBanMsg
-  LblPostRole     = $lblPostRole
-  LblPostComp     = $lblPostComp
-  LblPostSid      = $lblPostSid
-  LblPostSpool    = $lblPostSpool
-  LblPostQueue    = $lblPostQueue
-  LblPostExtra1   = $lblPostExtra1
-  LblPostExtra2   = $lblPostExtra2
-  LvPrinters      = $lvPrinters
-  BtnSpoolerReset = $btnSpoolerReset
-  BtnPostRefresh  = $btnPostRefresh
-  TbResetLog      = $tbResetLog
-  Disposables     = @($toolTip, $fontRegular, $fontBold, $fontTitle, $fontBannerT, $fontSmall, $fontMono)
- }
- $form.Tag = $ui
+ $postActLeft.Controls.Add($btnSpoolerReset)
+ $postActLeft.Controls.Add($btnPostRefresh)
 
- # ==================== REFRESH / RENDER LOGIC (CLOSURE-SAFE) ====================
+ $lblPostOrderTip = New-Object System.Windows.Forms.Label
+ $lblPostOrderTip.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $lblPostOrderTip.Font = $fonts.Small
+ $lblPostOrderTip.ForeColor = $theme.InkSecondary
+ $lblPostOrderTip.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+ $lblPostOrderTip.AutoEllipsis = $true
+ $lblPostOrderTip.Text = U "\uBA54\uC778 \uD504\uB9B0\uD130 PC\uC640 \uD074\uB77C\uC774\uC5B8\uD2B8 PC \uAC01\uAC01\uC5D0\uC11C \uD55C \uBC88\uC529 \uC2E4\uD589\uD574 \uC8FC\uC138\uC694."
+
+ $cardPostAct.Controls.Add($lblPostOrderTip)
+ $cardPostAct.Controls.Add($postActLeft)
+ $postRoot.Controls.Add($cardPostAct, 0, 3)
+
+ # Assemble 4-Zone Shell on Form (Fill first, then Bottom, then Top in reverse order!)
+ $form.Controls.Add($mainCanvas)
+ $form.Controls.Add($bottomDock)
+ $form.Controls.Add($critBanner)
+ $form.Controls.Add($topShell)
+
+ # Populate UI references into single $ui context
+ $ui.TabControl        = $tabControl
+ $ui.PreRoot           = $preRoot
+ $ui.LblMetaLeft       = $lblMetaLeft
+ $ui.LblMetaSid        = $lblMetaSid
+ $ui.BtnCopySid        = $btnCopySid
+ $ui.BtnTopRefresh     = $btnTopRefresh
+ $ui.BtnTopDiag        = $btnTopDiag
+ $ui.CritBanner        = $critBanner
+ $ui.LblCritMsg        = $lblCritMsg
+ $ui.PreBanner         = $preBanner
+ $ui.PreAccent         = $preAccent
+ $ui.LblPreBanTitle    = $lblPreBanTitle
+ $ui.LblPreBanMsg      = $lblPreBanMsg
+ $ui.LblStep1Chip      = $lblStep1Chip
+ $ui.BtnOneStop        = $btnOneStop
+ $ui.BtnToggleDisk     = $btnToggleDisk
+ $ui.BtnIgnoreStep1    = $btnIgnoreStep1
+ $ui.BtnStep1Fold      = $btnStep1Fold
+ $ui.DgvDisks          = $dgvDisks
+ $ui.LblStep2LockChip  = $lblStep2LockChip
+ $ui.BtnRescanUsb      = $btnRescanUsb
+ $ui.BtnInlineDiag     = $btnInlineDiag
+ $ui.LblPillSec        = $lblPillSec
+ $ui.LblPillUsb        = $lblPillUsb
+ $ui.LblPillFast       = $lblPillFast
+ $ui.LblPhysSummary    = $lblPhysSummary
+ $ui.DgvUsb            = $dgvUsb
+ $ui.BtnUsbReboot      = $btnUsbReboot
+ $ui.BtnAdvBoot        = $btnAdvBoot
+ $ui.BtnBiosBoot       = $btnBiosBoot
+ $ui.PostBanner        = $postBanner
+ $ui.PostAccent        = $postAccent
+ $ui.LblPostBanTitle   = $lblPostBanTitle
+ $ui.LblPostBanMsg     = $lblPostBanMsg
+ $ui.TileRole          = $tileRole
+ $ui.TileSpool         = $tileSpool
+ $ui.TileQueue         = $tileQueue
+ $ui.TileShare         = $tileShare
+ $ui.DgvPrinters       = $dgvPrinters
+ $ui.BtnSpoolerReset   = $btnSpoolerReset
+ $ui.BtnPostRefresh    = $btnPostRefresh
+ $ui.BottomDock        = $bottomDock
+ $ui.LogDrawerWrap     = $logDrawerWrap
+ $ui.TbLog             = $logBoxObj.TextBox
+ $ui.BtnToggleLog      = $btnToggleLog
+ $ui.LblStatusText     = $lblStatusText
+
+ # ==================== CORE UI HELPERS (CLOSURE-SAFE) ====================
+ $ui.SetStatus = {
+  param([string]$msg, [string]$kind = "Idle")
+  if ($ui.Form.IsDisposed) { return }
+  $ui.LblStatusText.Text = $msg
+  switch ($kind) {
+   "Busy"  { $ui.LblStatusText.ForeColor = $ui.Theme.AsanDeep }
+   "OK"    { $ui.LblStatusText.ForeColor = $ui.Theme.AsanDeep }
+   "Warn"  { $ui.LblStatusText.ForeColor = $ui.Theme.AsanOrangeText }
+   "Error" { $ui.LblStatusText.ForeColor = $ui.Theme.DangerRedDeep }
+   default { $ui.LblStatusText.ForeColor = $ui.Theme.InkSecondary }
+  }
+ }.GetNewClosure()
+
+ $ui.AppendLog = {
+  param([string]$line)
+  if ($ui.Form.IsDisposed) { return }
+  $ts = (Get-Date).ToString("HH:mm:ss")
+  $entry = "[" + $ts + "] " + $line + "`r`n"
+  $ui.TbLog.AppendText($entry)
+ }.GetNewClosure()
+
+ $ui.SetLogExpanded = {
+  param([bool]$expand)
+  $ui.State.LogExpanded = $expand
+  $ui.LogDrawerWrap.Visible = $expand
+  $ui.BottomDock.Height = if ($expand) { 114 } else { 38 }
+  $ui.BtnToggleLog.Text = if ($expand) { U "\uC0C1\uC138 \uB85C\uADF8 \uC811\uAE30" } else { U "\uC0C1\uC138 \uB85C\uADF8 \uBCF4\uAE30" }
+ }.GetNewClosure()
+
+ $ui.ApplyStep1RowLayout = {
+  $efiRep = $ui.State.EfiRep
+  $hasRisk = ($null -ne $efiRep -and $efiRep.HasBlockingRisk)
+  if ($hasRisk) {
+   $ui.State.Step1Collapsed = $false
+  }
+  if ($ui.State.Step1Collapsed) {
+   $ui.DgvDisks.Visible = $false
+   $ui.PreRoot.RowStyles[1] = New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 44)
+   $ui.PreRoot.RowStyles[2] = New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)
+   $ui.BtnStep1Fold.Text = U "\uD3BC\uCE58\uAE30"
+  } else {
+   $ui.DgvDisks.Visible = $true
+   $pct1 = if ($hasRisk) { 42 } else { 38 }
+   $ui.PreRoot.RowStyles[1] = New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, $pct1)
+   $ui.PreRoot.RowStyles[2] = New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, (100 - $pct1))
+   $ui.BtnStep1Fold.Text = U "\uC811\uAE30"
+  }
+ }.GetNewClosure()
+
+ # Centralized Button State & Disabled-Tooltip Synchronizer (Max 1 Primary per tab!)
+ $ui.SyncButtonStates = {
+  $st = $ui.State
+  $busy = [bool]$st.IsBusy
+  $busyTip = U "\uD604\uC7AC \uC791\uC5C5\uC774 \uC9C4\uD589 \uC911\uC785\uB2C8\uB2E4. \uC644\uB8CC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."
+
+  Set-AsanButtonState $ui.BtnTopRefresh (-not $busy) $busyTip $ui "HeaderUtil"
+  Set-AsanButtonState $ui.BtnRescanUsb  (-not $busy) $busyTip $ui "Secondary"
+  Set-AsanButtonState $ui.BtnPostRefresh (-not $busy) $busyTip $ui "Secondary"
+  Set-AsanButtonState $ui.BtnSpoolerReset (-not $busy) $busyTip $ui "Primary"
+
+  $efiRep = $st.EfiRep
+  $snap = $st.Step2Snap
+  $hasRisk = ($null -ne $efiRep -and $efiRep.HasBlockingRisk)
+  $isLocked = ($hasRisk -and -not $st.Step1Bypassed)
+  $canAutoFix = ($null -ne $efiRep -and -not $efiRep.SplitBoot -and $efiRep.ActionableConflictItems.Count -gt 0)
+
+  # Step 1 Fold button: hidden during active conflicts so header stays clean and risk cannot be hidden
+  $ui.BtnStep1Fold.Visible = (-not $hasRisk)
+  if ($ui.BtnStep1Fold.Visible) {
+   Set-AsanButtonState $ui.BtnStep1Fold (-not $busy) $busyTip $ui "Secondary"
+  }
+
+  # Step 1 One-Stop Fix button
+  $oneStopReason = if ($busy) {
+   $busyTip
+  } elseif ($efiRep -and $efiRep.SplitBoot) {
+   U "Windows\uC640 \uBD80\uD305 EFI\uAC00 \uC11C\uB85C \uB2E4\uB978 \uB514\uC2A4\uD06C\uC5D0 \uBD84\uB9AC\uB418\uC5B4 \uC790\uB3D9 \uC815\uB9AC\uB97C \uCC28\uB2E8\uD588\uC2B5\uB2C8\uB2E4."
+  } else {
+   U "\uC790\uB3D9 \uC815\uB9AC\uAC00 \uD544\uC694\uD55C \uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uAC00 \uBC1C\uACAC\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4."
+  }
+  $oneStopVar = if ($canAutoFix) { "Primary" } else { "Secondary" }
+  Set-AsanButtonState $ui.BtnOneStop ($canAutoFix -and -not $busy) $oneStopReason $ui $oneStopVar
+
+  # Step 1 Individual Disk Toggle button
+  $canTog = $false
+  $togReason = if ($busy) { $busyTip } else { U "\uC704 \uB514\uC2A4\uD06C \uBAA9\uB85D\uC5D0\uC11C \uC804\uD658\uD560 \uBCF4\uC870 \uB514\uC2A4\uD06C\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694." }
+  if (-not $busy -and $ui.DgvDisks.SelectedRows.Count -gt 0 -and $null -ne $ui.DgvDisks.SelectedRows[0].Tag) {
+   $selIt = $ui.DgvDisks.SelectedRows[0].Tag
+   if ($selIt.IsProtected) {
+    $togReason = U "\uD604\uC7AC Windows, WinPE \uB610\uB294 \uC77D\uAE30 \uC804\uC6A9 \uBCF4\uD638 \uB514\uC2A4\uD06C\uB294 \uBCC0\uACBD\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
+   } elseif ($selIt.State -in @("ACTIVE","DISABLED")) {
+    $canTog = $true
+   } else {
+    $togReason = U "\uC120\uD0DD\uD55C \uB514\uC2A4\uD06C\uC5D0\uB294 \uC804\uD658 \uAC00\uB2A5\uD55C \uBD80\uD2B8\uB85C\uB354\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4."
+   }
+  }
+  Set-AsanButtonState $ui.BtnToggleDisk $canTog $togReason $ui $(if ($canTog) { "SoftTeal" } else { "Secondary" })
+
+  # Step 1 Ignore button visibility
+  $ui.BtnIgnoreStep1.Visible = ($hasRisk -and -not $st.Step1Bypassed)
+  if ($ui.BtnIgnoreStep1.Visible) {
+   Set-AsanButtonState $ui.BtnIgnoreStep1 (-not $busy) $busyTip $ui "SoftOrange"
+  }
+
+  # Step 2 buttons (Max 1 Primary on Tab 1: if Step 1 needs fix, Step 1 holds Primary; else Step 2 recommended button holds Primary!)
+  $isUefi = ($null -ne $snap -and $null -ne $snap.BiosDiag -and [bool]$snap.BiosDiag.BootMode.IsUefi)
+  $canStep2Act = (-not $busy -and $isUefi -and -not $isLocked)
+  $selUsbTag = if ($ui.DgvUsb.SelectedRows.Count -gt 0) { $ui.DgvUsb.SelectedRows[0].Tag } else { $null }
+  $hasMatchedSel = ($null -ne $selUsbTag -and $selUsbTag.Kind -eq "NVRAM")
+  $canUsbReboot = ($canStep2Act -and $hasMatchedSel)
+
+  $step2BlockTip = if ($busy) {
+   $busyTip
+  } elseif (-not $isUefi) {
+   U "\uB808\uAC70\uC2DC \uBD80\uD305 \uD658\uACBD\uC5D0\uC11C\uB294 UEFI \uC790\uB3D9 \uC7AC\uBD80\uD305\uC744 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uBD80\uD305 \uBA54\uB274 \uB2E8\uCD95\uD0A4\uB97C \uC0AC\uC6A9\uD574 \uC8FC\uC138\uC694."
+  } elseif ($isLocked) {
+   U "1\uB2E8\uACC4\uC758 \uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uB97C \uBA3C\uC800 \uC815\uB9AC\uD558\uAC70\uB098 \uC704\uD5D8 \uD655\uC778 \uD6C4 \uAC74\uB108\uB6F0\uAE30\uB97C \uC9C4\uD589\uD574 \uC8FC\uC138\uC694."
+  } else {
+   ""
+  }
+
+  $usbRebootTip = if ($step2BlockTip) {
+   $step2BlockTip
+  } elseif (-not $snap -or $snap.UsbInfo.PhysicalUsbList.Count -eq 0) {
+   U "WinPE USB\uB97C PC\uC5D0 \uC5F0\uACB0\uD55C \uB4A4 USB \uB2E4\uC2DC \uCC3E\uAE30\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694."
+  } elseif ($snap.MatchedEntries.Count -eq 0) {
+   U "UEFI \uD38C\uC6E8\uC5B4 \uBAA9\uB85D\uC5D0 \uB4F1\uB85D\uB41C USB\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9 \uB610\uB294 BIOS \uC124\uC815 \uC5F4\uAE30\uB97C \uC0AC\uC6A9\uD574 \uC8FC\uC138\uC694."
+  } else {
+   U "\uC704 \uBAA9\uB85D\uC5D0\uC11C \uBD80\uD305 \uB300\uC0C1 USB \uD589\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694."
+  }
+
+  $recAct = if ($st.PreGuidance) { $st.PreGuidance.RecommendedAction } else { "" }
+  $vUsb  = if ($canUsbReboot -and $recAct -eq "USB_REBOOT" -and -not $canAutoFix) { "Primary" } elseif ($canUsbReboot) { "SoftTeal" } else { "Secondary" }
+  $vAdv  = if ($canStep2Act -and $recAct -eq "ADV_BOOT" -and -not $canAutoFix) { "Primary" } elseif ($canStep2Act -and $snap.MatchedEntries.Count -eq 0 -and $snap.UsbInfo.PhysicalUsbList.Count -gt 0) { "SoftTeal" } else { "Secondary" }
+  $vBios = if ($canStep2Act -and $recAct -eq "BIOS_SETUP" -and -not $canAutoFix) { "Orange" } else { "Secondary" }
+
+  Set-AsanButtonState $ui.BtnUsbReboot $canUsbReboot $usbRebootTip $ui $vUsb
+  Set-AsanButtonState $ui.BtnAdvBoot   $canStep2Act  $step2BlockTip $ui $vAdv
+  Set-AsanButtonState $ui.BtnBiosBoot  $canStep2Act  $step2BlockTip $ui $vBios
+ }.GetNewClosure()
+
+ # ==================== DATA REFRESH LOGIC ====================
  $ui.RefreshPreSid = {
   $u = $ui
-  $p = $u.Pal
+  $t = $u.Theme
+  $f = $u.Fonts
   $st = $u.State
   $u.Form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+  & $u.SetStatus (U "\uB0B4\uC7A5 \uB514\uC2A4\uD06C\uC640 USB \uD658\uACBD\uC744 \uC810\uAC80\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4...") "Busy"
   try {
    $efiRep = Get-InternalBootloaderReport $false
    $snap = Get-PreSidStep2Snapshot $st.SysInfo
@@ -847,165 +1833,166 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    $st.Step2Snap = $snap
    if (-not $efiRep.HasBlockingRisk) { $st.Step1Bypassed = $false }
 
-   $bootModeStr = $snap.BiosDiag.BootMode.Mode + " (" + $snap.BiosDiag.BootMode.Confidence + ")"
-   $u.LblSysSub.Text = ("[" + $st.SysInfo.Vendor + "] " + $st.SysInfo.ModelName + "  |  " + (U "\uBD80\uD305 \uBAA8\uB4DC: ") + $bootModeStr + "  |  " + (U "\uC2E4\uD589 \uC704\uCE58: ") + $u.SrcInfo.Label)
+   $bm = $snap.BiosDiag.BootMode
+   $bmLabel = if ($bm.IsUefi) { U "UEFI \uBD80\uD305" } elseif ($bm.Mode -eq "Legacy") { U "\uB808\uAC70\uC2DC \uBD80\uD305" } else { U "\uBD80\uD305 \uBC29\uC2DD \uBBF8\uD655\uC778" }
+   $osTxt = if ($st.SysInfo.OsSummary) { $st.SysInfo.OsSummary } else { "Windows" }
+   $dispModel = if ($st.SysInfo.DisplayVendor) { $st.SysInfo.DisplayVendor + " " + $st.SysInfo.ModelName } else { [string]$st.SysInfo.ModelName }
+   $dot = [string][char]0x00B7
+   $u.LblMetaLeft.Text = ($env:COMPUTERNAME + "  " + $dot + "  " + $dispModel + "  " + $dot + "  " + $osTxt + "  " + $dot + "  " + $bmLabel)
 
-   # 1. Populate STEP 1 Internal Disks ListView
-   $u.LvDisks.BeginUpdate()
-   $u.LvDisks.Items.Clear()
-   foreach ($it in $efiRep.Items) {
-    $partStr = if ($it.TargetPart -gt 0) { $it.BootType + " #" + $it.TargetPart } else { "-" }
-    $stText = Format-BootloaderStateText $it
-    $lvi = New-Object System.Windows.Forms.ListViewItem(("Disk " + $it.DiskNumber))
-    [void]$lvi.SubItems.Add([string]$it.Model)
-    [void]$lvi.SubItems.Add(([string]$it.SizeGB + " GB"))
-    [void]$lvi.SubItems.Add([string]$it.PartitionStyle)
-    [void]$lvi.SubItems.Add($partStr)
-    [void]$lvi.SubItems.Add($stText)
-    $lvi.Tag = $it
-    if ($it.State -in @("ACTIVE","BOTH","MBR_OS_BLOCKED")) {
-     $lvi.BackColor = $p.ErrBg; $lvi.ForeColor = $p.ErrFg
-    } elseif ($it.IsProtected) {
-     $lvi.BackColor = $p.OkBg; $lvi.ForeColor = $p.OkFg
-    } elseif ($it.State -eq "DISABLED") {
-     $lvi.BackColor = $p.InfoBg; $lvi.ForeColor = $p.InfoFg
-    }
-    [void]$u.LvDisks.Items.Add($lvi)
+   # Conditional Critical Banner (Legacy MBR or SplitBoot ? zero parentheses)
+   if (-not $bm.IsUefi) {
+    $u.LblCritMsg.Text = U "\uC774 PC\uB294 \uB808\uAC70\uC2DC \uBD80\uD305 \uBC29\uC2DD\uC785\uB2C8\uB2E4. USB \uC790\uB3D9 \uC7AC\uBD80\uD305 \uB300\uC2E0 \uBD80\uD305 \uBA54\uB274 \uB2E8\uCD95\uD0A4\uB97C \uC0AC\uC6A9\uD574 \uC8FC\uC138\uC694."
+    $u.CritBanner.Visible = $true
+   } elseif ($efiRep.SplitBoot) {
+    $u.LblCritMsg.Text = (U "Windows \uB514\uC2A4\uD06C ") + $efiRep.BootDisk + (U "\uACFC \uBD80\uD305 EFI \uB514\uC2A4\uD06C ") + $efiRep.SysDisk + (U "\uC774 \uC11C\uB85C \uB2EC\uB77C \uC790\uB3D9 \uC815\uB9AC\uB97C \uCC28\uB2E8\uD588\uC2B5\uB2C8\uB2E4.")
+    $u.CritBanner.Visible = $true
+   } else {
+    $u.CritBanner.Visible = $false
    }
-   $u.LvDisks.EndUpdate()
 
-   $canAutoFix = (-not $efiRep.SplitBoot) -and ($efiRep.ActionableConflictItems.Count -gt 0)
-   $u.BtnOneStop.Enabled = $canAutoFix
-   if ($canAutoFix) { Set-GuiButtonStyle $u.BtnOneStop "PrimaryRed" $p } else { Set-GuiButtonStyle $u.BtnOneStop "Disabled" $p }
-   $u.BtnToggleDisk.Enabled = $false
-   Set-GuiButtonStyle $u.BtnToggleDisk "Disabled" $p
-   $u.BtnIgnoreStep1.Visible = ($efiRep.HasBlockingRisk -and -not $st.Step1Bypassed)
+   # 1. Populate STEP 1 Internal Disks DataGridView
+   $u.DgvDisks.Rows.Clear()
+   $firstConflictRowIdx = -1
+   foreach ($it in $efiRep.Items) {
+    $partStr = if ($it.TargetPart -gt 0) {
+     if ($it.BootType -eq "GPT_EFI") { "EFI #" + $it.TargetPart } else { "MBR #" + $it.TargetPart }
+    } else { "-" }
+    $guiSt = Format-BootloaderGuiStatus $it
+    $rIdx = $u.DgvDisks.Rows.Add(("Disk " + $it.DiskNumber), [string]$it.Model, ([string]$it.SizeGB + " GB"), [string]$it.PartitionStyle, $partStr, $guiSt.Text)
+    $row = $u.DgvDisks.Rows[$rIdx]
+    $row.Tag = $it
+    # Status-cell-only tinting; full-row tint reserved strictly for blocking conflicts (preserved even when selected!)
+    if ($it.State -in @("ACTIVE","BOTH","MBR_OS_BLOCKED")) {
+     if ($firstConflictRowIdx -lt 0) { $firstConflictRowIdx = $rIdx }
+     $row.DefaultCellStyle.BackColor = $t.DangerRedTint
+     $row.DefaultCellStyle.ForeColor = $t.DangerRedDeep
+     $row.DefaultCellStyle.SelectionBackColor = $t.DangerRedTint
+     $row.DefaultCellStyle.SelectionForeColor = $t.DangerRedDeep
+     $row.Cells[5].Style.Font = $f.Bold
+    } else {
+     Set-AsanCellSemanticStyle $row.Cells[5] $guiSt.Kind $t $f ($guiSt.Kind -ne "Neutral")
+    }
+    foreach ($cell in $row.Cells) { $cell.ToolTipText = $guiSt.Tip }
+   }
+   $u.DgvDisks.ClearSelection()
+   if ($firstConflictRowIdx -ge 0) { $u.DgvDisks.Rows[$firstConflictRowIdx].Selected = $true }
 
-   # 2. STEP 2 Lock state & BIOS Pills
+   if ($efiRep.HasBlockingRisk) {
+    $u.LblStep1Chip.BackColor = $t.DangerRedTint
+    $u.LblStep1Chip.ForeColor = $t.DangerRedDeep
+    $u.LblStep1Chip.Text = (U "\uCDA9\uB3CC \uC704\uD5D8 ") + $efiRep.ConflictItems.Count + (U "\uAC74 \uBC1C\uACAC")
+   } else {
+    $u.LblStep1Chip.BackColor = $t.AsanMint
+    $u.LblStep1Chip.ForeColor = $t.AsanDeep
+    $u.LblStep1Chip.Text = (U "\uC774\uC0C1 \uC5C6\uC74C \u00B7 ") + $efiRep.Items.Count + (U "\uB300 \uD655\uC778")
+   }
+   & $u.ApplyStep1RowLayout
+
+   # 2. STEP 2 Lock indicator & BIOS Status Pills (plain Korean, zero brackets/parentheses)
    $isStep2Locked = ($efiRep.HasBlockingRisk -and -not $st.Step1Bypassed)
-   $isUefi = [bool]$snap.BiosDiag.BootMode.IsUefi
-   $u.LblStep2Lock.Visible = $isStep2Locked
+   $u.LblStep2LockChip.Visible = $isStep2Locked
 
    $d = $snap.BiosDiag
    switch ($d.SecureBootState) {
-    "On"       { $u.LblPillSec.Text = "Secure Boot: ON (" + $d.SecureBootConfidence + ")"; $u.LblPillSec.BackColor = $p.ErrBg; $u.LblPillSec.ForeColor = $p.ErrFg }
-    "Conflict" { $u.LblPillSec.Text = (U "Secure Boot: \uC2E0\uD638 \uCDA9\uB3CC(\uACBD\uACE0)"); $u.LblPillSec.BackColor = $p.ErrBg; $u.LblPillSec.ForeColor = $p.ErrFg }
-    "Off"      { $u.LblPillSec.Text = "Secure Boot: OFF (" + $d.SecureBootConfidence + ")"; $u.LblPillSec.BackColor = $p.OkBg; $u.LblPillSec.ForeColor = $p.OkFg }
-    default    { $u.LblPillSec.Text = (U "Secure Boot: \uD655\uC778 \uBD88\uAC00"); $u.LblPillSec.BackColor = $p.WarnBg; $u.LblPillSec.ForeColor = $p.WarnFg }
+    "On"       { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uCF1C\uC9D0";      $u.LblPillSec.BackColor = $t.DangerRedTint;  $u.LblPillSec.ForeColor = $t.DangerRedDeep }
+    "Conflict" { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uD655\uC778 \uD544\uC694"; $u.LblPillSec.BackColor = $t.DangerRedTint;  $u.LblPillSec.ForeColor = $t.DangerRedDeep }
+    "Off"      { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uAEBC\uC9D0";      $u.LblPillSec.BackColor = $t.AsanMint;       $u.LblPillSec.ForeColor = $t.AsanDeep }
+    default    { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uBBF8\uD655\uC778";    $u.LblPillSec.BackColor = $t.AsanOrangeTint; $u.LblPillSec.ForeColor = $t.AsanOrangeText }
    }
 
    if ($d.UsbBootState -eq "Enabled") {
-    $u.LblPillUsb.Text = "BIOS USB Boot: ON (" + $d.UsbBootConfidence + ")"
-    $u.LblPillUsb.BackColor = $p.OkBg; $u.LblPillUsb.ForeColor = $p.OkFg
+    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uD5C8\uC6A9"
+    $u.LblPillUsb.BackColor = $t.AsanMint; $u.LblPillUsb.ForeColor = $t.AsanDeep
    } elseif ($d.IsConfirmedBlocked) {
-    $u.LblPillUsb.Text = "BIOS USB Boot: OFF (" + $d.UsbBootConfidence + ")"
-    $u.LblPillUsb.BackColor = $p.ErrBg; $u.LblPillUsb.ForeColor = $p.ErrFg
+    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uCC28\uB2E8\uB428"
+    $u.LblPillUsb.BackColor = $t.DangerRedTint; $u.LblPillUsb.ForeColor = $t.DangerRedDeep
    } elseif ($d.UsbBootState -eq "Conflict") {
-    $u.LblPillUsb.Text = U "BIOS USB Boot: \uAD50\uCC28 \uAC80\uC99D \uCDA9\uB3CC(\uC0C1\uC138 \uD655\uC778)"
-    $u.LblPillUsb.BackColor = $p.WarnBg; $u.LblPillUsb.ForeColor = $p.WarnFg
+    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uAD50\uCC28 \uD655\uC778"
+    $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
    } elseif ($d.UsbBootState -eq "SuspectedDisabled") {
-    $u.LblPillUsb.Text = U "BIOS USB Boot: \uBBF8\uB4F1\uB85D(Hot-Plug/\uCC28\uB2E8 \uAC00\uB2A5)"
-    $u.LblPillUsb.BackColor = $p.WarnBg; $u.LblPillUsb.ForeColor = $p.WarnFg
+    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uBBF8\uB4F1\uB85D"
+    $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
    } else {
-    $u.LblPillUsb.Text = (U "BIOS USB Boot: \uD655\uC778 \uBD88\uAC00") + " (" + $d.UsbBootConfidence + ")"
-    $u.LblPillUsb.BackColor = $p.WarnBg; $u.LblPillUsb.ForeColor = $p.WarnFg
+    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uC9C1\uC811 \uD655\uC778"
+    $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
    }
 
    if ($d.FastBootWarn) {
-    $u.LblPillFast.Text = U "Fast Boot: \uC8FC\uC758(\uD65C\uC131)"
-    $u.LblPillFast.BackColor = $p.WarnBg; $u.LblPillFast.ForeColor = $p.WarnFg
+    $u.LblPillFast.Text = U "\uBE60\uB978 \uBD80\uD305 \uCF1C\uC9D0"
+    $u.LblPillFast.BackColor = $t.AsanOrangeTint; $u.LblPillFast.ForeColor = $t.AsanOrangeText
    } else {
-    $u.LblPillFast.Text = U "Fast Boot: \uC815\uC0C1/\uBBF8\uAC10\uC9C0"
-    $u.LblPillFast.BackColor = $p.BtnNeutral; $u.LblPillFast.ForeColor = $p.TextMuted
+    $u.LblPillFast.Text = U "\uBE60\uB978 \uBD80\uD305 \uC774\uC0C1 \uC5C6\uC74C"
+    $u.LblPillFast.BackColor = $t.MetaBarBg; $u.LblPillFast.ForeColor = $t.InkMuted
    }
 
    $u.ToolTip.SetToolTip($u.LblPillSec, ($d.SecureBootSignals -join "`r`n"))
-   $u.ToolTip.SetToolTip($u.LblPillUsb, $d.UsbBootDetail)
-   $u.ToolTip.SetToolTip($u.LblPillFast, $(if ($d.FastBootDetail) { $d.FastBootDetail } else { U "Fast Boot \uACBD\uACE0 \uC5C6\uC74C" }))
+   $u.ToolTip.SetToolTip($u.LblPillUsb, ($d.UsbBootDetail + "`r`n" + (U "\uC2E0\uB8B0\uB3C4: ") + $d.UsbBootConfidence))
+   $u.ToolTip.SetToolTip($u.LblPillFast, $(if ($d.FastBootDetail) { $d.FastBootDetail } else { U "\uBE60\uB978 \uBD80\uD305 \uCC28\uB2E8 \uACBD\uACE0\uAC00 \uAC10\uC9C0\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4." }))
 
-   # 3. Populate Physical USB ListView
-   $u.LvPhysUsb.BeginUpdate()
-   $u.LvPhysUsb.Items.Clear()
-   if ($snap.UsbInfo.PhysicalUsbList.Count -eq 0) {
-    $emptyItem = New-Object System.Windows.Forms.ListViewItem("-")
-    [void]$emptyItem.SubItems.Add((U "\uD604\uC7AC \uC5F0\uACB0\uB41C \uC678\uC7A5 USB \uB514\uC2A4\uD06C\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4 (WinPE USB \uC5F0\uACB0 \uD6C4 \uB2E4\uC2DC \uC2A4\uCE94)"))
-    [void]$emptyItem.SubItems.Add("-")
-    [void]$emptyItem.SubItems.Add("-")
-    [void]$emptyItem.SubItems.Add("-")
-    [void]$emptyItem.SubItems.Add("-")
-    $emptyItem.ForeColor = $p.TextMuted
-    [void]$u.LvPhysUsb.Items.Add($emptyItem)
+   # Physical USB compact summary chip on right side of BIOS strip
+   $physList = @($snap.UsbInfo.PhysicalUsbList)
+   if ($physList.Count -eq 0) {
+    $u.LblPhysSummary.Text = U "\uC5F0\uACB0\uB41C \uBB3C\uB9AC USB \uC5C6\uC74C"
+    $u.LblPhysSummary.ForeColor = $t.InkMuted
+    $u.ToolTip.SetToolTip($u.LblPhysSummary, (U "WinPE USB\uB97C \uC5F0\uACB0\uD55C \uB4A4 USB \uB2E4\uC2DC \uCC3E\uAE30\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694."))
    } else {
-    foreach ($ud in $snap.UsbInfo.PhysicalUsbList) {
-     $roStr = if ($ud.IsReadOnly) { U "\uC77D\uAE30 \uC804\uC6A9" } else { U "\uC77C\uBC18" }
-     $efiStr = if ($ud.IsEfiReady) { U "UEFI \uBD80\uD305 \uAC00\uB2A5" } else { U "EFI \uBBF8\uD655\uC778" }
-     $lvi = New-Object System.Windows.Forms.ListViewItem(("Disk " + $ud.DiskNumber))
-     [void]$lvi.SubItems.Add([string]$ud.Model)
-     [void]$lvi.SubItems.Add([string]$ud.SizeGB)
-     [void]$lvi.SubItems.Add($(if ($ud.Partitions) { [string]$ud.Partitions } else { "-" }))
-     [void]$lvi.SubItems.Add($roStr)
-     [void]$lvi.SubItems.Add($efiStr)
-     if ($ud.IsEfiReady) { $lvi.BackColor = $p.OkBg; $lvi.ForeColor = $p.OkFg }
-     else { $lvi.BackColor = $p.WarnBg; $lvi.ForeColor = $p.WarnFg }
-     [void]$u.LvPhysUsb.Items.Add($lvi)
-    }
+    $firstU = $physList[0]
+    $roTxt = if ($firstU.IsReadOnly) { U " \u00B7 \uC77D\uAE30 \uC804\uC6A9" } else { "" }
+    $moreTxt = if ($physList.Count -gt 1) { (U " \uC678 ") + ($physList.Count - 1) + (U "\uB300") } else { "" }
+    $u.LblPhysSummary.Text = (U "\uC5F0\uACB0\uB41C USB: ") + $firstU.Model + " " + $firstU.SizeGB + $roTxt + $moreTxt
+    $u.LblPhysSummary.ForeColor = $t.AsanDeep
+    $physTip = ($physList | ForEach-Object { "Disk " + $_.DiskNumber + " " + $_.Model + " " + $_.SizeGB + " | " + $_.Partitions }) -join "`r`n"
+    $u.ToolTip.SetToolTip($u.LblPhysSummary, $physTip)
    }
-   $u.LvPhysUsb.EndUpdate()
 
-   # 4. Populate NVRAM Matched USB ListView
-   $u.LvNvramUsb.BeginUpdate()
-   $u.LvNvramUsb.Items.Clear()
-   if ($snap.MatchedEntries.Count -eq 0) {
-    $noM = New-Object System.Windows.Forms.ListViewItem("-")
-    [void]$noM.SubItems.Add((U "\uB9E4\uCE6D 0\uAC74"))
-    $hintRow = if ($snap.UsbInfo.PhysicalUsbList.Count -eq 0) {
-     U "USB\uB97C \uC5F0\uACB0\uD55C \uB4A4 [USB \uB2E4\uC2DC \uC2A4\uCE94] \uBC84\uD2BC\uC744 \uB204\uB974\uC138\uC694."
-    } else {
-     U "NVRAM \uBBF8\uB4F1\uB85D: \uC544\uB798 [Windows \uACE0\uAE09 \uBD80\uD305('\uC7A5\uCE58 \uC0AC\uC6A9')] \uB610\uB294 [BIOS \uC124\uC815 \uC9C4\uC785]\uC744 \uC0AC\uC6A9\uD558\uC138\uC694."
+   # 3. Populate Unified USB Selection DataGridView
+   $u.DgvUsb.Rows.Clear()
+   $matched = @($snap.MatchedEntries)
+   if ($matched.Count -gt 0) {
+    for ($i = 0; $i -lt $matched.Count; $i++) {
+     $m = $matched[$i]
+     $devStr = if ($m.Device) { [string]$m.Device } else { U "UEFI \uD38C\uC6E8\uC5B4" }
+     $matchLvl = if ($m.IsExact) { U "\uC815\uD655 \uC77C\uCE58" } else { U "\uBC94\uC6A9 \uD56D\uBAA9" }
+     $guideTxt = if ($m.IsExact) { U "\uBC14\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4" } else { U "\uD56D\uBAA9 \uC774\uB984\uC744 \uD655\uC778\uD55C \uB4A4 \uC7AC\uBD80\uD305\uD574 \uC8FC\uC138\uC694" }
+     $rIdx = $u.DgvUsb.Rows.Add((U "\uBD80\uD305 \uB300\uC0C1"), $matchLvl, [string]$m.Description, $devStr, $guideTxt)
+     $row = $u.DgvUsb.Rows[$rIdx]
+     $row.Tag = [PSCustomObject]@{ Kind = "NVRAM"; Entry = $m }
+     Set-AsanCellSemanticStyle $row.Cells[1] $(if ($m.IsExact) { "OK" } else { "Warn" }) $t $f $true
+     $tip = ([string]$m.MatchTag) + "`r`nGUID: " + $m.Identifier + "`r`n" + (U "\uC7A5\uCE58: ") + $devStr
+     foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
     }
-    [void]$noM.SubItems.Add($hintRow)
-    [void]$noM.SubItems.Add("-")
-    [void]$noM.SubItems.Add("-")
-    $noM.ForeColor = $p.TextMuted
-    [void]$u.LvNvramUsb.Items.Add($noM)
+    $u.DgvUsb.Rows[0].Selected = $true
+   } elseif ($physList.Count -gt 0) {
+    foreach ($ud in $physList) {
+     $roTag = if ($ud.IsReadOnly) { U " \u00B7 \uC77D\uAE30 \uC804\uC6A9" } else { "" }
+     $devStr = $ud.SizeGB + $roTag
+     $guideTxt = if ($ud.IsEfiReady) { U "\uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9\uD574 \uC7A5\uCE58\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694" } else { U "EFI \uBD80\uD2B8 \uD30C\uD2F0\uC158\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4" }
+     $rIdx = $u.DgvUsb.Rows.Add((U "\uBB3C\uB9AC USB"), (U "NVRAM \uBBF8\uB4F1\uB85D"), [string]$ud.Model, $devStr, $guideTxt)
+     $row = $u.DgvUsb.Rows[$rIdx]
+     $row.Tag = [PSCustomObject]@{ Kind = "PHYSICAL_ONLY"; Disk = $ud }
+     Set-AsanCellSemanticStyle $row.Cells[1] "Warn" $t $f $true
+     $tip = "Disk " + $ud.DiskNumber + " | " + $ud.Model + "`r`n" + (U "\uD30C\uD2F0\uC158: ") + $(if ($ud.Partitions) { $ud.Partitions } else { "-" })
+     foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
+    }
    } else {
-    for ($i = 0; $i -lt $snap.MatchedEntries.Count; $i++) {
-     $m = $snap.MatchedEntries[$i]
-     $devStr = if ($m.Device) { [string]$m.Device } else { "UEFI NVRAM" }
-     $lvi = New-Object System.Windows.Forms.ListViewItem([string]($i + 1))
-     [void]$lvi.SubItems.Add([string]$m.MatchTag)
-     [void]$lvi.SubItems.Add([string]$m.Description)
-     [void]$lvi.SubItems.Add($devStr)
-     [void]$lvi.SubItems.Add([string]$m.Identifier)
-     $lvi.Tag = $m
-     if ($m.IsExact) { $lvi.BackColor = $p.OkBg; $lvi.ForeColor = $p.OkFg }
-     else { $lvi.BackColor = $p.WarnBg; $lvi.ForeColor = $p.WarnFg }
-     [void]$u.LvNvramUsb.Items.Add($lvi)
-    }
-    if ($u.LvNvramUsb.Items.Count -gt 0) { $u.LvNvramUsb.Items[0].Selected = $true }
+    $rIdx = $u.DgvUsb.Rows.Add((U "\uC548\uB0B4"), (U "\uBBF8\uC5F0\uACB0"), (U "\uC5F0\uACB0\uB41C WinPE USB\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4"), "-", (U "USB\uB97C \uC5F0\uACB0\uD55C \uB4A4 USB \uB2E4\uC2DC \uCC3E\uAE30\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694"))
+    $row = $u.DgvUsb.Rows[$rIdx]
+    $row.Tag = $null
+    $row.DefaultCellStyle.ForeColor = $t.InkMuted
    }
-   $u.LvNvramUsb.EndUpdate()
+   if ($matched.Count -eq 0) { $u.DgvUsb.ClearSelection() }
 
-   # 5. Update Contextual Recommendation Banner & Dynamic Primary Button Highlighting
+   # 4. Contextual Guidance Banner & Sync All Buttons
    $guid = Get-PreSidGuidance $st.SysInfo $efiRep $snap.BiosDiag $snap.UsbInfo $snap.MatchedEntries $st.Step1Bypassed
-   Set-BannerVisual $u.PreBanner $u.PreAccent $u.LblPreBanTitle $u.LblPreBanMsg $guid $p
-
-   $canStep2Act = ($isUefi -and -not $isStep2Locked)
-   $canUsbReboot = ($canStep2Act -and $snap.MatchedEntries.Count -gt 0)
-   $u.BtnUsbReboot.Enabled = $canUsbReboot
-   $u.BtnAdvBoot.Enabled = $canStep2Act
-   $u.BtnBiosBoot.Enabled = $canStep2Act
-
-   Set-GuiButtonStyle $u.BtnUsbReboot $(if ($canUsbReboot) { "Neutral" } else { "Disabled" }) $p
-   Set-GuiButtonStyle $u.BtnAdvBoot $(if ($canStep2Act) { "Neutral" } else { "Disabled" }) $p
-   Set-GuiButtonStyle $u.BtnBiosBoot $(if ($canStep2Act) { "Neutral" } else { "Disabled" }) $p
-   if ($canStep2Act) {
-    switch ($guid.RecommendedAction) {
-     "USB_REBOOT" { if ($canUsbReboot) { Set-GuiButtonStyle $u.BtnUsbReboot "PrimaryGreen" $p } }
-     "ADV_BOOT"   { Set-GuiButtonStyle $u.BtnAdvBoot "PrimaryBlue" $p }
-     "BIOS_SETUP" { Set-GuiButtonStyle $u.BtnBiosBoot "PrimaryAmber" $p }
-    }
-   }
+   $st.PreGuidance = $guid
+   Set-AsanGuidanceBannerVisual $u.PreBanner $u.PreAccent $u.LblPreBanTitle $u.LblPreBanMsg $guid $t
+   & $u.SyncButtonStates
+   & $u.AppendLog ((U "\uC0AC\uC804 \uC810\uAC80 \uC644\uB8CC \u00B7 \uB0B4\uC7A5 \uB514\uC2A4\uD06C ") + $efiRep.Items.Count + (U "\uB300, \uBB3C\uB9AC USB ") + $physList.Count + (U "\uB300, \uBD80\uD305 \uB9E4\uCE6D ") + $matched.Count + (U "\uAC74"))
+   & $u.SetStatus (U "\uC0AC\uC804 \uC810\uAC80 \uC644\uB8CC") "OK"
+  } catch {
+   & $u.AppendLog ((U "\uC0AC\uC804 \uC810\uAC80 \uC624\uB958: ") + $_.Exception.Message)
+   & $u.SetStatus (U "\uC0AC\uC804 \uC810\uAC80 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4") "Error"
   } finally {
    if (-not $u.Form.IsDisposed) { $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default }
   }
@@ -1013,80 +2000,124 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
 
  $ui.RefreshPostSid = {
   $u = $ui
-  $p = $u.Pal
+  $t = $u.Theme
+  $f = $u.Fonts
   $u.Form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+  & $u.SetStatus (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uC0C1\uD0DC\uB97C \uD655\uC778\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4...") "Busy"
   try {
    $ps = Get-PostSidStatus
    $u.State.PostStatus = $ps
    $guid = Get-PostSidGuidance $ps
-   Set-BannerVisual $u.PostBanner $u.PostAccent $u.LblPostBanTitle $u.LblPostBanMsg $guid $p
+   Set-AsanGuidanceBannerVisual $u.PostBanner $u.PostAccent $u.LblPostBanTitle $u.LblPostBanMsg $guid $t
 
-   $roleText = switch ($ps.Role) {
-    "Host"   { U "[\uD638\uC2A4\uD2B8(\uBA54\uC778 \uD504\uB9B0\uD130 PC)]" }
-    "Client" { U "[\uD074\uB77C\uC774\uC5B8\uD2B8 PC]" }
-    default  { U "[\uD310\uBCC4 \uBCF4\uB958 (Spooler \uC911\uC9C0\uB428)]" }
+   # Update Meta Bar SID
+   $sidVal = if ($ps.MachineSid) { [string]$ps.MachineSid } else { U "\uD655\uC778 \uBD88\uAC00" }
+   $u.LblMetaSid.Text = "SID " + $sidVal
+   $u.ToolTip.SetToolTip($u.LblMetaSid, ("Machine SID: " + $sidVal))
+
+   # Tile 1: PC Role
+   $roleTxt = switch ($ps.Role) {
+    "Host"   { U "\uBA54\uC778 \uD504\uB9B0\uD130 PC" }
+    "Client" { U "\uD074\uB77C\uC774\uC5B8\uD2B8 PC" }
+    default  { U "\uD655\uC778 \uBCF4\uB958" }
    }
-   $u.LblPostRole.Text = (U "PC \uC5ED\uD560: ") + $roleText
-   $u.LblPostRole.ForeColor = if ($ps.Role -eq "Host") { $p.InfoFg } elseif ($ps.Role -eq "Client") { $p.OkFg } else { $p.WarnFg }
-   $u.LblPostComp.Text = (U "\uCEF4\uD4E8\uD130 \uC774\uB984: ") + $ps.ComputerName
-   $u.LblPostSid.Text  = "Machine SID: " + $ps.MachineSid
+   $u.TileRole.Value.Text = $roleTxt
+   $u.TileRole.Value.ForeColor = if ($ps.Role -eq "Host") { $t.AsanLight } elseif ($ps.Role -eq "Client") { $t.AsanDeep } else { $t.AsanOrangeText }
+   $u.TileRole.Sub.Text = if ($ps.Role -eq "Host") {
+    (U "\uACF5\uC720 \uD504\uB9B0\uD130 ") + $ps.SharedPrinters.Count + (U "\uB300 \uD638\uC2A4\uD305")
+   } elseif ($ps.Role -eq "Client") {
+    (U "\uB124\uD2B8\uC6CC\uD06C \uD504\uB9B0\uD130 ") + $ps.NetworkPrinters.Count + (U "\uB300 \uC5F0\uACB0")
+   } else {
+    U "\uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4 \uC911\uC9C0\uB428"
+   }
 
-   $spTxt = $ps.SpoolerStatus + " / " + $ps.SpoolerStartMode
-   $u.LblPostSpool.Text = (U "Spooler \uC11C\uBE44\uC2A4: ") + $spTxt
-   $u.LblPostSpool.ForeColor = if ($ps.SpoolerStatus -eq "Running" -and $ps.SpoolerStartMode -ne "Disabled" -and -not $ps.PrinterQueryError) { $p.OkFg } else { $p.ErrFg }
-   $u.LblPostQueue.Text = (U "\uB300\uAE30\uC5F4 \uD30C\uC77C(PRINTERS): ") + $ps.QueueTotalCount + (U "\uAC74") + " (SPL/SHD: " + $ps.QueueSplShdCount + (U "\uAC74") + ")"
+   # Tile 2: Spooler Service
+   $spOk = ($ps.SpoolerStatus -eq "Running" -and $ps.SpoolerStartMode -ne "Disabled" -and -not $ps.PrinterQueryError)
+   $u.TileSpool.Value.Text = if ($ps.SpoolerStatus -eq "Running") {
+    if ($ps.PrinterQueryError) { U "\uC751\uB2F5 \uC624\uB958" } else { U "\uC2E4\uD589 \uC911" }
+   } elseif ($ps.SpoolerStatus -eq "Stopped") { U "\uC911\uC9C0\uB428" } else { [string]$ps.SpoolerStatus }
+   $u.TileSpool.Value.ForeColor = if ($spOk) { $t.AsanDeep } else { $t.DangerRedDeep }
+   $startKo = switch ($ps.SpoolerStartMode) {
+    "Auto"     { U "\uC790\uB3D9 \uC2DC\uC791" }
+    "Manual"   { U "\uC218\uB3D9 \uC2DC\uC791" }
+    "Disabled" { U "\uC0AC\uC6A9 \uC548 \uD568" }
+    default    { [string]$ps.SpoolerStartMode }
+   }
+   $u.TileSpool.Sub.Text = (U "\uC2DC\uC791 \uC720\uD615 ") + $startKo
 
+   # Tile 3: Print Queue
+   $u.TileQueue.Value.Text = [string]$ps.QueueTotalCount + (U "\uAC74")
+   $u.TileQueue.Value.ForeColor = if ($ps.QueueTotalCount -gt 0) { $t.AsanOrangeText } else { $t.AsanDeep }
+   $u.TileQueue.Sub.Text = if ($ps.QueueTotalCount -gt 0) {
+    (U "\uC794\uC5EC \uC778\uC1C4 \uD30C\uC77C ") + $ps.QueueSplShdCount + (U "\uAC74 \uC815\uB9AC \uAC00\uB2A5")
+   } else {
+    U "\uC313\uC778 \uB300\uAE30\uC5F4 \uC5C6\uC74C"
+   }
+
+   # Tile 4: Role-specific Share Security or Remote Host Connectivity
    if ($ps.Role -eq "Host") {
-    $fwStr = if ($ps.FirewallInboundTotal -lt 0) { U "\uC870\uD68C \uBD88\uAC00" } else { [string]$ps.FirewallInboundEnabled + "/" + [string]$ps.FirewallInboundTotal + (U " \uD65C\uC131\uD654") }
-    $u.LblPostExtra1.Text = (U "\uACF5\uC720 \uBC29\uD654\uBCBD \uADDC\uCE59: ") + $fwStr
-    $u.LblPostExtra1.ForeColor = if ($ps.FirewallInboundEnabled -eq 0) { $p.ErrFg } else { $p.OkFg }
-
-    $profStr = if ($ps.NetworkProfiles.Count -gt 0) {
-     (($ps.NetworkProfiles | ForEach-Object { $_.InterfaceAlias + "=" + $_.Category }) -join ", ")
-    } else { "-" }
-    $u.LblPostExtra2.Text = (U "\uB124\uD2B8\uC6CC\uD06C \uD504\uB85C\uD544: ") + $profStr
-    $u.LblPostExtra2.ForeColor = if ($ps.HasPublicProfile) { $p.ErrFg } else { $p.OkFg }
+    $u.TileShare.Caption.Text = U "\uACF5\uC720 \uBCF4\uC548 \uC0C1\uD0DC"
+    $fwOk = ($ps.FirewallInboundEnabled -gt 0 -or $ps.FirewallInboundTotal -lt 0)
+    if ($ps.HasPublicProfile) {
+     $u.TileShare.Value.Text = U "\uACF5\uC6A9 \uB124\uD2B8\uC6CC\uD06C \uC8FC\uC758"
+     $u.TileShare.Value.ForeColor = $t.DangerRedDeep
+    } elseif (-not $fwOk) {
+     $u.TileShare.Value.Text = U "\uBC29\uD654\uBCBD \uCC28\uB2E8 \uC8FC\uC758"
+     $u.TileShare.Value.ForeColor = $t.DangerRedDeep
+    } else {
+     $u.TileShare.Value.Text = U "\uACF5\uC720 \uC124\uC815 \uC815\uC0C1"
+     $u.TileShare.Value.ForeColor = $t.AsanDeep
+    }
+    $fwSub = if ($ps.FirewallInboundTotal -lt 0) { U "\uBC29\uD654\uBCBD \uBBF8\uD655\uC778" } else { (U "\uACF5\uC720 \uADDC\uCE59 ") + $ps.FirewallInboundEnabled + "/" + $ps.FirewallInboundTotal }
+    $u.TileShare.Sub.Text = $fwSub
    } else {
-    $hostChecks = if ($ps.RemoteHostChecks.Count -gt 0) {
-     (($ps.RemoteHostChecks | ForEach-Object { "\\" + $_.Server + " (" + $(if ($_.Reachable) { "SMB OK" } else { "NO RESPONSE" }) + ")" }) -join ", ")
-    } else { U "\uC5F0\uACB0\uB41C \uC6D0\uACA9 \uD504\uB9B0\uD130 \uD638\uC2A4\uD2B8 \uC5C6\uC74C" }
-    $u.LblPostExtra1.Text = (U "\uC6D0\uACA9 \uD638\uC2A4\uD2B8 \uC751\uB2F5(445): ") + $hostChecks
-    $hasFail = @($ps.RemoteHostChecks | Where-Object { -not $_.Reachable }).Count -gt 0
-    $u.LblPostExtra1.ForeColor = if ($hasFail) { $p.WarnFg } else { $p.TextDark }
-    $u.LblPostExtra2.Text = (U "\uACF5\uC720 \uD504\uB9B0\uD130 \uC218: ") + $ps.SharedPrinters.Count + " / " + (U "\uB124\uD2B8\uC6CC\uD06C \uD504\uB9B0\uD130: ") + $ps.NetworkPrinters.Count
-    $u.LblPostExtra2.ForeColor = $p.TextDark
-   }
-
-   # Populate Printers ListView
-   $u.LvPrinters.BeginUpdate()
-   $u.LvPrinters.Items.Clear()
-   if ($ps.SpoolerStatus -ne "Running") {
-    $li = New-Object System.Windows.Forms.ListViewItem((U "(Spooler \uC911\uC9C0 \uC0C1\uD0DC - \uC544\uB798 \uB9AC\uC14B \uC2E4\uD589 \uD6C4 \uD45C\uC2DC\uB429\uB2C8\uB2E4)"))
-    $li.ForeColor = $p.WarnFg
-    [void]$u.LvPrinters.Items.Add($li)
-   } elseif ($ps.PrinterQueryError) {
-    $li = New-Object System.Windows.Forms.ListViewItem((U "[\uACBD\uACE0] \uD504\uB9B0\uD130 \uBAA9\uB85D \uC870\uD68C \uC624\uB958(RPC) - \uC2A4\uD480\uB7EC \uB9AC\uC14B \uD544\uC694!"))
-    $li.BackColor = $p.ErrBg; $li.ForeColor = $p.ErrFg
-    [void]$u.LvPrinters.Items.Add($li)
-   } elseif ($ps.Printers.Count -eq 0) {
-    $li = New-Object System.Windows.Forms.ListViewItem((U "(\uC124\uCE58\uB41C \uD504\uB9B0\uD130 \uC5C6\uC74C)"))
-    $li.ForeColor = $p.TextMuted
-    [void]$u.LvPrinters.Items.Add($li)
-   } else {
-    foreach ($pr in $ps.Printers) {
-     $typeTxt = if ($pr.IsNetwork) { U "\uB124\uD2B8\uC6CC\uD06C \uC5F0\uACB0" } elseif ($pr.Shared) { U "\uACF5\uC720 \uD638\uC2A4\uD2B8" } else { U "\uB85C\uCEEC" }
-     $shareTxt = if ($pr.IsNetwork) { if ($pr.RemoteServer) { "\\" + $pr.RemoteServer } else { "-" } } elseif ($pr.Shared) { "\\" + $ps.ComputerName + "\" + $pr.ShareName } else { "-" }
-     $li = New-Object System.Windows.Forms.ListViewItem([string]$pr.Name)
-     [void]$li.SubItems.Add($typeTxt)
-     [void]$li.SubItems.Add($shareTxt)
-     [void]$li.SubItems.Add([string]$pr.PortName)
-     [void]$li.SubItems.Add([string]$pr.DriverName)
-     if ($pr.Shared -and -not $pr.IsNetwork) { $li.BackColor = $p.OkBg; $li.ForeColor = $p.OkFg }
-     elseif ($pr.IsNetwork) { $li.BackColor = $p.InfoBg; $li.ForeColor = $p.InfoFg }
-     [void]$u.LvPrinters.Items.Add($li)
+    $u.TileShare.Caption.Text = U "\uBA54\uC778 PC \uC5F0\uACB0"
+    if ($ps.RemoteHostChecks.Count -eq 0) {
+     $u.TileShare.Value.Text = U "\uC5F0\uACB0 \uB300\uC0C1 \uC5C6\uC74C"
+     $u.TileShare.Value.ForeColor = $t.InkMuted
+     $u.TileShare.Sub.Text = U "\uB4F1\uB85D\uB41C \uC6D0\uACA9 \uD504\uB9B0\uD130 \uC5C6\uC74C"
+    } else {
+     $fails = @($ps.RemoteHostChecks | Where-Object { -not $_.Reachable })
+     if ($fails.Count -gt 0) {
+      $u.TileShare.Value.Text = U "\uC751\uB2F5 \uC5C6\uC74C"
+      $u.TileShare.Value.ForeColor = $t.AsanOrangeText
+      $u.TileShare.Sub.Text = ($fails | ForEach-Object { "\\" + $_.Server }) -join ", "
+     } else {
+      $u.TileShare.Value.Text = U "\uC5F0\uACB0 \uC815\uC0C1"
+      $u.TileShare.Value.ForeColor = $t.AsanDeep
+      $u.TileShare.Sub.Text = ($ps.RemoteHostChecks | ForEach-Object { "\\" + $_.Server }) -join ", "
+     }
     }
    }
-   $u.LvPrinters.EndUpdate()
+
+   # Populate Printers DataGridView
+   $u.DgvPrinters.Rows.Clear()
+   if ($ps.SpoolerStatus -ne "Running") {
+    $rIdx = $u.DgvPrinters.Rows.Add((U "\uC548\uB0B4"), (U "\uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4\uAC00 \uC911\uC9C0\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4"), "-", "-", (U "\uC544\uB798 \uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uB97C \uC2E4\uD589\uD574 \uC8FC\uC138\uC694"))
+    Set-AsanCellSemanticStyle $u.DgvPrinters.Rows[$rIdx].Cells[0] "Warn" $t $f $true
+   } elseif ($ps.PrinterQueryError) {
+    $rIdx = $u.DgvPrinters.Rows.Add((U "\uC624\uB958"), (U "\uD504\uB9B0\uD130 \uBAA9\uB85D \uC870\uD68C \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4"), "-", "-", (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uB97C \uC2E4\uD589\uD574 \uC8FC\uC138\uC694"))
+    Set-AsanCellSemanticStyle $u.DgvPrinters.Rows[$rIdx].Cells[0] "Error" $t $f $true
+   } elseif ($ps.Printers.Count -eq 0) {
+    $rIdx = $u.DgvPrinters.Rows.Add((U "\uC548\uB0B4"), (U "\uC124\uCE58\uB41C \uD504\uB9B0\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4"), "-", "-", "-")
+    $u.DgvPrinters.Rows[$rIdx].DefaultCellStyle.ForeColor = $t.InkMuted
+   } else {
+    foreach ($pr in $ps.Printers) {
+     $typeTxt = if ($pr.IsNetwork) { U "\uB124\uD2B8\uC6CC\uD06C" } elseif ($pr.Shared) { U "\uACF5\uC720 \uD638\uC2A4\uD2B8" } else { U "\uB85C\uCEEC" }
+     $shareTxt = if ($pr.IsNetwork) { if ($pr.RemoteServer) { "\\" + $pr.RemoteServer } else { "-" } } elseif ($pr.Shared) { "\\" + $ps.ComputerName + "\" + $pr.ShareName } else { "-" }
+     $rIdx = $u.DgvPrinters.Rows.Add($typeTxt, [string]$pr.Name, $shareTxt, [string]$pr.PortName, [string]$pr.DriverName)
+     $row = $u.DgvPrinters.Rows[$rIdx]
+     $knd = if ($pr.Shared -and -not $pr.IsNetwork) { "OK" } elseif ($pr.IsNetwork) { "Info" } else { "Neutral" }
+     Set-AsanCellSemanticStyle $row.Cells[0] $knd $t $f ($knd -ne "Neutral")
+     foreach ($cell in $row.Cells) { $cell.ToolTipText = ([string]$pr.Name + "`r`n" + (U "\uD3EC\uD2B8: ") + $pr.PortName + "`r`n" + (U "\uB4DC\uB77C\uC774\uBC84: ") + $pr.DriverName) }
+    }
+   }
+   $u.DgvPrinters.ClearSelection()
+   & $u.SyncButtonStates
+   & $u.SetStatus (U "\uC900\uBE44 \uC644\uB8CC") "Idle"
+  } catch {
+   & $u.AppendLog ((U "\uC0AC\uD6C4 \uC810\uAC80 \uC624\uB958: ") + $_.Exception.Message)
+   & $u.SetStatus (U "\uD504\uB9B0\uD130 \uC0C1\uD0DC \uC870\uD68C \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4") "Error"
   } finally {
    if (-not $u.Form.IsDisposed) { $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default }
   }
@@ -1101,182 +2132,317 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $btnTopRefresh.Add_Click({ & $ui.RefreshAll }.GetNewClosure())
  $btnRescanUsb.Add_Click({ & $ui.RefreshPreSid }.GetNewClosure())
  $btnPostRefresh.Add_Click({ & $ui.RefreshPostSid }.GetNewClosure())
- $btnTopDiag.Add_Click({ Show-GuiDiagnosticsDialog $ui.Form $ui.State.SysInfo $ui.State.Step2Snap $ui.Pal }.GetNewClosure())
- $btnInlineDiag.Add_Click({ Show-GuiDiagnosticsDialog $ui.Form $ui.State.SysInfo $ui.State.Step2Snap $ui.Pal }.GetNewClosure())
+ $btnTopDiag.Add_Click({ Show-GuiDiagnosticsDialog $ui.Form $ui.State.SysInfo $ui.State.Step2Snap $ui.State.PostStatus $ui.TbLog.Text "" }.GetNewClosure())
+ $btnInlineDiag.Add_Click({ Show-GuiDiagnosticsDialog $ui.Form $ui.State.SysInfo $ui.State.Step2Snap $ui.State.PostStatus $ui.TbLog.Text "" }.GetNewClosure())
+ $btnCritDetail.Add_Click({ Show-GuiDiagnosticsDialog $ui.Form $ui.State.SysInfo $ui.State.Step2Snap $ui.State.PostStatus $ui.TbLog.Text "" }.GetNewClosure())
 
- # Dynamic button state when selecting a disk in STEP 1
- $lvDisks.Add_SelectedIndexChanged({
-  $canTog = $false
-  if ($ui.LvDisks.SelectedItems.Count -gt 0 -and $null -ne $ui.LvDisks.SelectedItems[0].Tag) {
-   $selIt = $ui.LvDisks.SelectedItems[0].Tag
-   if (-not $selIt.IsProtected -and ($selIt.State -in @("ACTIVE","DISABLED"))) { $canTog = $true }
-  }
-  $ui.BtnToggleDisk.Enabled = $canTog
-  Set-GuiButtonStyle $ui.BtnToggleDisk $(if ($canTog) { "PrimaryBlue" } else { "Disabled" }) $ui.Pal
+ # Instant-feedback SID copy button (1.5s visual confirmation)
+ $btnCopySid.Add_Click({
+  $sidStr = if ($ui.State.PostStatus -and $ui.State.PostStatus.MachineSid) { [string]$ui.State.PostStatus.MachineSid } else { "" }
+  if (-not $sidStr) { return }
+  try {
+   [System.Windows.Forms.Clipboard]::SetText($sidStr)
+   $ui.BtnCopySid.Text = U "\uBCF5\uC0AC\uB428"
+   Set-AsanButtonVariant $ui.BtnCopySid "SoftTeal" $ui
+   & $ui.SetStatus ((U "Machine SID\uAC00 \uD074\uB9BD\uBCF4\uB4DC\uC5D0 \uBCF5\uC0AC\uB418\uC5C8\uC2B5\uB2C8\uB2E4: ") + $sidStr) "OK"
+   $ui.CopyResetTimer.Stop()
+   $ui.CopyResetTimer.Start()
+  } catch {}
  }.GetNewClosure())
- $lvDisks.Add_DoubleClick({ if ($ui.BtnToggleDisk.Enabled) { $ui.BtnToggleDisk.PerformClick() } }.GetNewClosure())
- $lvNvramUsb.Add_DoubleClick({ if ($ui.BtnUsbReboot.Enabled) { $ui.BtnUsbReboot.PerformClick() } }.GetNewClosure())
+
+ $copyResetTimer.Add_Tick({
+  $ui.CopyResetTimer.Stop()
+  if (-not $ui.BtnCopySid.IsDisposed) {
+   $ui.BtnCopySid.Text = U "SID \uBCF5\uC0AC"
+   Set-AsanButtonVariant $ui.BtnCopySid "Secondary" $ui
+  }
+ }.GetNewClosure())
+
+ # Collapsible Step 1 & Bottom Log Console
+ $btnStep1Fold.Add_Click({
+  $ui.State.Step1Collapsed = (-not $ui.State.Step1Collapsed)
+  & $ui.ApplyStep1RowLayout
+ }.GetNewClosure())
+
+ $btnToggleLog.Add_Click({
+  & $ui.SetLogExpanded (-not $ui.State.LogExpanded)
+ }.GetNewClosure())
+
+ # Keyboard shortcuts: F5 refresh, Alt+1 / Alt+2 tabs
+ $form.Add_KeyDown({
+  param($sender, $e)
+  if ($e.KeyCode -eq [System.Windows.Forms.Keys]::F5 -and -not $ui.State.IsBusy) {
+   $e.SuppressKeyPress = $true
+   & $ui.RefreshAll
+  } elseif ($e.Alt -and $e.KeyCode -eq [System.Windows.Forms.Keys]::D1) {
+   $e.SuppressKeyPress = $true
+   $ui.TabControl.SelectedIndex = 0
+  } elseif ($e.Alt -and $e.KeyCode -eq [System.Windows.Forms.Keys]::D2) {
+   $e.SuppressKeyPress = $true
+   $ui.TabControl.SelectedIndex = 1
+  }
+ }.GetNewClosure())
+
+ # Selection synchronization & natural double-click defaults
+ $dgvDisks.Add_SelectionChanged({ & $ui.SyncButtonStates }.GetNewClosure())
+ $dgvUsb.Add_SelectionChanged({ & $ui.SyncButtonStates }.GetNewClosure())
+ $dgvDisks.Add_CellDoubleClick({
+  param($sender, $e)
+  if ($e.RowIndex -ge 0 -and $ui.BtnToggleDisk.Enabled) { $ui.BtnToggleDisk.PerformClick() }
+ }.GetNewClosure())
+ $dgvUsb.Add_CellDoubleClick({
+  param($sender, $e)
+  if ($e.RowIndex -ge 0 -and $ui.BtnUsbReboot.Enabled) { $ui.BtnUsbReboot.PerformClick() }
+ }.GetNewClosure())
 
  # STEP 1: One-Stop Fix
  $btnOneStop.Add_Click({
   $rep = $ui.State.EfiRep
   if (-not $rep -or $rep.SplitBoot -or $rep.ActionableConflictItems.Count -eq 0) { return }
-  $targetsDesc = ($rep.ActionableConflictItems | ForEach-Object { " - Disk " + $_.DiskNumber + " (" + $_.Model + ", " + $_.BootType + " #" + $_.TargetPart + ")" }) -join "`r`n"
-  $qMsg = (U "\uC544\uB798 \uBCF4\uC870 \uB514\uC2A4\uD06C\uC758 \uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uB97C \uBE44\uD30C\uAD34 \uBE44\uD65C\uC131\uD654(_OLD)\uD560\uAE4C\uC694?`r`n(\uD30C\uD2F0\uC158 \uC0AD\uC81C/\uD3EC\uB9F7 \uC5C6\uC74C \u00B7 \uC5B8\uC81C\uB4E0 \uBCF5\uAD6C \uAC00\uB2A5)`r`n`r`n") + $targetsDesc
-  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, $qMsg, (U "\uC6D0\uC2A4\uD1B1 \uC815\uB9AC \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+  $targetsDesc = ($rep.ActionableConflictItems | ForEach-Object { "  Disk " + $_.DiskNumber + "  " + $_.Model + "  " + $_.BootType + " #" + $_.TargetPart }) -join "`r`n"
+  $qMsg = (U "\uC544\uB798 \uBCF4\uC870 \uB514\uC2A4\uD06C\uC758 \uC794\uC874 \uBD80\uD2B8\uB85C\uB354\uB97C \uBE44\uD65C\uC131\uD654\uD560\uAE4C\uC694?`r`n\uD30C\uD2F0\uC158 \uC0AD\uC81C\uB098 \uD3EC\uB9F7 \uC5C6\uC774 \uC774\uB984\uB9CC \uBCC0\uACBD\uD558\uBBC0\uB85C \uC5B8\uC81C\uB4E0 \uC6D0\uB798\uB300\uB85C \uBCF5\uAD6C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.`r`n`r`n") + $targetsDesc
+  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, $qMsg, (U "\uC794\uC874 \uBD80\uD2B8\uB85C\uB354 \uC815\uB9AC \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -ne [System.Windows.Forms.DialogResult]::Yes) { return }
 
   $changed = 0
+  $failedMsgs = New-Object System.Collections.ArrayList
   $msgs = New-Object System.Collections.ArrayList
   foreach ($ci in $rep.ActionableConflictItems) {
    $r = Invoke-BootloaderAction $ci "DISABLE"
    [void]$msgs.Add($r.Message)
-   if ($r.Warning) { [void]$msgs.Add(("  [WARN] " + $r.Warning)) }
-   if ($r.Success) { $changed++ }
+   & $ui.AppendLog $r.Message
+   if ($r.Warning) { [void]$msgs.Add($r.Warning); & $ui.AppendLog $r.Warning }
+   if ($r.Success) { $changed++ } else { [void]$failedMsgs.Add($r.Message) }
   }
 
   if ($changed -gt 0) {
    $diskLbl = if ($null -ne $rep.BootDisk) { "Disk " + $rep.BootDisk } else { $env:SystemDrive }
-   $bbQ = ($msgs -join "`r`n") + "`r`n`r`n" + (U "\uD604\uC7AC OS SSD(") + $diskLbl + (U ")\uB97C UEFI NVRAM 1\uC21C\uC704\uB85C \uC815\uC2DD \uB4F1\uB85D(bcdboot)\uD560\uAE4C\uC694?")
-   $dr2 = [System.Windows.Forms.MessageBox]::Show($ui.Form, $bbQ, (U "UEFI NVRAM \uB4F1\uB85D (bcdboot)"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+   $bbQ = ($msgs -join "`r`n") + "`r`n`r`n" + (U "\uD604\uC7AC Windows \uB514\uC2A4\uD06C ") + $diskLbl + (U "\uB97C UEFI \uBD80\uD305 1\uC21C\uC704\uB85C \uB4F1\uB85D\uD560\uAE4C\uC694?")
+   $dr2 = [System.Windows.Forms.MessageBox]::Show($ui.Form, $bbQ, (U "UEFI \uBD80\uD305 \uD56D\uBAA9 \uB4F1\uB85D"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
    if ($dr2 -eq [System.Windows.Forms.DialogResult]::Yes) {
     $bbRes = Invoke-NativeOem "bcdboot.exe" ('"' + $env:SystemRoot + '" /f UEFI')
     if ($bbRes.ExitCode -eq 0) {
-     [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "UEFI NVRAM \uBD80\uD305 \uD56D\uBAA9 \uB4F1\uB85D(bcdboot) \uC644\uB8CC!"), (U "\uC644\uB8CC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+     & $ui.AppendLog (U "UEFI \uBD80\uD305 \uD56D\uBAA9 \uB4F1\uB85D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+     [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "UEFI \uBD80\uD305 \uD56D\uBAA9 \uB4F1\uB85D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4."), (U "\uB4F1\uB85D \uC644\uB8CC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
     } else {
-     [System.Windows.Forms.MessageBox]::Show($ui.Form, ((U "bcdboot \uB4F1\uB85D \uC2E4\uD328 (ExitCode=") + $bbRes.ExitCode + ")`r`n" + ($bbRes.Lines -join "`r`n")), (U "\uACBD\uACE0"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+     $errDet = "bcdboot ExitCode=" + $bbRes.ExitCode + " " + ($bbRes.Lines -join " ")
+     & $ui.AppendLog $errDet
+     Invoke-GuiErrorReportPrompt $ui (U "UEFI \uB4F1\uB85D \uC624\uB958") (U "UEFI \uBD80\uD305 \uD56D\uBAA9 \uB4F1\uB85D\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errDet
     }
    }
-  } else {
-   [System.Windows.Forms.MessageBox]::Show($ui.Form, ($msgs -join "`r`n"), (U "\uC870\uCE58 \uACB0\uACFC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+  } elseif ($failedMsgs.Count -gt 0) {
+   Invoke-GuiErrorReportPrompt $ui (U "\uBD80\uD2B8\uB85C\uB354 \uC815\uB9AC \uC624\uB958") ($failedMsgs -join "`r`n") ($failedMsgs -join " | ")
   }
   & $ui.RefreshPreSid
  }.GetNewClosure())
 
- # STEP 1: Individual Disk Toggle (Disable or Restore)
+ # STEP 1: Individual Disk Toggle
  $btnToggleDisk.Add_Click({
-  if ($ui.LvDisks.SelectedItems.Count -eq 0) {
-   [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "\uBA3C\uC800 \uC704 \uBAA9\uB85D\uC5D0\uC11C \uC804\uD658\uD560 \uB514\uC2A4\uD06C\uB97C \uC120\uD0DD\uD558\uC138\uC694."), (U "\uC548\uB0B4"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-   return
-  }
-  $it = $ui.LvDisks.SelectedItems[0].Tag
-  if ($it.IsProtected) {
-   [System.Windows.Forms.MessageBox]::Show($ui.Form, ("Disk " + $it.DiskNumber + " : " + (Format-BootloaderStateText $it) + "`r`n" + (U "\uBCF4\uD638 \uB300\uC0C1 \uB514\uC2A4\uD06C\uB294 \uBCC0\uACBD\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.")), (U "\uCC28\uB2E8"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-   return
-  }
+  if ($ui.DgvDisks.SelectedRows.Count -eq 0 -or $null -eq $ui.DgvDisks.SelectedRows[0].Tag) { return }
+  $it = $ui.DgvDisks.SelectedRows[0].Tag
+  if ($it.IsProtected) { return }
   $mode = if ($it.State -eq "ACTIVE") { "DISABLE" } elseif ($it.State -eq "DISABLED") { "RESTORE" } else { "" }
-  if (-not $mode) {
-   [System.Windows.Forms.MessageBox]::Show($ui.Form, ("Disk " + $it.DiskNumber + " : " + (Format-BootloaderStateText $it) + "`r`n" + (U "\uC790\uB3D9 \uC804\uD658 \uAC00\uB2A5\uD55C \uC0C1\uD0DC(ACTIVE/DISABLED)\uAC00 \uC544\uB2D9\uB2C8\uB2E4.")), (U "\uC548\uB0B4"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-   return
-  }
+  if (-not $mode) { return }
+
   $preview = Get-PartitionPreviewListing $it
-  $actLabel = if ($mode -eq "DISABLE") { U "\uBE44\uD65C\uC131\uD654(_OLD)" } else { U "\uC6D0\uC0C1 \uBCF5\uAD6C" }
-  $confirmMsg = ("Disk " + $it.DiskNumber + " (" + $it.Model + ") | " + $it.BootType + " #" + $it.TargetPart + "`r`n`r`n" + (U "[\uD30C\uD2F0\uC158 \uB8E8\uD2B8 \uB0B4\uC6A9 \uBBF8\uB9AC\uBCF4\uAE30]") + "`r`n" + $preview + "`r`n`r`n" + (U "\uC774 \uB514\uC2A4\uD06C\uC758 \uBD80\uD2B8\uB85C\uB354\uB97C ") + $actLabel + (U "\uD560\uAE4C\uC694?"))
+  $actLabel = if ($mode -eq "DISABLE") { U "\uBE44\uD65C\uC131\uD654" } else { U "\uC6D0\uC0C1 \uBCF5\uAD6C" }
+  $confirmMsg = ("Disk " + $it.DiskNumber + "  " + $it.Model + "`r`n`r`n" + (U "\uD30C\uD2F0\uC158 \uB8E8\uD2B8 \uBBF8\uB9AC\uBCF4\uAE30") + "`r`n" + $preview + "`r`n`r`n" + (U "\uC774 \uB514\uC2A4\uD06C\uC758 \uBD80\uD2B8\uB85C\uB354\uB97C ") + $actLabel + (U "\uD560\uAE4C\uC694?"))
   $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, $confirmMsg, (U "\uBD80\uD2B8\uB85C\uB354 \uC804\uD658 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -ne [System.Windows.Forms.DialogResult]::Yes) { return }
 
   $r = Invoke-BootloaderAction $it $mode
-  $icon = if ($r.Success) { [System.Windows.Forms.MessageBoxIcon]::Information } else { [System.Windows.Forms.MessageBoxIcon]::Error }
-  $body = $r.Message + $(if ($r.Warning) { "`r`n[" + (U "\uACBD\uACE0") + "] " + $r.Warning } else { "" })
-  [System.Windows.Forms.MessageBox]::Show($ui.Form, $body, (U "\uC804\uD658 \uACB0\uACFC"), [System.Windows.Forms.MessageBoxButtons]::OK, $icon) | Out-Null
+  & $ui.AppendLog $r.Message
+  if ($r.Success) {
+   $body = $r.Message + $(if ($r.Warning) { "`r`n" + $r.Warning } else { "" })
+   [System.Windows.Forms.MessageBox]::Show($ui.Form, $body, (U "\uC804\uD658 \uC644\uB8CC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+  } else {
+   Invoke-GuiErrorReportPrompt $ui (U "\uBD80\uD2B8\uB85C\uB354 \uC804\uD658 \uC624\uB958") $r.Message $r.Message
+  }
   & $ui.RefreshPreSid
  }.GetNewClosure())
 
- # STEP 1: Explicit IGNORE Unlock
+ # STEP 1: Explicit IGNORE Bypass
  $btnIgnoreStep1.Add_Click({
-  if (Show-GuiIgnoreConfirmDialog $ui.Form $ui.Pal) {
+  if (Show-GuiIgnoreConfirmDialog $ui.Form) {
    $ui.State.Step1Bypassed = $true
+   & $ui.AppendLog (U "\uC0AC\uC6A9\uC790 \uD655\uC778\uC73C\uB85C 1\uB2E8\uACC4 \uACBD\uACE0\uB97C \uAC74\uB108\uB6F0\uACE0 2\uB2E8\uACC4 \uC7A0\uAE08\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.")
    & $ui.RefreshPreSid
   }
  }.GetNewClosure())
 
  # STEP 2: Confirmed 1-Time USB Reboot (Rule #3: ALWAYS confirm before reboot!)
  $btnUsbReboot.Add_Click({
-  if ($ui.LvNvramUsb.SelectedItems.Count -eq 0 -or $null -eq $ui.LvNvramUsb.SelectedItems[0].Tag) {
-   [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "\uBA3C\uC800 [2-2] \uBAA9\uB85D\uC5D0\uC11C \uBD80\uD305\uD560 UEFI USB \uD56D\uBAA9\uC744 \uC120\uD0DD\uD558\uC138\uC694."), (U "\uC548\uB0B4"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-   return
-  }
-  $target = $ui.LvNvramUsb.SelectedItems[0].Tag
-  $devStr = if ($target.Device) { $target.Device } else { "UEFI NVRAM" }
-  $cMsg = (U "\uC544\uB798 USB \uD56D\uBAA9\uC744 1\uD68C\uC131 \uBD80\uD305 \uC21C\uC11C(bootsequence)\uB85C \uC9C0\uC815\uD558\uACE0 \uC989\uC2DC \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?`r`n`r`n") +
-          (U "\uD56D\uBAA9: ") + $target.Description + "`r`n" +
-          (U "\uB9E4\uCE6D: ") + $target.MatchTag + "`r`n" +
-          (U "\uC7A5\uCE58: ") + $devStr + "`r`n" +
-          "GUID: " + $target.Identifier
-  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, $cMsg, (U "USB 1\uD68C\uC131 \uC7AC\uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+  if ($ui.DgvUsb.SelectedRows.Count -eq 0 -or $null -eq $ui.DgvUsb.SelectedRows[0].Tag) { return }
+  $rowTag = $ui.DgvUsb.SelectedRows[0].Tag
+  if ($rowTag.Kind -ne "NVRAM") { return }
+  $target = $rowTag.Entry
+  $devStr = if ($target.Device) { $target.Device } else { U "UEFI \uD38C\uC6E8\uC5B4" }
+  $cMsg = (U "\uC544\uB798 USB \uD56D\uBAA9\uC73C\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305\uC744 \uC9C4\uD589\uD560\uAE4C\uC694?`r`n\uC774\uBC88 \uC7AC\uBD80\uD305\uC5D0\uB9CC \uC801\uC6A9\uB418\uBA70 \uB2E4\uC74C \uBD80\uD305\uBD80\uD130\uB294 \uC6D0\uB798 Windows\uB85C \uC2DC\uC791\uB429\uB2C8\uB2E4.`r`n`r`n") +
+          (U "\uBD80\uD305 \uD56D\uBAA9: ") + $target.Description + "`r`n" +
+          (U "\uC77C\uCE58 \uC218\uC900: ") + $target.MatchTag + "`r`n" +
+          (U "\uC5F0\uACB0 \uC815\uBCF4: ") + $devStr
+  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, $cMsg, (U "USB \uC7AC\uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -ne [System.Windows.Forms.DialogResult]::Yes) { return }
 
   $setRes = Invoke-NativeOem "bcdedit.exe" ("/set {fwbootmgr} bootsequence " + $target.Identifier)
   if ($setRes.ExitCode -eq 0) {
+   & $ui.AppendLog ((U "1\uD68C\uC131 \uBD80\uD305 \uC21C\uC11C \uC9C0\uC815 \uC644\uB8CC: ") + $target.Description)
    $rb = Invoke-SafeRebootCore "/r /f /t 0"
    if ($rb.Success) { $ui.Form.Close(); return }
-   [System.Windows.Forms.MessageBox]::Show($ui.Form, ((U "\uC7AC\uBD80\uD305 \uBA85\uB839 \uC2E4\uD328 (ExitCode=") + $rb.ExitCode + ")`r`n" + $rb.Output), (U "\uC624\uB958"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+   $errDet = "shutdown /r /f /t 0 ExitCode=" + $rb.ExitCode + " " + $rb.Output
+   Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uC7AC\uBD80\uD305 \uBA85\uB839 \uC2E4\uD589\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errDet
   } else {
-   $fbMsg = (U "NVRAM \uBD80\uD305 \uC21C\uC11C \uBCC0\uACBD\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.`r`n") + ($setRes.Lines -join " ") + (U "`r`n`r`n\uB300\uC2E0 Windows \uACE0\uAE09 \uBD80\uD305('\uC7A5\uCE58 \uC0AC\uC6A9') \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?")
-   $drFb = [System.Windows.Forms.MessageBox]::Show($ui.Form, $fbMsg, (U "NVRAM \uBCC0\uACBD \uC2E4\uD328"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+   $bcdErr = ($setRes.Lines -join " ")
+   & $ui.AppendLog ((U "NVRAM \uBD80\uD305 \uC21C\uC11C \uBCC0\uACBD \uC2E4\uD328: ") + $bcdErr)
+   $fbMsg = (U "NVRAM \uBD80\uD305 \uC21C\uC11C\uB97C \uBCC0\uACBD\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.`r`n\uB300\uC2E0 Windows \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC73C\uB85C \uC774\uB3D9\uD574 \uC7A5\uCE58 \uC0AC\uC6A9 \uBA54\uB274\uC5D0\uC11C USB\uB97C \uC120\uD0DD\uD560\uAE4C\uC694?")
+   $drFb = [System.Windows.Forms.MessageBox]::Show($ui.Form, $fbMsg, (U "\uACE0\uAE09 \uBD80\uD305 \uC804\uD658 \uC548\uB0B4"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
    if ($drFb -eq [System.Windows.Forms.DialogResult]::Yes) {
     $rb2 = Invoke-SafeRebootCore "/r /o /f /t 0"
     if ($rb2.Success) { $ui.Form.Close(); return }
+    $errDet2 = "shutdown /r /o /f /t 0 ExitCode=" + $rb2.ExitCode + " " + $rb2.Output
+    Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uACE0\uAE09 \uBD80\uD305 \uC7AC\uBD80\uD305\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errDet2
    }
   }
  }.GetNewClosure())
 
- # STEP 2: Windows Advanced Boot ('Use a device')
+ # STEP 2: Windows Advanced Boot
  $btnAdvBoot.Add_Click({
-  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "Windows \uACE0\uAE09 \uBD80\uD305('\uC7A5\uCE58 \uC0AC\uC6A9') \uBA54\uB274\uB85C \uC989\uC2DC \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?"), (U "\uACE0\uAE09 \uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "Windows \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?`r`n\uD30C\uB780 \uD654\uBA74\uC774 \uB098\uD0C0\uB098\uBA74 \uC7A5\uCE58 \uC0AC\uC6A9\uC744 \uC120\uD0DD\uD574 WinPE USB\uB85C \uBD80\uD305\uD574 \uC8FC\uC138\uC694."), (U "\uACE0\uAE09 \uBD80\uD305 \uC774\uB3D9 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -ne [System.Windows.Forms.DialogResult]::Yes) { return }
   $rb = Invoke-SafeRebootCore "/r /o /f /t 0"
   if ($rb.Success) { $ui.Form.Close(); return }
-  [System.Windows.Forms.MessageBox]::Show($ui.Form, ((U "\uC7AC\uBD80\uD305 \uC2E4\uD328 (ExitCode=") + $rb.ExitCode + ")`r`n" + $rb.Output), (U "\uC624\uB958"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+  Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uACE0\uAE09 \uBD80\uD305 \uC7AC\uBD80\uD305\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") ("shutdown /r /o ExitCode=" + $rb.ExitCode + " " + $rb.Output)
  }.GetNewClosure())
 
- # STEP 2: BIOS Firmware Setup
+ # STEP 2: BIOS Setup Entry
  $btnBiosBoot.Add_Click({
-  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, ((U "UEFI BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815 \uD654\uBA74\uC73C\uB85C \uC989\uC2DC \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?`r`n`r`n") + $ui.State.SysInfo.BiosHint), (U "BIOS \uC9C4\uC785 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, ((U "UEFI BIOS \uC124\uC815 \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?`r`n`r`n") + $ui.State.SysInfo.BiosHint), (U "BIOS \uC124\uC815 \uC5F4\uAE30 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -ne [System.Windows.Forms.DialogResult]::Yes) { return }
   $rb = Invoke-SafeRebootCore "/r /fw /f /t 0"
   if ($rb.Success) { $ui.Form.Close(); return }
-  [System.Windows.Forms.MessageBox]::Show($ui.Form, ((U "BIOS \uC7AC\uBD80\uD305 \uC2E4\uD328 (ExitCode=") + $rb.ExitCode + ")`r`n" + $rb.Output), (U "\uC624\uB958"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+  Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "BIOS \uC124\uC815 \uC7AC\uBD80\uD305\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") ("shutdown /r /fw ExitCode=" + $rb.ExitCode + " " + $rb.Output)
  }.GetNewClosure())
 
- # TAB 2: Spooler Reset Execution
+ # TAB 2: Async Non-Blocking Spooler Reset (Runspace + Timer -> UI never freezes!)
+ $asyncPollTimer.Add_Tick({
+  $st = $ui.State
+  if ($st.AsyncQueue) {
+   while ($st.AsyncQueue.Count -gt 0) {
+    $ln = [string]$st.AsyncQueue.Dequeue()
+    & $ui.AppendLog $ln
+    & $ui.SetStatus $ln "Busy"
+   }
+  }
+  if (-not $st.AsyncHandle -or -not $st.AsyncHandle.IsCompleted) { return }
+  $ui.AsyncPollTimer.Stop()
+  $res = $null
+  $runErr = ""
+  try {
+   $out = $st.AsyncPs.EndInvoke($st.AsyncHandle)
+   if ($out -and $out.Count -gt 0) { $res = $out[$out.Count - 1] }
+   if (-not $res -and $st.AsyncPs.Streams.Error.Count -gt 0) {
+    $runErr = $st.AsyncPs.Streams.Error[0].ToString()
+   }
+  } catch {
+   $runErr = $_.Exception.Message
+  } finally {
+   if ($st.AsyncPs) { try { $st.AsyncPs.Dispose() } catch {} }
+   if ($st.AsyncRs) { try { $st.AsyncRs.Dispose() } catch {} }
+   $st.AsyncPs = $null; $st.AsyncRs = $null; $st.AsyncHandle = $null; $st.AsyncQueue = $null
+   $st.IsBusy = $false
+  }
+
+  if ($runErr -or -not $res) {
+   $eMsg = if ($runErr) { $runErr } else { U "\uC2A4\uD480\uB7EC \uCD08\uAE30\uD654 \uACB0\uACFC\uB97C \uBC1B\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4." }
+   & $ui.AppendLog ((U "\uC2A4\uD480\uB7EC \uCD08\uAE30\uD654 \uC624\uB958: ") + $eMsg)
+   & $ui.SetStatus (U "\uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4") "Error"
+   & $ui.RefreshPostSid
+   Invoke-GuiErrorReportPrompt $ui (U "\uC2A4\uD480\uB7EC \uCD08\uAE30\uD654 \uC624\uB958") (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.") $eMsg
+   return
+  }
+
+  if (-not $res.ServiceMissing) {
+   $qRes = $res.QueueResult
+   & $ui.AppendLog ((U "\uC815\uB9AC \uACB0\uACFC \u00B7 \uB300\uAE30\uC5F4 \uC0AD\uC81C ") + $qRes.DeletedCount + (U "\uAC74, \uC794\uC874 ") + $qRes.RemainingCount + (U "\uAC74, \uC2DC\uC791 \uC720\uD615 ") + $res.StartMode)
+   if ($res.IsRunning) {
+    & $ui.AppendLog (U "\uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uBA54\uC778 PC\uC640 \uD074\uB77C\uC774\uC5B8\uD2B8 PC \uBAA8\uB450\uC5D0\uC11C \uC2E4\uD589\uD55C \uB4A4 \uD14C\uC2A4\uD2B8 \uC778\uC1C4\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.")
+    & $ui.RefreshPostSid
+    & $ui.SetStatus (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4") "OK"
+    [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`r`n\uBA54\uC778 \uD504\uB9B0\uD130 PC\uC640 \uD074\uB77C\uC774\uC5B8\uD2B8 PC \uBAA8\uB450\uC5D0\uC11C \uD55C \uBC88\uC529 \uC2E4\uD589\uD55C \uB4A4 \uD14C\uC2A4\uD2B8 \uC778\uC1C4\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694."), (U "\uCD08\uAE30\uD654 \uC644\uB8CC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+   } else {
+    & $ui.RefreshPostSid
+    & $ui.SetStatus (U "\uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4 \uC7AC\uC2DC\uC791\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4") "Error"
+    Invoke-GuiErrorReportPrompt $ui (U "\uC2A4\uD480\uB7EC \uC7AC\uC2DC\uC791 \uC624\uB958") (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4\uB97C \uB2E4\uC2DC \uC2DC\uC791\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.") ([string]$res.StartError)
+   }
+  } else {
+   & $ui.RefreshPostSid
+   & $ui.SetStatus (U "\uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4") "Error"
+   Invoke-GuiErrorReportPrompt $ui (U "\uC11C\uBE44\uC2A4 \uC5C6\uC74C") ([string]$res.StartError) ([string]$res.StartError)
+  }
+ }.GetNewClosure())
+
  $btnSpoolerReset.Add_Click({
-  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC(Spooler)\uB97C \uC911\uC9C0\uD558\uACE0 \uB300\uAE30\uC5F4(PRINTERS)\uB97C \uBE44\uC6B4 \uB4A4 \uC7AC\uC2DC\uC791\uD560\uAE4C\uC694?`r`n(\uAE30\uC874 \uD504\uB9B0\uD130\u00B7\uB4DC\uB77C\uC774\uBC84\u00B7\uACF5\uC720 \uC124\uC815\uC740 \uC0AD\uC81C\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.)"), (U "\uC2A4\uD480\uB7EC \uB9AC\uC14B \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+  if ($ui.State.IsBusy) { return }
+  $dr = [System.Windows.Forms.MessageBox]::Show($ui.Form, (U "\uC778\uC1C4 \uB300\uAE30\uC5F4\uC744 \uBE44\uC6B0\uACE0 \uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uC11C\uBE44\uC2A4\uB97C \uC7AC\uC2DC\uC791\uD560\uAE4C\uC694?`r`n\uAE30\uC874 \uD504\uB9B0\uD130, \uB4DC\uB77C\uC774\uBC84, \uACF5\uC720 \uC124\uC815\uC740 \uC0AD\uC81C\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."), (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -ne [System.Windows.Forms.DialogResult]::Yes) { return }
 
-  $ui.BtnSpoolerReset.Enabled = $false
-  $ui.BtnPostRefresh.Enabled = $false
-  $ui.TbResetLog.Text = (U "[\uC2DC\uC791] \uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uB9AC\uC14B \uC9C4\uD589 \uC911...") + "`r`n"
-  [System.Windows.Forms.Application]::DoEvents()
+  $ui.State.IsBusy = $true
+  & $ui.SyncButtonStates
+  & $ui.SetLogExpanded $true
+  & $ui.AppendLog (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uB97C \uC2DC\uC791\uD569\uB2C8\uB2E4.")
+  & $ui.SetStatus (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC\uB97C \uCD08\uAE30\uD654\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4...") "Busy"
 
   try {
-   $logBox = $ui.TbResetLog
-   $res = Invoke-SpoolerResetCore {
-    param($msg)
-    $logBox.AppendText((" " + $msg + "`r`n"))
-    [System.Windows.Forms.Application]::DoEvents()
-   }.GetNewClosure()
-
-   if (-not $res.ServiceMissing) {
-    $qRes = $res.QueueResult
-    $summary = "`r`n--- [" + (U "\uACB0\uACFC \uC694\uC57D") + "] ---`r`n" +
-               " * " + (U "\uC911\uC9C0 \uBC29\uC2DD") + " : " + $res.StopMode + "`r`n" +
-               " * " + (U "\uB300\uAE30\uC5F4 \uC815\uB9AC") + " : " + $qRes.DeletedCount + (U "\uAC74 \uC0AD\uC81C") + " (SPL/SHD: " + $qRes.SplShdDeleted + ") | " + (U "\uC794\uC874") + ": " + $qRes.RemainingCount + (U "\uAC74") + "`r`n" +
-               " * " + (U "\uC2DC\uC791 \uC720\uD615") + " : " + $res.StartMode + $(if ($res.StartRestored) { " (" + (U "Automatic\uC73C\uB85C \uBCF5\uAD6C\uB428") + ")" } else { "" }) + "`r`n" +
-               " * " + (U "\uCD5C\uC885 \uC0C1\uD0DC") + " : " + $(if ($res.IsRunning) { U "\uC815\uC0C1 \uC2E4\uD589 \uC911 (Running)" } else { (U "\uC2DC\uC791 \uC2E4\uD328: ") + $res.StartError }) + "`r`n"
-    $ui.TbResetLog.AppendText($summary)
+   $q = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
+   $fnNames = @("U", "Get-SpoolerQueueDirectory", "Clear-SpoolerQueueDirectory", "Invoke-SpoolerResetCore")
+   $defs = ($fnNames | ForEach-Object { "function $_ {`r`n" + (Get-Command $_ -CommandType Function).Definition + "`r`n}" }) -join "`r`n"
+   $workerScript = "param(`$q)`r`n`$ErrorActionPreference = 'Continue'`r`n" + $defs + "`r`nInvoke-SpoolerResetCore ({ param(`$m) `$q.Enqueue([string]`$m) }.GetNewClosure())"
+   $rs = [runspacefactory]::CreateRunspace()
+   $rs.Open()
+   $ps = [powershell]::Create()
+   $ps.Runspace = $rs
+   [void]$ps.AddScript($workerScript).AddArgument($q)
+   $ui.State.AsyncRs = $rs
+   $ui.State.AsyncPs = $ps
+   $ui.State.AsyncQueue = $q
+   $ui.State.AsyncHandle = $ps.BeginInvoke()
+   $ui.AsyncPollTimer.Start()
+  } catch {
+   # Defensive synchronous fallback if Runspace creation fails
+   try {
+    $logRef = $ui.AppendLog
+    $res = Invoke-SpoolerResetCore { param($m) & $logRef $m }.GetNewClosure()
+    $ui.State.IsBusy = $false
+    & $ui.RefreshPostSid
     if ($res.IsRunning) {
-     $ui.TbResetLog.AppendText(("`r`n" + (U "\uC644\uB8CC! \uBA54\uC778 \uD504\uB9B0\uD130 PC\uC640 \uD074\uB77C\uC774\uC5B8\uD2B8 PC \uBAA8\uB450\uC5D0\uC11C \uC2E4\uD589\uD55C \uB4A4 \uD14C\uC2A4\uD2B8 \uC778\uC1C4\uB97C \uD655\uC778\uD558\uC138\uC694.") + "`r`n"))
+     & $ui.SetStatus (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uCD08\uAE30\uD654\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4") "OK"
+    } else {
+     Invoke-GuiErrorReportPrompt $ui (U "\uC2A4\uD480\uB7EC \uCD08\uAE30\uD654 \uC624\uB958") ([string]$res.StartError) ([string]$res.StartError)
     }
+   } finally {
+    $ui.State.IsBusy = $false
+    & $ui.SyncButtonStates
    }
-  } finally {
-   $ui.BtnSpoolerReset.Enabled = $true
-   $ui.BtnPostRefresh.Enabled = $true
   }
-  & $ui.RefreshPostSid
  }.GetNewClosure())
 
- # Null-safe FormClosed cleanup (immune to scope loss; NEVER blocks window close)
+ # Safe FormClosing / FormClosed cleanup (NEVER blocks or throws on X button!)
+ $form.Add_FormClosing({
+  param($sender, $e)
+  $ctx = if ($sender -and $sender.Tag) { $sender.Tag } else { $ui }
+  if ($ctx -and $ctx.CopyResetTimer) { try { $ctx.CopyResetTimer.Stop() } catch {} }
+  if ($ctx -and $ctx.AsyncPollTimer) { try { $ctx.AsyncPollTimer.Stop() } catch {} }
+  if ($ctx -and $ctx.State -and $ctx.State.AsyncPs) {
+   try { $ctx.State.AsyncPs.Stop() } catch {}
+   try { $ctx.State.AsyncPs.Dispose() } catch {}
+   $ctx.State.AsyncPs = $null
+  }
+  if ($ctx -and $ctx.State -and $ctx.State.AsyncRs) {
+   try { $ctx.State.AsyncRs.Dispose() } catch {}
+   $ctx.State.AsyncRs = $null
+  }
+ }.GetNewClosure())
+
  $form.Add_FormClosed({
   param($sender, $e)
   $ctx = if ($sender -and $sender.Tag) { $sender.Tag } else { $ui }
@@ -1287,120 +2453,171 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
   }
  }.GetNewClosure())
 
+ # Register parent-routed tooltips for all disabled buttons across the entire form
+ Register-AsanDisabledTooltipTree $form $ui
+
  if ($autoPopulate) {
   & $ui.RefreshAll
+  # Smart initial tab selection: if Spooler is broken/stopped on a clean Pre-SID PC, focus Tab 2
+  $ps = $ui.State.PostStatus
+  $efi = $ui.State.EfiRep
+  if ($ps -and ($ps.SpoolerStatus -ne "Running" -or $ps.PrinterQueryError) -and (-not $efi -or -not $efi.HasBlockingRisk)) {
+   $tabControl.SelectedIndex = 1
+   & $ui.SetStatus (U "\uD504\uB9B0\uD130 \uC2A4\uD480\uB7EC \uBCF5\uAD6C\uAC00 \uD544\uC694\uD574 \uC0AC\uD6C4 \uBCF5\uAD6C \uD0ED\uC744 \uBA3C\uC800 \uC5F4\uC5C8\uC2B5\uB2C8\uB2E4") "Warn"
+  }
  }
 
  return [PSCustomObject]@{
   Form             = $form
   TabControl       = $tabControl
-  DiskListView     = $lvDisks
-  PhysUsbListView  = $lvPhysUsb
-  NvramUsbListView = $lvNvramUsb
-  PrinterListView  = $lvPrinters
+  DiskGrid         = $dgvDisks
+  UsbGrid          = $dgvUsb
+  PrinterGrid      = $dgvPrinters
   BtnTopRefresh    = $btnTopRefresh
   BtnRescanUsb     = $btnRescanUsb
   BtnPostRefresh   = $btnPostRefresh
+  BtnToggleLog     = $btnToggleLog
+  BtnStep1Fold     = $btnStep1Fold
+  BtnOneStop       = $btnOneStop
+  BtnToggleDisk    = $btnToggleDisk
+  BtnUsbReboot     = $btnUsbReboot
+  BtnAdvBoot       = $btnAdvBoot
+  BtnBiosBoot      = $btnBiosBoot
+  BtnSpoolerReset  = $btnSpoolerReset
+  CritBanner       = $critBanner
   State            = $state
   RefreshAll       = $ui.RefreshAll
   UiContext        = $ui
  }
 }
 
-# Dedicated compact WinForms GUI for WinPE (X:) Emergency Mode (falls back to Console if WinForms missing)
+# Dedicated WinPE (X:) Emergency Mode GUI using Asan Desktop UI design system
 function Show-WinPeEmergencyGui {
+ Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+ Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
  [System.Windows.Forms.Application]::EnableVisualStyles()
- $pal = Get-GuiPalette
- $fontRegular = New-Object System.Drawing.Font("Malgun Gothic", 9.5)
- $fontBold    = New-Object System.Drawing.Font("Malgun Gothic", 9.5, [System.Drawing.FontStyle]::Bold)
+ $theme = Get-AsanTheme
+ $fonts = New-AsanFontSet
+ $symbolBmp = New-SidToolSymbolBitmap 40
+ $appIconBmp = New-SidToolSymbolBitmap 64
+ $appIcon = New-AsanIconFromBitmap $appIconBmp
+ $appIconBmp.Dispose()
 
  $form = New-Object System.Windows.Forms.Form
- $form.Text = (U "[WinPE \uBE44\uC0C1 \uBAA8\uB4DC] \uB0B4\uC7A5 \uB514\uC2A4\uD06C \uBD80\uD2B8\uB85C\uB354 \uC810\uAC80 \uBC0F \uBCF5\uAD6C") + " v" + $script:ToolVersion
- $form.Size = New-Object System.Drawing.Size(880, 480)
+ $form.Text = (U "WinPE \uBE44\uC0C1 \uBCF5\uAD6C \u00B7 \uB0B4\uC7A5 \uB514\uC2A4\uD06C \uBD80\uD2B8\uB85C\uB354 \uAD00\uB9AC") + " v" + $script:ToolVersion
+ $form.Size = New-Object System.Drawing.Size(920, 520)
+ $form.MinimumSize = New-Object System.Drawing.Size(780, 440)
  $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
- $form.BackColor = $pal.AppBg
- $form.Font = $fontRegular
+ $form.BackColor = $theme.CanvasBg
+ $form.Font = $fonts.Base
+ $form.Icon = $appIcon
 
- $hdr = New-Object System.Windows.Forms.Label
- $hdr.Dock = [System.Windows.Forms.DockStyle]::Top
- $hdr.Height = 46
- $hdr.BackColor = $pal.WarnBg
- $hdr.ForeColor = $pal.WarnFg
- $hdr.Font = $fontBold
- $hdr.Padding = New-Object System.Windows.Forms.Padding(14, 12, 14, 8)
- $hdr.Text = U "[WinPE \uBE44\uC0C1 \uBAA8\uB4DC] \uB0B4\uC7A5 \uB514\uC2A4\uD06C\uC758 GPT EFI / MBR \uBD80\uD2B8\uB85C\uB354\uB97C \uC548\uC804\uD558\uAC8C \uBE44\uD65C\uC131\uD654 \uB610\uB294 \uC6D0\uC0C1 \uBCF5\uAD6C\uD569\uB2C8\uB2E4."
-
- $lv = New-Object System.Windows.Forms.ListView
- $lv.Dock = [System.Windows.Forms.DockStyle]::Fill
- $lv.View = [System.Windows.Forms.View]::Details
- $lv.FullRowSelect = $true
- $lv.GridLines = $true
- [void]$lv.Columns.Add((U "\uB514\uC2A4\uD06C"), 68)
- [void]$lv.Columns.Add((U "\uBAA8\uB378\uBA85"), 230)
- [void]$lv.Columns.Add((U "\uC6A9\uB7C9"), 80)
- [void]$lv.Columns.Add((U "\uBC29\uC2DD"), 80)
- [void]$lv.Columns.Add((U "\uB300\uC0C1"), 120)
- [void]$lv.Columns.Add((U "\uC0C1\uD0DC"), 255)
-
- $bar = New-Object System.Windows.Forms.FlowLayoutPanel
- $bar.Dock = [System.Windows.Forms.DockStyle]::Bottom
- $bar.Height = 48
- $bar.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 8)
- $bar.BackColor = $pal.CardBg
-
- $btnTog = New-Object System.Windows.Forms.Button
- $btnTog.Text = U "\uC120\uD0DD \uB514\uC2A4\uD06C \uBE44\uD65C\uC131\uD654 / \uBCF5\uAD6C \uC804\uD658"
- $btnTog.Size = New-Object System.Drawing.Size(230, 32)
- Set-GuiButtonStyle $btnTog "PrimaryBlue" $pal
-
- $btnRef = New-Object System.Windows.Forms.Button
- $btnRef.Text = U "\uC0C8\uB85C\uACE0\uCE68"
- $btnRef.Size = New-Object System.Drawing.Size(96, 32)
- Set-GuiButtonStyle $btnRef "Neutral" $pal
-
- $btnPeReboot = New-Object System.Windows.Forms.Button
- $btnPeReboot.Text = U "PC \uC7AC\uBD80\uD305"
- $btnPeReboot.Size = New-Object System.Drawing.Size(104, 32)
- Set-GuiButtonStyle $btnPeReboot "PrimaryAmber" $pal
-
- $btnClose = New-Object System.Windows.Forms.Button
- $btnClose.Text = U "\uB2EB\uAE30"
- $btnClose.Size = New-Object System.Drawing.Size(88, 32)
- Set-GuiButtonStyle $btnClose "Neutral" $pal
-
- $bar.Controls.Add($btnTog)
- $bar.Controls.Add($btnRef)
- $bar.Controls.Add($btnPeReboot)
- $bar.Controls.Add($btnClose)
+ $toolTip = New-Object System.Windows.Forms.ToolTip
+ $toolTip.ShowAlways = $true
 
  $peUi = @{
-  Form = $form
-  Lv = $lv
-  Pal = $pal
-  Disposables = @($fontRegular, $fontBold)
+  Form = $form; Theme = $theme; Fonts = $fonts; ToolTip = $toolTip
+  ButtonStyles = @{}; DisabledReasons = @{}; LastDisabledBtn = $null; LastDisabledHost = $null; State = $null
+  Disposables = @($toolTip, $symbolBmp, $appIcon) + @($fonts.Values)
  }
  $form.Tag = $peUi
 
- $peUi.LoadPe = {
-  $rep = Get-InternalBootloaderReport $true
-  $peUi.Lv.BeginUpdate()
-  $peUi.Lv.Items.Clear()
-  foreach ($it in $rep.Items) {
-   $pStr = if ($it.TargetPart -gt 0) { $it.BootType + " #" + $it.TargetPart } else { "-" }
-   $lvi = New-Object System.Windows.Forms.ListViewItem(("Disk " + $it.DiskNumber))
-   [void]$lvi.SubItems.Add([string]$it.Model)
-   [void]$lvi.SubItems.Add(([string]$it.SizeGB + " GB"))
-   [void]$lvi.SubItems.Add([string]$it.PartitionStyle)
-   [void]$lvi.SubItems.Add($pStr)
-   [void]$lvi.SubItems.Add((Format-BootloaderStateText $it))
-   $lvi.Tag = $it
-   if ($it.State -in @("ACTIVE","BOTH","MBR_OS_BLOCKED")) { $lvi.BackColor = $peUi.Pal.ErrBg; $lvi.ForeColor = $peUi.Pal.ErrFg }
-   elseif ($it.State -eq "DISABLED") { $lvi.BackColor = $peUi.Pal.InfoBg; $lvi.ForeColor = $peUi.Pal.InfoFg }
-   [void]$peUi.Lv.Items.Add($lvi)
+ $hdr = New-Object System.Windows.Forms.Panel
+ $hdr.Dock = [System.Windows.Forms.DockStyle]::Top
+ $hdr.Height = 56
+ $hdr.BackColor = $theme.HeaderBg
+ $hdr.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 8)
+ $pic = New-Object System.Windows.Forms.PictureBox
+ $pic.Image = $symbolBmp; $pic.Size = New-Object System.Drawing.Size(40, 40); $pic.Location = New-Object System.Drawing.Point(16, 8)
+ $lblT = New-Object System.Windows.Forms.Label
+ $lblT.Text = U "WinPE \uBE44\uC0C1 \uBCF5\uAD6C \uBAA8\uB4DC"
+ $lblT.Font = $fonts.Title; $lblT.ForeColor = [System.Drawing.Color]::White; $lblT.AutoSize = $true; $lblT.Location = New-Object System.Drawing.Point(66, 6)
+ $lblS = New-Object System.Windows.Forms.Label
+ $lblS.Text = U "\uB0B4\uC7A5 \uB514\uC2A4\uD06C\uC758 GPT EFI \uBC0F MBR \uBD80\uD2B8\uB85C\uB354\uB97C \uC548\uC804\uD558\uAC8C \uBE44\uD65C\uC131\uD654\uD558\uAC70\uB098 \uC6D0\uC0C1 \uBCF5\uAD6C\uD569\uB2C8\uB2E4."
+ $lblS.Font = $fonts.Subtitle; $lblS.ForeColor = $theme.HeaderSubFg; $lblS.AutoSize = $true; $lblS.Location = New-Object System.Drawing.Point(67, 30)
+ $hdr.Controls.Add($pic); $hdr.Controls.Add($lblT); $hdr.Controls.Add($lblS)
+
+ $oLine = New-Object System.Windows.Forms.Panel
+ $oLine.Dock = [System.Windows.Forms.DockStyle]::Top
+ $oLine.Height = 2
+ $oLine.BackColor = $theme.AsanOrangeLine
+
+ $bodyWrap = New-Object System.Windows.Forms.Panel
+ $bodyWrap.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $bodyWrap.Padding = New-Object System.Windows.Forms.Padding(12)
+
+ $card = New-Object System.Windows.Forms.Panel
+ $card.Dock = [System.Windows.Forms.DockStyle]::Fill
+ $card.BackColor = $theme.CardBg
+ $card.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+
+ $dgv = New-AsanGrid $theme $fonts
+ Add-AsanGridColumn $dgv "Disk"  (U "\uB514\uC2A4\uD06C") 68 $false 64
+ Add-AsanGridColumn $dgv "Model" (U "\uBAA8\uB378\uBA85") 220 $false 140
+ Add-AsanGridColumn $dgv "Size"  (U "\uC6A9\uB7C9") 78 $false 68
+ Add-AsanGridColumn $dgv "Style" (U "\uBC29\uC2DD") 64 $false 54
+ Add-AsanGridColumn $dgv "Part"  (U "\uBD80\uD2B8 \uC601\uC5ED") 100 $false 84
+ Add-AsanGridColumn $dgv "State" (U "\uC810\uAC80 \uC0C1\uD0DC") 180 $true 150
+ $card.Controls.Add($dgv)
+ $bodyWrap.Controls.Add($card)
+
+ $bar = New-Object System.Windows.Forms.Panel
+ $bar.Dock = [System.Windows.Forms.DockStyle]::Bottom
+ $bar.Height = 52
+ $bar.BackColor = $theme.CardBg
+ $bar.Padding = New-Object System.Windows.Forms.Padding(16, 9, 16, 9)
+
+ $leftStrip = New-Object System.Windows.Forms.FlowLayoutPanel
+ $leftStrip.Dock = [System.Windows.Forms.DockStyle]::Left
+ $leftStrip.AutoSize = $true
+ $leftStrip.WrapContents = $false
+
+ $btnTog = New-AsanButton (U "\uC120\uD0DD \uB514\uC2A4\uD06C \uC804\uD658") 138 34 "Primary" $peUi $false
+ $btnTog.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $btnRef = New-AsanButton (U "\uC0C8\uB85C\uACE0\uCE68") 92 34 "Secondary" $peUi $false
+ $leftStrip.Controls.Add($btnTog)
+ $leftStrip.Controls.Add($btnRef)
+
+ $rightStrip = New-RightFlowStrip 0 0 0
+ $btnClose = New-AsanButton (U "\uB2EB\uAE30") 88 34 "Secondary" $peUi $false
+ $btnPeReboot = New-AsanButton (U "PC \uC7AC\uBD80\uD305") 108 34 "Orange" $peUi $false
+ $btnPeReboot.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+ $rightStrip.Controls.Add($btnClose)
+ $rightStrip.Controls.Add($btnPeReboot)
+
+ $bar.Controls.Add($leftStrip)
+ $bar.Controls.Add($rightStrip)
+
+ $peUi.Dgv = $dgv
+ $peUi.BtnTog = $btnTog
+
+ $peUi.SyncPeBtn = {
+  $can = $false
+  $reason = U "\uBAA9\uB85D\uC5D0\uC11C \uC804\uD658\uD560 \uB514\uC2A4\uD06C\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694."
+  if ($peUi.Dgv.SelectedRows.Count -gt 0 -and $null -ne $peUi.Dgv.SelectedRows[0].Tag) {
+   $it = $peUi.Dgv.SelectedRows[0].Tag
+   if ($it.State -in @("ACTIVE","DISABLED")) { $can = $true }
+   else { $reason = U "\uC120\uD0DD\uD55C \uB514\uC2A4\uD06C\uC5D0 \uC804\uD658 \uAC00\uB2A5\uD55C \uBD80\uD2B8\uB85C\uB354\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }
   }
-  $peUi.Lv.EndUpdate()
+  Set-AsanButtonState $peUi.BtnTog $can $reason $peUi "Primary"
  }.GetNewClosure()
 
+ $peUi.LoadPe = {
+  $rep = Get-InternalBootloaderReport $true
+  $peUi.Dgv.Rows.Clear()
+  foreach ($it in $rep.Items) {
+   $pStr = if ($it.TargetPart -gt 0) { $it.BootType + " #" + $it.TargetPart } else { "-" }
+   $guiSt = Format-BootloaderGuiStatus $it
+   $rIdx = $peUi.Dgv.Rows.Add(("Disk " + $it.DiskNumber), [string]$it.Model, ([string]$it.SizeGB + " GB"), [string]$it.PartitionStyle, $pStr, $guiSt.Text)
+   $row = $peUi.Dgv.Rows[$rIdx]
+   $row.Tag = $it
+   Set-AsanCellSemanticStyle $row.Cells[5] $guiSt.Kind $peUi.Theme $peUi.Fonts ($guiSt.Kind -ne "Neutral")
+   foreach ($c in $row.Cells) { $c.ToolTipText = $guiSt.Tip }
+  }
+  & $peUi.SyncPeBtn
+ }.GetNewClosure()
+
+ $dgv.Add_SelectionChanged({ & $peUi.SyncPeBtn }.GetNewClosure())
  $btnClose.Add_Click({ $peUi.Form.Close() }.GetNewClosure())
  $btnRef.Add_Click({ & $peUi.LoadPe }.GetNewClosure())
  $btnPeReboot.Add_Click({
@@ -1410,21 +2627,19 @@ function Show-WinPeEmergencyGui {
    $null = Invoke-SafeRebootCore "/r /f /t 0"
   }
  }.GetNewClosure())
+
  $btnTog.Add_Click({
-  if ($peUi.Lv.SelectedItems.Count -eq 0) { return }
-  $it = $peUi.Lv.SelectedItems[0].Tag
+  if ($peUi.Dgv.SelectedRows.Count -eq 0 -or $null -eq $peUi.Dgv.SelectedRows[0].Tag) { return }
+  $it = $peUi.Dgv.SelectedRows[0].Tag
   $mode = if ($it.State -eq "ACTIVE") { "DISABLE" } elseif ($it.State -eq "DISABLED") { "RESTORE" } else { "" }
-  if (-not $mode) {
-   [System.Windows.Forms.MessageBox]::Show($peUi.Form, (Format-BootloaderStateText $it), (U "\uC548\uB0B4"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-   return
-  }
+  if (-not $mode) { return }
   $preview = Get-PartitionPreviewListing $it
-  $actLbl = if ($mode -eq "DISABLE") { U "\uBE44\uD65C\uC131\uD654(_OLD)" } else { U "\uC6D0\uC0C1 \uBCF5\uAD6C" }
-  $cMsg = ("Disk " + $it.DiskNumber + " (" + $it.Model + ") | " + $it.BootType + " #" + $it.TargetPart + "`r`n`r`n" + (U "[\uD30C\uD2F0\uC158 \uB8E8\uD2B8 \uBBF8\uB9AC\uBCF4\uAE30]") + "`r`n" + $preview + "`r`n`r`n" + $actLbl + (U "\uB97C \uC9C4\uD589\uD560\uAE4C\uC694?"))
-  $dr = [System.Windows.Forms.MessageBox]::Show($peUi.Form, $cMsg, (U "\uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+  $actLbl = if ($mode -eq "DISABLE") { U "\uBE44\uD65C\uC131\uD654" } else { U "\uC6D0\uC0C1 \uBCF5\uAD6C" }
+  $cMsg = ("Disk " + $it.DiskNumber + "  " + $it.Model + "`r`n`r`n" + (U "\uD30C\uD2F0\uC158 \uB8E8\uD2B8 \uBBF8\uB9AC\uBCF4\uAE30") + "`r`n" + $preview + "`r`n`r`n" + $actLbl + (U "\uB97C \uC9C4\uD589\uD560\uAE4C\uC694?"))
+  $dr = [System.Windows.Forms.MessageBox]::Show($peUi.Form, $cMsg, (U "\uBD80\uD2B8\uB85C\uB354 \uC804\uD658 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -ne [System.Windows.Forms.DialogResult]::Yes) { return }
   $r = Invoke-BootloaderAction $it $mode
-  [System.Windows.Forms.MessageBox]::Show($peUi.Form, $r.Message, (U "\uACB0\uACFC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+  [System.Windows.Forms.MessageBox]::Show($peUi.Form, $r.Message, (U "\uC804\uD658 \uACB0\uACFC"), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
   & $peUi.LoadPe
  }.GetNewClosure())
 
@@ -1438,9 +2653,11 @@ function Show-WinPeEmergencyGui {
   }
  }.GetNewClosure())
 
- $form.Controls.Add($lv)
+ $form.Controls.Add($bodyWrap)
  $form.Controls.Add($bar)
+ $form.Controls.Add($oLine)
  $form.Controls.Add($hdr)
+ Register-AsanDisabledTooltipTree $form $peUi
  & $peUi.LoadPe
  try {
   [void]$form.ShowDialog()
