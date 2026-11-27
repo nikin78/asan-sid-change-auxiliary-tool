@@ -9,6 +9,25 @@
 
 ---
 
+## [v2.3.0] - 2026-11-27
+
+### 추가 및 고도화 (Added / Enhanced)
+* **병원 실장비 인벤토리 기반 기종 프로필(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 정밀 식별 (`modules/03_Vendor_Bios_Diagnostics.ps1`):**
+  * `Win32_ComputerSystem`, `Win32_ComputerSystemProduct`, `HKLM\...\BIOS`, CPU 세대 및 병원 자산명(`CYYNNNNXX`)을 교차 분석해 삼성 `DB400T8A/DB400T9A`(`S8/S9`), HP `ProDesk 600 G1~G3`(`H4/HS/H6/H8`), HP `EliteDesk 800 G8 / Elite Tower 800 G9`(`H1/H2`), Dell `OptiPlex 3070~7070`(`D1`) 및 2026 신규 보급 `OptiPlex 7010·7020 / Dell Pro Tower`(`D8`)를 정확히 식별하고 세대별 맞춤 BIOS 경로 안내를 제공.
+* **외장 NVMe/SSD 인클로저(UASP) 및 숨김 EFI 부팅 디스크 인식 엔진 전면 개선 (`modules/01`, `02`, `04`):**
+  * **PnP `ContainerID` · `Capabilities` 기반 UASP 외장 SSD 분류 (`Get-UsbPnpDiskLookup`):** `Realtek RTL9210B-CG`, `HSEN 10G-NVME`, `JMicron Generic PCIE/SATA`, `Seagate FireCuda SSD` 등 `Get-Disk`에서 `BusType=SCSI/NVMe`·`IsRemovable=False`로 보고되던 외장 UASP 부팅 디스크를 내장 디스크로 오분류하지 않고 100% 부팅 USB로 인식.
+  * **외장 인클로저 모델명 `NVMe`/`SATA` 오탐 배제 수정:** 제품명에 `NVMe` 또는 `SATA`가 포함된 외장 부팅 디스크(`HSEN 10G-NVME`, `JMicron Generic SATA` 등)가 내장 버스로 오인되어 NVRAM 후보에서 탈락하던 버그 수정.
+  * **무파일 인메모리 `QueryDosDeviceW` 커널 볼륨 매핑 (`Resolve-DosDeviceTarget`):** 드라이브 문자가 없는 숨김 EFI/Ventoy(`VTOYEFI`)/Rufus(`UEFI:NTFS`) 파티션도 `Volume{GUID}` → `\Device\HarddiskVolumeX`로 즉시 매핑하여 1단계(Tier 1) 정확 일치 달성(임시 DLL/`csc.exe` 호출 0건 유지).
+  * **숨김 MBR FAT 파티션(`0x11, 0x14, 0x16, 0x1B, 0x1C, 0x1E`), 미마운트 `Volume{GUID}` 부팅 파일 탐색 및 `PMAP`/`UDisk`/`Generic Flash Disk` NVRAM 매칭 지원.**
+  * **Windows 실행 중 연결(Hot-Plug)된 부팅 디스크 UX 개선 (`modules/06_Gui_WinForms.ps1`):** 부팅 파일이 검증된 Hot-Plug USB를 경고성 `NVRAM 미등록` 대신 `부팅 디스크 · 고급 부팅 준비`로 명확히 표시하고 바로 고급 부팅(`장치 사용`)으로 연결.
+* **Secure Boot 및 제조사별 BIOS USB Boot 탐지 정확도 대폭 강화 (`modules/03_Vendor_Bios_Diagnostics.ps1`):**
+  * **HP G8/G9(`H1/H2`) 체크박스형 WMI 값(`*Checked,Unchecked`) 및 한글 BIOS 로컬라이징 완벽 지원:** 기존 `Enable/Disable`만 검사하여 HP G8/G9에서 `USB Storage Boot`·`Fast Boot`·`Secure Boot`가 미확인으로 빠지던 결함 해결, `HPBIOS_BIOSEnumeration`·`HP_BIOSOrderedList` 병합 조회 및 구형 G1~G5 복합 `Configure Legacy Support and Secure Boot` 우선순위 적용(회색 비활성 `Secure Boot=Enable`로 인한 거짓 충돌 제거).
+  * **Dell WMI(`D1/D8`) 호환성 강화:** `AttributeValue` 속성, 접두형 열거값(`EnableUsbBoot`/`DisableUsbBoot`/`AllDisable`), `SecBoot`, `Fastboot=Auto` 미인식 시 안내 보강.
+  * **Lenovo(`Lenovo_BiosSetting`) WMI 지원 추가 및 4중 신호 Secure Boot 교차 검증(`Win32_DeviceGuard` 추가, Legacy MBR `해당 없음` 분리).**
+  * **시스템 OEM 코드페이지(`HKLM\...\Nls\CodePage\OEMCP`) 우선 조회:** 한국어 Windows에서 국가/지역 형식만 영문(`en-US`)으로 바꾼 PC에서도 `bcdedit`/`diskpart` 한글 출력이 깨지지 않도록 보강.
+
+---
+
 ## [v2.2.0] - 2026-11-26
 
 ### 전면 개편 (UI/UX · 아산병원 데스크톱 디자인 시스템 적용)

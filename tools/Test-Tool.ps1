@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Automated Unit & Smoke Test Suite for SID_Change_Aux_Tool.bat
 # Loads the actual built deliverable with SID_TOOL_TEST_MODE=1 and tests
 # pure helpers, parsers, media guards, non-destructive renames, and live
@@ -678,6 +678,108 @@ Assert-True (-not [string]::IsNullOrWhiteSpace($script:BuildCommit)) "Built Buil
 Assert-True (Test-Path -LiteralPath $chgFile) "CHANGELOG.md exists"
 $chgTxt = [System.IO.File]::ReadAllText($chgFile)
 Assert-True ($chgTxt -match ("## \[v" + [regex]::Escape($verVal) + "\]")) "CHANGELOG.md contains release entry for [v$verVal]"
+
+Write-Host "`n=== 12. Hospital Fleet Models, UASP Enclosures, Hidden ESP & HP G8/G9 Checkbox Regression Tests ===" -ForegroundColor Cyan
+# 12a. Hospital fleet model profiling (S8, S9, H1, H2, H6, H8, D1, D8)
+$profS8 = Resolve-HospitalModelProfile "Samsung" "Samsung" "Desktop PC" "Intel(R) Core(TM) i5-8500 CPU @ 3.00GHz" "C191329S8"
+Assert-Eq $profS8.AssetCode "S8" "Hospital asset code S8 extracted from C191329S8"
+Assert-Eq $profS8.GenFamily "SAMSUNG_DB400T" "S8 mapped to SAMSUNG_DB400T family"
+Assert-True ($profS8.ModelName -match "DB400T8A") "Generic Samsung S8 resolved to DB400T8A model name"
+
+$profH2 = Resolve-HospitalModelProfile "HP" "HP" "HP Elite Tower 800 G9 Desktop PC" "13th Gen Intel(R) Core(TM) i5-13500" "C250092H2"
+Assert-Eq $profH2.GenFamily "HP_G8_G9" "HP Elite Tower 800 G9 (H2) mapped to HP_G8_G9 checkbox BIOS family"
+
+$profH8 = Resolve-HospitalModelProfile "HP" "HP" "HP ProDesk 600 G3 TWR" "Intel(R) Core(TM) i5-7500 CPU" "C180600H8"
+Assert-Eq $profH8.GenFamily "HP_PRODESK_G1_G5" "HP ProDesk 600 G3 (H8) mapped to HP_PRODESK_G1_G5 family"
+
+$profD1 = Resolve-HospitalModelProfile "Dell" "Dell" "OptiPlex 5070" "Intel(R) Core(TM) i5-9500" "C210157D1"
+Assert-Eq $profD1.GenFamily "DELL_OPTIPLEX_70" "Dell OptiPlex 5070 (D1) mapped to DELL_OPTIPLEX_70 family"
+
+$profD8 = Resolve-HospitalModelProfile "Standard" "Standard" "Desktop PC" "14th Gen Intel(R) Core(TM) i5-14500" "C260101D8"
+Assert-Eq $profD8.EffectiveVendor "Dell" "2026 replacement PC code C260101D8 resolves vendor Dell"
+Assert-Eq $profD8.GenFamily "DELL_MODERN" "D8 mapped to DELL_MODERN family"
+
+# 12b. UASP External NVMe/SATA enclosures ('HSEN 10G-NVME', 'JMicron Generic SATA', 'Realtek RTL9210B-CG') NOT falsely dropped by NVMe/SATA filter!
+$uaspDisks = @(
+    [PSCustomObject]@{ Number = 91; FriendlyName = "HSEN 10G-NVME SCSI Disk Device"; Size = 512GB; IsReadOnly = $false; PnpTokens = @("HSEN", "10G-NVME") },
+    [PSCustomObject]@{ Number = 92; FriendlyName = "JMicron Generic SATA SCSI Disk Device"; Size = 256GB; IsReadOnly = $false; PnpTokens = @("JMicron", "Generic SATA") },
+    [PSCustomObject]@{ Number = 93; FriendlyName = "Realtek RTL9210B-CG SCSI Disk Device"; Size = 512GB; IsReadOnly = $false; PnpTokens = @("Realtek", "RTL9210B-CG") }
+)
+$intDiskH2 = @(
+    [PSCustomObject]@{ Number = 0; FriendlyName = "ST1000DM014-2UB10D"; Size = 1000GB; IsReadOnly = $false },
+    [PSCustomObject]@{ Number = 1; FriendlyName = "SM2P41C8-256GC6"; Size = 256GB; IsReadOnly = $false }
+)
+$uaspInfo = Get-PhysicalUsbInfo $uaspDisks $intDiskH2
+Assert-Eq $uaspInfo.PhysicalUsbList[0].Model "HSEN 10G-NVME" "SCSI Disk Device suffix stripped cleanly from HSEN 10G-NVME"
+Assert-True ($uaspInfo.UsbStrictModelPatterns -contains "RTL9210") "Base bridge chip token RTL9210 extracted from RTL9210B-CG"
+
+$uaspBcd = @(
+    @{ Identifier = "{e1111111-1111-1111-1111-111111111111}"; Description = "UEFI: HSEN 10G-NVME, Partition 1"; Device = ""; Path = "\EFI\BOOT\BOOTX64.EFI" },
+    @{ Identifier = "{e2222222-2222-2222-2222-222222222222}"; Description = "UEFI: JMicron Generic SATA, Partition 1"; Device = ""; Path = "\EFI\BOOT\BOOTX64.EFI" },
+    @{ Identifier = "{e3333333-3333-3333-3333-333333333333}"; Description = "UEFI: RTL9210, Partition 2"; Device = ""; Path = "\EFI\BOOT\BOOTX64.EFI" },
+    @{ Identifier = "{e4444444-4444-4444-4444-444444444444}"; Description = "UEFI: SM2P41C8-256GC6 (NVMe)"; Device = "partition=\Device\HarddiskVolume1"; Path = "\EFI\Microsoft\Boot\bootmgfw.efi" }
+)
+$mUasp = @(Find-MatchedUsbNvramEntries $uaspBcd @("partition=\Device\HarddiskVolume1") @() $uaspInfo.UsbStrictModelPatterns @() $true @("SM2P41C8"))
+Assert-Eq $mUasp.Count 3 "All 3 UASP NVMe/SATA/RTL9210 enclosures matched while internal SM2P41C8 NVMe excluded"
+
+# 12c. Hidden EFI partition Tier 1 match via \Device\HarddiskVolumeX & Zero-DLL Resolve-DosDeviceTarget + Phison 'UEFI: PMAP'
+$liveNtC = Resolve-DosDeviceTarget "C:"
+Assert-True ($liveNtC -match "^\\Device\\HarddiskVolume\d+$") "Zero-DLL Resolve-DosDeviceTarget mapped C: -> $liveNtC"
+$hiddenEspBcd = @(
+    @{ Identifier = "{f1111111-1111-1111-1111-111111111111}"; Description = "UEFI: PMAP"; Device = "partition=\Device\HarddiskVolume14"; Path = "\EFI\BOOT\BOOTX64.EFI" },
+    @{ Identifier = "{f2222222-2222-2222-2222-222222222222}"; Description = "Windows Boot Manager"; Device = "partition=\Device\HarddiskVolume1"; Path = "\EFI\Microsoft\Boot\bootmgfw.efi" }
+)
+$mHiddenVol = @(Find-MatchedUsbNvramEntries $hiddenEspBcd @("partition=\Device\HarddiskVolume1") @("partition=\Device\HarddiskVolume14") @("ADATA") @() $true)
+Assert-Eq $mHiddenVol.Count 1 "Hidden EFI partition (\Device\HarddiskVolume14) matched 'UEFI: PMAP' at Tier 1 without falsely matching HarddiskVolume1!"
+Assert-True ([bool]($mHiddenVol.Count -eq 1 -and $mHiddenVol[0].IsExact)) "Hidden EFI kernel volume match marked IsExact=true"
+
+# 12d. Generic AMI/Phison USB NVRAM fallback ('UEFI: Generic Flash Disk', 'UEFI: General UDisk')
+$amiGenBcd = @(
+    @{ Identifier = "{f3333333-3333-3333-3333-333333333333}"; Description = "UEFI: Generic Flash Disk 8.07"; Device = ""; Path = "" },
+    @{ Identifier = "{f4444444-4444-4444-4444-444444444444}"; Description = "Dell SupportAssist OS Recovery"; Device = ""; Path = "" }
+)
+$mAmiGen = @(Find-MatchedUsbNvramEntries $amiGenBcd @() @() @() @() $true)
+Assert-Eq $mAmiGen.Count 1 "Tier 4 matched 'UEFI: Generic Flash Disk' and excluded Dell SupportAssist OS Recovery"
+
+# 12e. HP G8/G9 (H1/H2) Checkbox WMI values (*Checked,Unchecked) + Compound Legacy/SecureBoot precedence on ProDesk G1~G3 (H4/H6/H8)
+$hpG9CheckboxMock = @(
+    [PSCustomObject]@{ Name = "USB Storage Boot "; CurrentValue = ""; Value = "*Checked,Unchecked" },
+    [PSCustomObject]@{ Name = "Fast Boot "; CurrentValue = ""; Value = "*Unchecked,Checked" },
+    [PSCustomObject]@{ Name = "Secure Boot "; CurrentValue = ""; Value = "*Unchecked,Checked" }
+)
+$hpG9Res = Resolve-HpBiosDiagnostics $hpG9CheckboxMock
+Assert-Eq $hpG9Res.UsbState "Enabled" "HP G8/G9 '*Checked,Unchecked' with trailing space parsed as UsbState=Enabled"
+Assert-Eq $hpG9Res.FastBootWarn $false "HP G8/G9 Fast Boot '*Unchecked,Checked' parsed as Off"
+Assert-Eq $hpG9Res.SecureBootWmi "Off" "HP G8/G9 Secure Boot '*Unchecked,Checked' parsed as Off"
+
+$hpG3CompoundMock = @(
+    [PSCustomObject]@{ Name = "Removable Media Boot"; CurrentValue = ""; Value = "Disable,*Enable" },
+    [PSCustomObject]@{ Name = "Configure Legacy Support and Secure Boot"; CurrentValue = ""; Value = "*Legacy Support Enable and Secure Boot Disable,Legacy Support Disable and Secure Boot Enable" },
+    [PSCustomObject]@{ Name = "Secure Boot"; CurrentValue = ""; Value = "*Enable,Disable" }
+)
+$hpG3Res = Resolve-HpBiosDiagnostics $hpG3CompoundMock
+Assert-Eq $hpG3Res.UsbState "Enabled" "HP ProDesk G1~G3 'Removable Media Boot = Disable,*Enable' parsed as Enabled"
+Assert-Eq $hpG3Res.SecureBootWmi "Off" "HP ProDesk G1~G3 compound Secure Boot Disable overrides grayed-out standalone Secure Boot=Enable"
+
+# 12f. Dell AttributeValue + prefixed enum values (EnableUsbBoot / SecBoot) + 4-signal DeviceGuard SecureBoot
+$dellD8Mock = @(
+    [PSCustomObject]@{ AttributeName = "UsbBoot"; AttributeValue = "EnableUsbBoot" },
+    [PSCustomObject]@{ AttributeName = "SecBoot"; AttributeValue = "Disabled" },
+    [PSCustomObject]@{ AttributeName = "Fastboot"; AttributeValue = "Thorough" }
+)
+$dellD8Res = Resolve-DellBiosDiagnostics $dellD8Mock
+Assert-Eq $dellD8Res.UsbState "Enabled" "Dell AttributeValue='EnableUsbBoot' parsed as Enabled"
+Assert-Eq $dellD8Res.SecureBootWmi "Off" "Dell SecBoot='Disabled' parsed as Off"
+
+$sb4Sig = Resolve-SecureBootCrossCheck "Unavailable" "Off" "Unavailable" "Off" $false
+Assert-Eq $sb4Sig.State "Off" "4-signal SecureBoot (Reg Off + DeviceGuard Off) => Off"
+Assert-Eq $sb4Sig.Confidence "CrossConfirmed" "Reg + DeviceGuard gives CrossConfirmed even when Confirm-SecureBootUEFI is unavailable"
+
+$sbLegacy = Resolve-SecureBootCrossCheck "Unavailable" "Unavailable" "Unavailable" "Unavailable" $true
+Assert-Eq $sbLegacy.State "Off" "Legacy MBR mode resolves SecureBoot as Off (LegacyNotSupported)"
+
+$vSamNoMatch = Resolve-BiosCrossCheckVerdict "Samsung" "Unknown" "" $false $false "" $false 1 0
+Assert-Eq $vSamNoMatch.UsbBootState "SuspectedDisabled" "Samsung with physical USB plugged in & 0 NVRAM matches flags SuspectedDisabled"
 
 Write-Host "`n==================================================================" -ForegroundColor Cyan
 if ($script:Failed -eq 0) {

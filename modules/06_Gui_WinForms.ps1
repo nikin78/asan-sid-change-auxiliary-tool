@@ -1389,10 +1389,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
 
  # Unified USB Selection DataGridView
  $dgvUsb = New-AsanGrid $theme $fonts
- Add-AsanGridColumn $dgvUsb "Kind"   (U "\uAD6C\uBD84") 80 $false 74
- Add-AsanGridColumn $dgvUsb "Match"  (U "\uC77C\uCE58 \uC218\uC900") 126 $false 116
- Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 230 $false 155
- Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 135 $false 105
+ Add-AsanGridColumn $dgvUsb "Kind"   (U "\uAD6C\uBD84") 98 $false 88
+ Add-AsanGridColumn $dgvUsb "Match"  (U "\uC77C\uCE58 \uC218\uC900") 118 $false 110
+ Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 195 $false 145
+ Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 192 $false 130
  Add-AsanGridColumn $dgvUsb "Guide"  (U "\uC0C1\uD0DC \uC548\uB0B4") 180 $true 150
 
  # Step 2 Bottom Action Bar (46px)
@@ -1785,7 +1785,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
   $isUefi = ($null -ne $snap -and $null -ne $snap.BiosDiag -and [bool]$snap.BiosDiag.BootMode.IsUefi)
   $canStep2Act = (-not $busy -and $isUefi -and -not $isLocked)
   $selUsbTag = if ($ui.DgvUsb.SelectedRows.Count -gt 0) { $ui.DgvUsb.SelectedRows[0].Tag } else { $null }
-  $hasMatchedSel = ($null -ne $selUsbTag -and $selUsbTag.Kind -eq "NVRAM")
+  $hasMatchedSel = ($null -ne $selUsbTag -and ($selUsbTag.Kind -in @("NVRAM", "HOTPLUG_READY")) -and (-not $snap.BiosDiag.IsConfirmedBlocked))
   $canUsbReboot = ($canStep2Act -and $hasMatchedSel)
 
   $step2BlockTip = if ($busy) {
@@ -1800,10 +1800,12 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
 
   $usbRebootTip = if ($step2BlockTip) {
    $step2BlockTip
+  } elseif ($snap -and $snap.BiosDiag -and $snap.BiosDiag.IsConfirmedBlocked) {
+   U "BIOS\uC5D0\uC11C USB \uBD80\uD305\uC774 \uCC28\uB2E8\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. BIOS \uC124\uC815 \uC5F4\uAE30\uB85C \uBA3C\uC800 \uD5C8\uC6A9\uD574 \uC8FC\uC138\uC694."
   } elseif (-not $snap -or $snap.UsbInfo.PhysicalUsbList.Count -eq 0) {
    U "WinPE USB\uB97C PC\uC5D0 \uC5F0\uACB0\uD55C \uB4A4 USB \uB2E4\uC2DC \uCC3E\uAE30\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694."
-  } elseif ($snap.MatchedEntries.Count -eq 0) {
-   U "UEFI \uD38C\uC6E8\uC5B4 \uBAA9\uB85D\uC5D0 \uB4F1\uB85D\uB41C USB\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9 \uB610\uB294 BIOS \uC124\uC815 \uC5F4\uAE30\uB97C \uC0AC\uC6A9\uD574 \uC8FC\uC138\uC694."
+  } elseif ($null -ne $selUsbTag -and $selUsbTag.Kind -eq "PHYSICAL_ONLY") {
+   U "\uC120\uD0DD\uD55C USB\uC5D0\uC11C UEFI \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9 \uB610\uB294 \uB2E4\uB978 USB\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694."
   } else {
    U "\uC704 \uBAA9\uB85D\uC5D0\uC11C \uBD80\uD305 \uB300\uC0C1 USB \uD589\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694."
   }
@@ -1828,7 +1830,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
   & $u.SetStatus (U "\uB0B4\uC7A5 \uB514\uC2A4\uD06C\uC640 USB \uD658\uACBD\uC744 \uC810\uAC80\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4...") "Busy"
   try {
    $efiRep = Get-InternalBootloaderReport $false
-   $snap = Get-PreSidStep2Snapshot $st.SysInfo
+   $snap = Get-PreSidStep2Snapshot $st.SysInfo $efiRep.ClassifiedDisks
    $st.EfiRep = $efiRep
    $st.Step2Snap = $snap
    if (-not $efiRep.HasBlockingRisk) { $st.Step1Bypassed = $false }
@@ -1894,11 +1896,16 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    $u.LblStep2LockChip.Visible = $isStep2Locked
 
    $d = $snap.BiosDiag
-   switch ($d.SecureBootState) {
-    "On"       { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uCF1C\uC9D0";      $u.LblPillSec.BackColor = $t.DangerRedTint;  $u.LblPillSec.ForeColor = $t.DangerRedDeep }
-    "Conflict" { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uD655\uC778 \uD544\uC694"; $u.LblPillSec.BackColor = $t.DangerRedTint;  $u.LblPillSec.ForeColor = $t.DangerRedDeep }
-    "Off"      { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uAEBC\uC9D0";      $u.LblPillSec.BackColor = $t.AsanMint;       $u.LblPillSec.ForeColor = $t.AsanDeep }
-    default    { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uBBF8\uD655\uC778";    $u.LblPillSec.BackColor = $t.AsanOrangeTint; $u.LblPillSec.ForeColor = $t.AsanOrangeText }
+   if (-not $d.BootMode.IsUefi -and $d.BootMode.Mode -eq "Legacy") {
+    $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uD574\uB2F9 \uC5C6\uC74C"
+    $u.LblPillSec.BackColor = $t.MetaBarBg; $u.LblPillSec.ForeColor = $t.InkMuted
+   } else {
+    switch ($d.SecureBootState) {
+     "On"       { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uCF1C\uC9D0";      $u.LblPillSec.BackColor = $t.AsanOrangeTint; $u.LblPillSec.ForeColor = $t.AsanOrangeText }
+     "Conflict" { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uD655\uC778 \uD544\uC694"; $u.LblPillSec.BackColor = $t.DangerRedTint;  $u.LblPillSec.ForeColor = $t.DangerRedDeep }
+     "Off"      { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uAEBC\uC9D0";      $u.LblPillSec.BackColor = $t.AsanMint;       $u.LblPillSec.ForeColor = $t.AsanDeep }
+     default    { $u.LblPillSec.Text = U "\uBCF4\uC548 \uBD80\uD305 \uBBF8\uD655\uC778";    $u.LblPillSec.BackColor = $t.AsanOrangeTint; $u.LblPillSec.ForeColor = $t.AsanOrangeText }
+    }
    }
 
    if ($d.UsbBootState -eq "Enabled") {
@@ -1910,12 +1917,15 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    } elseif ($d.UsbBootState -eq "Conflict") {
     $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uAD50\uCC28 \uD655\uC778"
     $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
+   } elseif ($d.UsbBootConfidence -eq "NvramObserved") {
+    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uBAA9\uB85D \uD655\uC778"
+    $u.LblPillUsb.BackColor = $t.InfoTint; $u.LblPillUsb.ForeColor = $t.AsanLight
    } elseif ($d.UsbBootState -eq "SuspectedDisabled") {
     $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uBBF8\uB4F1\uB85D"
     $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
    } else {
-    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uC9C1\uC811 \uD655\uC778"
-    $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
+    $u.LblPillUsb.Text = U "USB \uBD80\uD305 BIOS \uD655\uC778"
+    $u.LblPillUsb.BackColor = $t.MetaBarBg; $u.LblPillUsb.ForeColor = $t.InkSecondary
    }
 
    if ($d.FastBootWarn) {
@@ -1949,6 +1959,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    # 3. Populate Unified USB Selection DataGridView
    $u.DgvUsb.Rows.Clear()
    $matched = @($snap.MatchedEntries)
+   $firstBootRowIdx = -1
    if ($matched.Count -gt 0) {
     for ($i = 0; $i -lt $matched.Count; $i++) {
      $m = $matched[$i]
@@ -1958,20 +1969,32 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
      $rIdx = $u.DgvUsb.Rows.Add((U "\uBD80\uD305 \uB300\uC0C1"), $matchLvl, [string]$m.Description, $devStr, $guideTxt)
      $row = $u.DgvUsb.Rows[$rIdx]
      $row.Tag = [PSCustomObject]@{ Kind = "NVRAM"; Entry = $m }
+     Set-AsanCellSemanticStyle $row.Cells[0] "OK" $t $f $true
      Set-AsanCellSemanticStyle $row.Cells[1] $(if ($m.IsExact) { "OK" } else { "Warn" }) $t $f $true
      $tip = ([string]$m.MatchTag) + "`r`nGUID: " + $m.Identifier + "`r`n" + (U "\uC7A5\uCE58: ") + $devStr
      foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
+     if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
     }
-    $u.DgvUsb.Rows[0].Selected = $true
    } elseif ($physList.Count -gt 0) {
     foreach ($ud in $physList) {
      $roTag = if ($ud.IsReadOnly) { U " \u00B7 \uC77D\uAE30 \uC804\uC6A9" } else { "" }
-     $devStr = $ud.SizeGB + $roTag
-     $guideTxt = if ($ud.IsEfiReady) { U "\uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9\uD574 \uC7A5\uCE58\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694" } else { U "EFI \uBD80\uD2B8 \uD30C\uD2F0\uC158\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4" }
-     $rIdx = $u.DgvUsb.Rows.Add((U "\uBB3C\uB9AC USB"), (U "NVRAM \uBBF8\uB4F1\uB85D"), [string]$ud.Model, $devStr, $guideTxt)
-     $row = $u.DgvUsb.Rows[$rIdx]
-     $row.Tag = [PSCustomObject]@{ Kind = "PHYSICAL_ONLY"; Disk = $ud }
-     Set-AsanCellSemanticStyle $row.Cells[1] "Warn" $t $f $true
+     $drvPrefix = if ($ud.PSObject.Properties["DriveSummary"] -and $ud.DriveSummary) { $ud.DriveSummary + " \u00B7 " } else { "" }
+     $devStr = (U $drvPrefix) + $ud.SizeGB + $roTag
+     if ($ud.IsEfiReady) {
+      $guideTxt = U "\uBD80\uD305 \uD30C\uC77C \uD655\uC778\uB428 \u00B7 \uACE0\uAE09 \uBD80\uD305\uC758 \uC7A5\uCE58 \uC0AC\uC6A9\uC73C\uB85C \uBC14\uB85C \uBD80\uD305\uD569\uB2C8\uB2E4"
+      $rIdx = $u.DgvUsb.Rows.Add((U "\uBD80\uD305 \uB514\uC2A4\uD06C"), (U "\uACE0\uAE09 \uBD80\uD305 \uC900\uBE44"), [string]$ud.Model, $devStr, $guideTxt)
+      $row = $u.DgvUsb.Rows[$rIdx]
+      $row.Tag = [PSCustomObject]@{ Kind = "HOTPLUG_READY"; Disk = $ud }
+      Set-AsanCellSemanticStyle $row.Cells[0] "OK" $t $f $true
+      Set-AsanCellSemanticStyle $row.Cells[1] "Info" $t $f $true
+      if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
+     } else {
+      $guideTxt = U "UEFI \uBD80\uD305 \uD30C\uD2F0\uC158\uC774\uB098 WinPE \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4"
+      $rIdx = $u.DgvUsb.Rows.Add((U "\uC77C\uBC18 USB"), (U "\uBD80\uD305 \uD30C\uC77C \uC5C6\uC74C"), [string]$ud.Model, $devStr, $guideTxt)
+      $row = $u.DgvUsb.Rows[$rIdx]
+      $row.Tag = [PSCustomObject]@{ Kind = "PHYSICAL_ONLY"; Disk = $ud }
+      Set-AsanCellSemanticStyle $row.Cells[1] "Warn" $t $f $true
+     }
      $tip = "Disk " + $ud.DiskNumber + " | " + $ud.Model + "`r`n" + (U "\uD30C\uD2F0\uC158: ") + $(if ($ud.Partitions) { $ud.Partitions } else { "-" })
      foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
     }
@@ -1981,7 +2004,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
     $row.Tag = $null
     $row.DefaultCellStyle.ForeColor = $t.InkMuted
    }
-   if ($matched.Count -eq 0) { $u.DgvUsb.ClearSelection() }
+   $u.DgvUsb.ClearSelection()
+   if ($firstBootRowIdx -ge 0) { $u.DgvUsb.Rows[$firstBootRowIdx].Selected = $true }
 
    # 4. Contextual Guidance Banner & Sync All Buttons
    $guid = Get-PreSidGuidance $st.SysInfo $efiRep $snap.BiosDiag $snap.UsbInfo $snap.MatchedEntries $st.Step1Bypassed
@@ -2274,6 +2298,20 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $btnUsbReboot.Add_Click({
   if ($ui.DgvUsb.SelectedRows.Count -eq 0 -or $null -eq $ui.DgvUsb.SelectedRows[0].Tag) { return }
   $rowTag = $ui.DgvUsb.SelectedRows[0].Tag
+  if ($rowTag.Kind -eq "HOTPLUG_READY") {
+   $ud = $rowTag.Disk
+   $hpMsg = (U "\uC120\uD0DD\uD55C \uBD80\uD305 \uB514\uC2A4\uD06C\uAC00 Windows \uC2E4\uD589 \uC911 \uC5F0\uACB0\uB418\uC5B4 Windows \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC744 \uD1B5\uD574 \uBD80\uD305\uD569\uB2C8\uB2E4.`r`n\uD30C\uB780 \uD654\uBA74\uC774 \uB098\uD0C0\uB098\uBA74 \uC7A5\uCE58 \uC0AC\uC6A9\uC744 \uB20C\uB7EC \uD574\uB2F9 USB\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.`r`n`r`n") +
+            (U "\uBD80\uD305 \uB514\uC2A4\uD06C: ") + $ud.Model + "  " + $ud.SizeGB + "`r`n`r`n" +
+            (U "\uC9C0\uAE08 \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?")
+   $drHp = [System.Windows.Forms.MessageBox]::Show($ui.Form, $hpMsg, (U "USB \uACE0\uAE09 \uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+   if ($drHp -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+   & $ui.AppendLog ((U "\uACE0\uAE09 \uBD80\uD305 \uC7AC\uBD80\uD305 \uC2E4\uD589: ") + $ud.Model)
+   $rbHp = Invoke-SafeRebootCore "/r /o /f /t 0"
+   if ($rbHp.Success) { $ui.Form.Close(); return }
+   $errHp = "shutdown /r /o /f /t 0 ExitCode=" + $rbHp.ExitCode + " " + $rbHp.Output
+   Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uACE0\uAE09 \uBD80\uD305 \uC7AC\uBD80\uD305\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errHp
+   return
+  }
   if ($rowTag.Kind -ne "NVRAM") { return }
   $target = $rowTag.Entry
   $devStr = if ($target.Device) { $target.Device } else { U "UEFI \uD38C\uC6E8\uC5B4" }

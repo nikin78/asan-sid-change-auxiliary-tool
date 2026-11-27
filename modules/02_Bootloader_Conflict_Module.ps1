@@ -81,10 +81,11 @@ function Parse-DiskpartDetailDisk([array]$lines) {
   }
  }
 
+ $isBridgeModel = ($model -match "(?i)(RTL9210|JMS583|JMS578|JMS567|JMicron\s+Generic|ASM236|ASMedia|HSEN\s*10G|10G-NVME|VL716)")
  return [PSCustomObject]@{
   FriendlyName = $model
   BusType = $busType
-  IsUsb = ($busType -match "USB|SD|MMC")
+  IsUsb = (($busType -match "USB|SD|MMC|1394") -or $isBridgeModel)
   IsReadOnly = $isReadOnly
   PartitionStyle = $partStyle
  }
@@ -163,23 +164,144 @@ function Parse-DiskpartDetailPartition([array]$lines) {
  }
 }
 
-# Classify online disks into USB vs Internal (with WinPE diskpart fallback)
+# Inspect PnP Registry + Win32_DiskDrive so UASP external NVMe/SATA enclosures
+# (e.g. Realtek RTL9210B-CG, HSEN 10G-NVME, JMicron JMS583/Generic, ASMedia, FireCuda)
+# are accurately detected as external USB even when Get-Disk reports BusType=SCSI/NVMe and IsRemovable=$false!
+function Get-UsbPnpDiskLookup {
+ $map = @{}
+ $baseContainer = "{00000000-0000-0000-ffff-ffffffffffff}"
+ $usbContainers = @{}
+ try {
+  if (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Enum\USB") {
+   foreach ($vidKey in @(Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Enum\USB" -ErrorAction SilentlyContinue)) {
+    foreach ($instKey in @(Get-ChildItem $vidKey.PSPath -ErrorAction SilentlyContinue)) {
+     try {
+      $p = Get-ItemProperty $instKey.PSPath -ErrorAction SilentlyContinue
+      if ($p -and $p.ContainerID) {
+       $cid = ([string]$p.ContainerID).Trim().ToLower()
+       if ($cid -and $cid -ne $baseContainer) {
+        $usbContainers[$cid] = [string]$p.Service
+       }
+      }
+     } catch {}
+    }
+   }
+  }
+ } catch {}
+
+ $bridgeRegex = "(?i)(RTL9210|JMS583|JMS578|JMS567|JMicron\s+Generic|ASM236|ASMedia|HSEN\s*10G|10G-NVME|VL716)"
+ try {
+  foreach ($dd in @(Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction SilentlyContinue)) {
+   if ($null -eq $dd.Index) { continue }
+   $idx = [int]$dd.Index
+   $pnpId = [string]$dd.PNPDeviceID
+   $iface = [string]$dd.InterfaceType
+   $media = [string]$dd.MediaType
+   $model = [string]$dd.Model
+   $isUsb = ($iface -match "^(?i)(USB|1394)$") -or ($pnpId -match "^(?i)(USBSTOR|USB|SD|MMC)\\") -or ($media -match "(?i)External\s+hard\s+disk|Removable\s+media") -or ($model -match $bridgeRegex) -or ($pnpId -match $bridgeRegex)
+
+   $pnpTokens = New-Object System.Collections.ArrayList
+   if ($pnpId -match "(?i)VEN_([^&\\]+)") {
+    $venTok = ($matches[1] -replace "_+", " ").Trim()
+    if ($venTok.Length -ge 3 -and $venTok -notmatch "^(?i)(NVMe|ATA|SCSI|MSFT|USB|Disk|Generic)$") {
+     [void]$pnpTokens.Add($venTok)
+    }
+   }
+   if ($pnpId -match "(?i)PROD_([^&\\]+)") {
+    $prodTok = ($matches[1] -replace "_+", " ").Trim()
+    if ($prodTok.Length -ge 3 -and $prodTok -notmatch "^(?i)(USB\s*Flash\s*Drive|Virtual\s*Disk|Disk)$") {
+     [void]$pnpTokens.Add($prodTok)
+    }
+   }
+
+   if (-not $isUsb -and $pnpId) {
+    try {
+     $enumPath = "HKLM:\SYSTEM\CurrentControlSet\Enum\" + $pnpId
+     if (Test-Path -LiteralPath $enumPath) {
+      $ep = Get-ItemProperty -LiteralPath $enumPath -ErrorAction SilentlyContinue
+      $cid = if ($ep -and $ep.ContainerID) { ([string]$ep.ContainerID).Trim().ToLower() } else { "" }
+      $caps = if ($ep -and $null -ne $ep.Capabilities) { [int]$ep.Capabilities } else { 0 }
+      $remPol = if ($ep -and $null -ne $ep.RemovalPolicy) { [int]$ep.RemovalPolicy } else { 0 }
+      if ($cid -and $cid -ne $baseContainer) {
+       if ($usbContainers.ContainsKey($cid)) {
+        $isUsb = $true
+       } elseif ((($caps -band 0x84) -ne 0) -or ($remPol -ge 2)) {
+        $isUsb = $true
+       }
+      }
+     }
+    } catch {}
+   }
+
+   $map[$idx] = [PSCustomObject]@{
+    IsExternalUsb = [bool]$isUsb
+    PnpDeviceId   = $pnpId
+    Model         = $model
+    PnpTokens     = @($pnpTokens | Select-Object -Unique)
+   }
+  }
+ } catch {}
+ return $map
+}
+
+# Classify online disks into USB vs Internal (with UASP PnP inspection + WinPE diskpart fallback)
 function Get-ClassifiedDisks([bool]$isWinPE) {
  $usbDisks = @()
  $internalDisks = @()
+ $pnpMap = Get-UsbPnpDiskLookup
+
+ $sysDiskNum = -1
+ if (-not $isWinPE) {
+  $sysLtr = if ($env:SystemDrive -and $env:SystemDrive -match "^([A-Za-z]):") { $matches[1].ToUpper() } else { "C" }
+  try {
+   if (Test-StorageCmdletsAvailable) {
+    $sp = Get-Partition -DriveLetter $sysLtr -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($sp) { $sysDiskNum = [int]$sp.DiskNumber }
+   }
+  } catch {}
+ }
 
  if (Test-StorageCmdletsAvailable) {
   $allDisks = @(Get-Disk | Where-Object { ([string]$_.OperationalStatus) -match "\bOnline\b" })
-  $usbDisks = @($allDisks | Where-Object {
-   -not $_.IsBoot -and -not $_.IsSystem -and
-   ($_.BusType -in @('USB','SD','MMC') -or $_.IsRemovable -or [string]$_.Path -match "USBSTOR|UASP")
-  } | Sort-Object Number)
-  $usbNums = @($usbDisks | Select-Object -ExpandProperty Number)
-  $internalDisks = @($allDisks | Where-Object { $usbNums -notcontains $_.Number } | Sort-Object Number)
+  foreach ($d in ($allDisks | Sort-Object Number)) {
+   $dNum = [int]$d.Number
+   $isProtectedOsDisk = (-not $isWinPE) -and ([bool]$d.IsBoot -or [bool]$d.IsSystem -or ($dNum -eq $sysDiskNum))
+   $pnpInfo = if ($pnpMap.ContainsKey($dNum)) { $pnpMap[$dNum] } else { $null }
+   if ($pnpInfo) {
+    try { Add-Member -InputObject $d -NotePropertyName "PnpTokens" -NotePropertyValue $pnpInfo.PnpTokens -Force } catch {}
+    try { Add-Member -InputObject $d -NotePropertyName "PnpDeviceId" -NotePropertyValue $pnpInfo.PnpDeviceId -Force } catch {}
+   }
+
+   $isDirectUsb = (-not $isProtectedOsDisk) -and (
+    ($d.BusType -in @('USB','SD','MMC','1394')) -or
+    [bool]$d.IsRemovable -or
+    ([string]$d.Path -match "USBSTOR|UASP") -or
+    ($null -ne $pnpInfo -and [bool]$pnpInfo.IsExternalUsb)
+   )
+
+   # If a non-OS enclosure still masked its PnP bus, check if its mounted partitions carry explicit WinPE/Ventoy USB markers (without a full Windows OS)
+   if (-not $isDirectUsb -and -not $isWinPE -and -not $isProtectedOsDisk) {
+    try {
+     $dParts = @(Get-DiskPartitionsNormalized $dNum $false)
+     if ($dParts.Count -gt 0 -and (Test-SiblingPartitionsForWinPE $dParts)) {
+      $hasInstalledOs = $false
+      foreach ($dp in $dParts) {
+       if ($dp.DriveLetter -and (Test-Path "$($dp.DriveLetter):\Windows\System32\ntoskrnl.exe")) {
+        $hasInstalledOs = $true; break
+       }
+      }
+      if (-not $hasInstalledOs) { $isDirectUsb = $true }
+     }
+    } catch {}
+   }
+
+   if ($isDirectUsb) { $usbDisks += $d } else { $internalDisks += $d }
+  }
+
   return [PSCustomObject]@{
    UsedFallback = $false
-   UsbDisks = $usbDisks
-   InternalDisks = $internalDisks
+   UsbDisks = @($usbDisks | Sort-Object Number)
+   InternalDisks = @($internalDisks | Sort-Object Number)
   }
  }
 
@@ -190,6 +312,8 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
   $ddRes = Invoke-NativeOem "diskpart.exe" "" ("select disk " + $pd.Number + "`r`ndetail disk`r`nexit`r`n")
   $det = Parse-DiskpartDetailDisk $ddRes.Lines
   $style = if ($det.PartitionStyle) { $det.PartitionStyle } else { $pd.PartitionStyle }
+  $pnpInfo = if ($pnpMap.ContainsKey([int]$pd.Number)) { $pnpMap[[int]$pd.Number] } else { $null }
+  $isUsbFallback = ([bool]$det.IsUsb -or ($null -ne $pnpInfo -and [bool]$pnpInfo.IsExternalUsb))
   $obj = [PSCustomObject]@{
    Number = $pd.Number
    FriendlyName = $det.FriendlyName
@@ -199,11 +323,13 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
    BusType = $det.BusType
    IsBoot = $false
    IsSystem = $false
-   IsRemovable = $det.IsUsb
+   IsRemovable = $isUsbFallback
    IsReadOnly = $det.IsReadOnly
    Path = ""
+   PnpTokens = if ($pnpInfo) { $pnpInfo.PnpTokens } else { @() }
+   PnpDeviceId = if ($pnpInfo) { $pnpInfo.PnpDeviceId } else { "" }
   }
-  if ($det.IsUsb) { $usbDisks += $obj } else { $internalDisks += $obj }
+  if ($isUsbFallback) { $usbDisks += $obj } else { $internalDisks += $obj }
  }
 
  return [PSCustomObject]@{
@@ -506,12 +632,12 @@ function Test-SiblingPartitionsForWinPE([array]$parts) {
  foreach ($p in $parts) {
   if ($p.DriveLetter -and (Test-Path "$($p.DriveLetter):\")) {
    $drv = "$($p.DriveLetter):"
-   if ((Test-Path "$drv\sources\boot.wim") -or (Test-Path "$drv\sources\install.wim") -or (Test-Path "$drv\sources\install.esd") -or (Test-Path "$drv\ventoy\ventoy.json") -or (Test-Path "$drv\PhoenixPE.cfg") -or (Test-Path "$drv\HBCD_PE.ini") -or ((Test-Path "$drv\boot\boot.sdi") -and (Test-Path "$drv\sources"))) {
+   if ((Test-Path "$drv\sources\boot.wim") -or (Test-Path "$drv\sources\install.wim") -or (Test-Path "$drv\sources\install.esd") -or (Test-Path "$drv\ventoy\ventoy.json") -or (Test-Path "$drv\PhoenixPE.cfg") -or (Test-Path "$drv\PhoenixPE.ini") -or (Test-Path "$drv\HBCD_PE.ini") -or ((Test-Path "$drv\boot\boot.sdi") -and (Test-Path "$drv\sources")) -or ((Test-Path "$drv\bootmgr.efi") -and (Test-Path "$drv\sources"))) {
     return $true
    }
    try {
     $di = New-Object System.IO.DriveInfo ($p.DriveLetter)
-    if ($di.IsReady -and $di.VolumeLabel -match "^(VTOYEFI|VENTOY|PHOENIXPE|WINPE|ESD-USB)$") {
+    if ($di.IsReady -and $di.VolumeLabel -match "^(?i)(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE|WINPE|HBCD_PE|ESD-USB|ESD-ISO)$") {
      return $true
     }
    } catch {}
@@ -655,6 +781,7 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
 
  return [PSCustomObject]@{
   UsedFallback = $useFallback
+  ClassifiedDisks = $classified
   BootDisk = $bootDisk
   SysDisk = $sysDisk
   SplitBoot = $splitBoot

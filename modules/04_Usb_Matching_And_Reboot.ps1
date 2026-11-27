@@ -2,38 +2,140 @@
 # Module 04: Physical USB Inspection, 4-Tier NVRAM Matching & Confirmed Reboot
 # ==============================================================================
 
+# Helper: Convert raw device token (e.g. 'partition=E:' or 'partition=\Device\HarddiskVolume1') into safe regex with digit boundary
+function ConvertTo-SafeDeviceRegex([string]$token) {
+ if ([string]::IsNullOrWhiteSpace($token)) { return "" }
+ $t = $token.Trim()
+ $escaped = [regex]::Escape($t)
+ if ($t -match '(?i)HarddiskVolume\d+$') {
+  return ($escaped + "(?!\d)")
+ }
+ return $escaped
+}
+
+# Helper: Build partition device tokens (DriveLetter + \Device\HarddiskVolumeX + Volume{GUID} + GPT Guid)
+function Get-PartitionDevicePatterns($partObj) {
+ $pats = New-Object System.Collections.ArrayList
+ if (-not $partObj) { return @() }
+ if ($partObj.DriveLetter) {
+  $dl = ([string]$partObj.DriveLetter).Trim().TrimEnd(':')
+  if ($dl) {
+   [void]$pats.Add("partition=$($dl):")
+   $ntFromLtr = Resolve-DosDeviceTarget "$($dl):"
+   if ($ntFromLtr) { [void]$pats.Add(("partition=" + $ntFromLtr)) }
+  }
+ }
+ if ($partObj.AccessPaths) {
+  foreach ($ap in @($partObj.AccessPaths)) {
+   $apStr = ([string]$ap).Trim()
+   if ($apStr -match '^\\\\\?\\(Volume\{[^\}]+\})\\?$') {
+    $volGuid = $matches[1]
+    [void]$pats.Add($volGuid)
+    $ntDev = Resolve-DosDeviceTarget $volGuid
+    if ($ntDev) { [void]$pats.Add(("partition=" + $ntDev)) }
+   }
+  }
+ }
+ if ($partObj.Guid) {
+  $gStr = ([string]$partObj.Guid).Trim()
+  if ($gStr -and $gStr -ne "{00000000-0000-0000-0000-000000000000}") {
+   [void]$pats.Add($gStr.Trim('{}'))
+  }
+ }
+ return @($pats | Select-Object -Unique)
+}
+
+# Helper: Probe root path (drive letter or \\?\Volume{GUID}\) safely for UEFI / WinPE boot files
+function Test-UsbBootFilesOnRoot([string]$rootPath) {
+ if ([string]::IsNullOrWhiteSpace($rootPath)) { return $false }
+ $r = $rootPath.TrimEnd('\')
+ $relCandidates = @(
+  "EFI\BOOT\BOOTX64.EFI",
+  "EFI\BOOT\BOOTIA32.EFI",
+  "EFI\BOOT\BOOTAA64.EFI",
+  "EFI\BOOT\grubx64.efi",
+  "EFI\Microsoft\Boot\bootmgfw.efi",
+  "EFI\Microsoft\Boot\BCD",
+  "bootmgr.efi",
+  "sources\boot.wim",
+  "PhoenixPE.cfg",
+  "PhoenixPE.ini",
+  "HBCD_PE.ini",
+  "ventoy\ventoy.json"
+ )
+ foreach ($rel in $relCandidates) {
+  try {
+   if ([System.IO.File]::Exists(($r + "\" + $rel))) { return $true }
+  } catch {}
+ }
+ try {
+  if ([System.IO.File]::Exists(($r + "\bootmgr")) -and [System.IO.File]::Exists(($r + "\Boot\BCD"))) { return $true }
+ } catch {}
+ return $false
+}
+
 function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
  $physicalUsbList = @()
  $usbDrivePatterns = @()
  $usbStrictModelPatterns = @()
  $usbPartPatterns = @()
  $anyEfiReadyUsb = $false
+ $anyVentoy = $false
 
  # Collect words appearing in internal disk model names to prevent same-brand false matches (e.g. Samsung USB vs Samsung NVMe)
  $internalWords = @{}
  foreach ($idisk in $internalDisks) {
   if ($idisk -and $idisk.FriendlyName) {
-   foreach ($iw in ($idisk.FriendlyName.Trim() -split "[\s_-]+")) {
+   $iClean = (([string]$idisk.FriendlyName) -replace "(?i)\s+(SCSI|USB|SATA|NVMe|ATA)?\s*Disk\s+Device$", "").Trim()
+   foreach ($iw in ($iClean -split "[\s_-]+")) {
     if ($iw.Length -ge 3) { $internalWords[$iw.ToLower()] = $true }
    }
   }
  }
 
+ $genericNoiseRe = "^(?i)(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|SCSI|SATA|NVMe|PCIE|ATA|3\.0|2\.0|3\.1|3\.2|3\.2Gen1|3\.2Gen2|Gen1|Gen2)$"
  $hasStorage = Test-StorageCmdletsAvailable
  foreach ($disk in $usbDisks) {
   $sizeGB = [math]::Round($disk.Size / 1GB, 1)
   $parts = if ($hasStorage) { @(Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue) } else { @() }
   $drvLetters = @()
+  $mountedLettersOnly = @()
   $hasEfi = $false
+  $diskIsVentoy = $false
 
-  if ($disk.FriendlyName) {
-   $cleanName = $disk.FriendlyName.Trim()
+  $rawModel = if ($disk.FriendlyName) { [string]$disk.FriendlyName } else { "USB Disk" }
+  $cleanName = (($rawModel -replace "(?i)\s+(SCSI|USB|SATA|NVMe|ATA)?\s*Disk\s+Device$", "") -replace "^[\s_]+|[\s_]+$", "" -replace "\s{2,}", " ").Trim()
+  if (-not $cleanName) { $cleanName = $rawModel.Trim() }
+
+  if ($cleanName) {
    $usbStrictModelPatterns += [regex]::Escape($cleanName)
-   foreach ($word in ($cleanName -split "[\s_-]+")) {
-    if ($word.Length -ge 3 -and
-        $word -notmatch "^(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|3\.0|2\.0|3\.2)$" -and
-        (-not $internalWords.ContainsKey($word.ToLower()))) {
-     $usbStrictModelPatterns += [regex]::Escape($word)
+   $noLeadUsb = ($cleanName -replace "^(?i)USB\s+", "").Trim()
+   if ($noLeadUsb -and $noLeadUsb -ne $cleanName -and $noLeadUsb.Length -ge 4) {
+    $usbStrictModelPatterns += [regex]::Escape($noLeadUsb)
+   }
+   $rawCandidateWords = New-Object System.Collections.ArrayList
+   foreach ($w in ($cleanName -split "[\s_]+")) { [void]$rawCandidateWords.Add($w) }
+   foreach ($w in ($cleanName -split "[\s_-]+")) { [void]$rawCandidateWords.Add($w) }
+   if ($disk.PSObject.Properties["PnpTokens"] -and $disk.PnpTokens) {
+    foreach ($pt in @($disk.PnpTokens)) {
+     if ($pt) {
+      [void]$rawCandidateWords.Add([string]$pt)
+      foreach ($pw in (([string]$pt) -split "[\s_-]+")) { [void]$rawCandidateWords.Add($pw) }
+     }
+    }
+   }
+   # Also add base chip root for bridge models like RTL9210B -> RTL9210
+   foreach ($cw in @($rawCandidateWords)) {
+    if ($cw -match "^([A-Za-z]{3,}\d{3,})[A-Za-z]$") {
+     [void]$rawCandidateWords.Add($matches[1])
+    }
+   }
+   foreach ($word in ($rawCandidateWords | Select-Object -Unique)) {
+    $wTrim = ([string]$word).Trim()
+    if ($wTrim.Length -ge 3 -and
+        ($wTrim -notmatch $genericNoiseRe) -and
+        (-not $internalWords.ContainsKey($wTrim.ToLower()))) {
+     $usbStrictModelPatterns += [regex]::Escape($wTrim)
     }
    }
   }
@@ -42,46 +144,81 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
    if ($p.GptType -eq $gptRecoveryGuid -or $p.GptType -eq $gptMsrGuid) { continue }
    $vol = Get-Volume -Partition $p -ErrorAction SilentlyContinue
    $fs = if ($vol -and $vol.FileSystem) { [string]$vol.FileSystem } else { "" }
+   $volLabel = if ($vol -and $vol.FileSystemLabel) { [string]$vol.FileSystemLabel } else { "" }
+   if ($volLabel -match "(?i)^(VTOYEFI|VENTOY)$") { $diskIsVentoy = $true; $anyVentoy = $true }
+
    $isEfiGpt = ($p.GptType -eq $gptEfiGuid)
    $isEfiMbr = ($null -ne $p.MbrType -and ($mbrEfiFatTypes -contains [int]$p.MbrType))
-   $isFatFs = ($fs -match "^(FAT|FAT32|exFAT)$")
+   $isFatFs = ($fs -match "^(?i)(FAT|FAT12|FAT16|FAT32|exFAT)$")
+   $isBootLabel = ($volLabel -match "(?i)^(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE|WINPE|ESD-USB|ESD-ISO|HBCD_PE|EFI|BOOT)$")
+
+   # Check unmounted Volume{GUID} path for EFI boot files (works on hidden ESP / VTOYEFI without mounting a letter!)
+   $hasHiddenBootFile = $false
+   if (-not $p.DriveLetter -and $p.AccessPaths) {
+    foreach ($ap in @($p.AccessPaths)) {
+     $apStr = ([string]$ap).Trim()
+     if ($apStr -match '^\\\\\?\\Volume\{[^\}]+\}\\?$') {
+      if (Test-UsbBootFilesOnRoot $apStr) { $hasHiddenBootFile = $true; break }
+     }
+    }
+   }
+   # Small unmounted partition (512KB..4GB) on multi-partition USB (e.g. Ventoy GPT BasicData VTOYEFI or Rufus UEFI:NTFS where Get-Volume returns null)
+   $isLikelyHiddenEsp = (-not $p.DriveLetter) -and ($parts.Count -ge 2 -or $isEfiGpt -or $isEfiMbr) -and ($p.Size -ge 512KB -and $p.Size -le 4GB)
+
+   $partDevPats = @(Get-PartitionDevicePatterns $p)
 
    if ($p.DriveLetter) {
     $d = "$($p.DriveLetter):"
-    $fsDisplay = if ($fs) { $fs } else { "RAW" }
+    $mountedLettersOnly += $d
+    if (-not $volLabel) {
+     try {
+      $di = New-Object System.IO.DriveInfo ($p.DriveLetter)
+      if ($di.IsReady -and $di.VolumeLabel) {
+       $volLabel = $di.VolumeLabel
+       if ($volLabel -match "(?i)^(VTOYEFI|VENTOY)$") { $diskIsVentoy = $true; $anyVentoy = $true }
+       if ($volLabel -match "(?i)^(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE|WINPE|ESD-USB|ESD-ISO|HBCD_PE|EFI|BOOT)$") { $isBootLabel = $true }
+      }
+     } catch {}
+    }
+    if (Test-Path "$d\ventoy\ventoy.json") { $diskIsVentoy = $true; $anyVentoy = $true }
+    $fsDisplay = if ($fs) { $fs } else { "Mounted" }
     $drvLetters += "$d($fsDisplay)"
-    $hasBootFile = (Test-Path "$d\EFI\BOOT\BOOTX64.EFI") -or (Test-Path "$d\EFI\Microsoft\Boot\BCD")
-    if ($hasBootFile -or $isEfiGpt -or $isEfiMbr -or $isFatFs) {
+    $hasBootFile = Test-UsbBootFilesOnRoot "$d\"
+    if ($hasBootFile -or $isEfiGpt -or $isEfiMbr -or $isFatFs -or $isBootLabel) {
      $hasEfi = $true
      $anyEfiReadyUsb = $true
-     $usbDrivePatterns += [regex]::Escape("partition=$d")
-     $usbPartPatterns += "Partition\s+$($p.PartitionNumber)\b"
+     $usbDrivePatterns += $partDevPats
+     $usbPartPatterns += "(?:Partition|Part)\s+$($p.PartitionNumber)\b"
     }
-   } elseif ($isEfiGpt -or $isEfiMbr -or $isFatFs) {
-    $partTag = if ($isEfiGpt) { "GPT-EFI" } elseif ($isEfiMbr) { "MBR-EFI/FAT" } else { "FAT" }
+   } elseif ($isEfiGpt -or $isEfiMbr -or $isFatFs -or $isBootLabel -or $hasHiddenBootFile -or $isLikelyHiddenEsp) {
+    $partTag = if ($isEfiGpt) { "GPT-EFI" } elseif ($isEfiMbr) { "MBR-EFI/FAT" } elseif ($isFatFs) { "FAT" } else { "Boot/EFI" }
     $drvLetters += "Hidden-$partTag(Partition $($p.PartitionNumber))"
     $hasEfi = $true
     $anyEfiReadyUsb = $true
-    $usbPartPatterns += "Partition\s+$($p.PartitionNumber)\b"
+    $usbDrivePatterns += $partDevPats
+    $usbPartPatterns += "(?:Partition|Part)\s+$($p.PartitionNumber)\b"
    }
   }
 
   $physicalUsbList += [PSCustomObject]@{
    DiskNumber = $disk.Number
-   Model = $disk.FriendlyName
+   Model = $cleanName
    SizeGB = "$sizeGB GB"
+   DriveSummary = if ($mountedLettersOnly.Count -gt 0) { ($mountedLettersOnly -join ",") } else { "Disk $($disk.Number)" }
    Partitions = ($drvLetters -join ", ")
    IsEfiReady = $hasEfi
+   IsVentoy = $diskIsVentoy
    IsReadOnly = [bool]$disk.IsReadOnly
   }
  }
 
  return [PSCustomObject]@{
   PhysicalUsbList = $physicalUsbList
-  UsbDrivePatterns = $usbDrivePatterns
-  UsbStrictModelPatterns = $usbStrictModelPatterns
-  UsbPartPatterns = $usbPartPatterns
+  UsbDrivePatterns = @($usbDrivePatterns | Select-Object -Unique)
+  UsbStrictModelPatterns = @($usbStrictModelPatterns | Select-Object -Unique)
+  UsbPartPatterns = @($usbPartPatterns | Select-Object -Unique)
   AnyEfiReadyUsb = $anyEfiReadyUsb
+  IsVentoy = $anyVentoy
  }
 }
 
@@ -91,24 +228,39 @@ function Find-MatchedUsbNvramEntries(
  [array]$usbDrivePatterns,
  [array]$usbStrictModelPatterns,
  [array]$usbPartPatterns,
- [bool]$anyEfiReadyUsb
+ [bool]$anyEfiReadyUsb,
+ [array]$internalModelPatterns = @()
 ) {
  $koBootMgr = U "Windows \uBD80\uD305 \uAD00\uB9AC\uC790"
- $excludeDesc = "Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|PXE|IPV4|IPV6|Network|Hard Drive \(SATA|Hard Drive \(NVMe|CD/DVD|Onboard NIC|HTTP"
+ $excludeDesc = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Hard Drive \(SATA|Hard Drive \(NVMe|Onboard NIC|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update|Diagnostics)"
  $internalPattern = if ($internalDriveLetters -and $internalDriveLetters.Count -gt 0) {
-  ($internalDriveLetters | ForEach-Object { [regex]::Escape($_) }) -join "|"
+  (@($internalDriveLetters | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
  } else {
   ""
  }
+ $usbDrvRegex = if ($usbDrivePatterns -and $usbDrivePatterns.Count -gt 0) {
+  (@($usbDrivePatterns | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
+ } else { "" }
+ $usbModRegex = if ($usbStrictModelPatterns -and $usbStrictModelPatterns.Count -gt 0) { ($usbStrictModelPatterns | Select-Object -Unique) -join "|" } else { "" }
+ $intModRegex = if ($internalModelPatterns -and $internalModelPatterns.Count -gt 0) { ($internalModelPatterns | Select-Object -Unique) -join "|" } else { "" }
 
  $candidateEntries = @($bcdEntries | Where-Object {
   $descStr = [string]$_.Description
-  $isInternalBusWithoutUsb = ($descStr -match "\b(SATA|NVMe)\b") -and ($descStr -notmatch "\bUSB\b|External|Removable")
+  $devStr = [string]$_.Device
+  $matchesUsbDev = ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
+  $matchesUsbMod = ($usbModRegex -and ($descStr -match $usbModRegex))
+  $isOpticalNonUsb = ($descStr -match "(?i)CD/DVD|CD-ROM|Optical") -and ($descStr -notmatch "(?i)\bUSB\b")
+  # Never exclude external enclosures like 'HSEN 10G-NVME' or 'JMicron Generic SATA' when they match a connected USB device/model!
+  $isInternalBusWithoutUsb = (-not $matchesUsbDev) -and (-not $matchesUsbMod) -and ($descStr -match "(?i)\b(SATA\d*|NVMe\d*)\b") -and ($descStr -notmatch "(?i)\bUSB\b|External|Removable|Enclosure")
+  $isInternalModelOnly = (-not $matchesUsbDev) -and (-not $matchesUsbMod) -and ($intModRegex -and ($descStr -match $intModRegex)) -and ($descStr -notmatch "(?i)\bUSB\b")
+
   $_.Identifier -ne "{fwbootmgr}" -and
   $_.Identifier -ne "{bootmgr}" -and
   ($descStr -notmatch $excludeDesc) -and
+  (-not $isOpticalNonUsb) -and
   (-not $isInternalBusWithoutUsb) -and
-  ((-not $internalPattern) -or ([string]$_.Device -notmatch $internalPattern))
+  (-not $isInternalModelOnly) -and
+  ($matchesUsbDev -or (-not $internalPattern) -or ($devStr -notmatch $internalPattern))
  })
 
  $matched = New-Object System.Collections.ArrayList
@@ -129,41 +281,41 @@ function Find-MatchedUsbNvramEntries(
   }
  }
 
- # Tier 1: Exact drive letter match
- if ($usbDrivePatterns -and $usbDrivePatterns.Count -gt 0) {
-  $drvRegex = ($usbDrivePatterns | Select-Object -Unique) -join "|"
+ # Tier 1: Exact drive letter / NT HarddiskVolume / Volume GUID match
+ if ($usbDrvRegex) {
   foreach ($c in $candidateEntries) {
-   if ([string]$c.Device -match $drvRegex) {
+   if ([string]$c.Device -match $usbDrvRegex) {
     & $addMatch $c (U "\uC815\uD655 \uC77C\uCE58 - \uB4DC\uB77C\uC774\uBE0C") $true
    }
   }
  }
 
- # Tier 2: Exact disk model name match
- if ($usbStrictModelPatterns -and $usbStrictModelPatterns.Count -gt 0) {
-  $modelRegex = ($usbStrictModelPatterns | Select-Object -Unique) -join "|"
+ # Tier 2: Exact disk model / bridge name match
+ if ($usbModRegex) {
   foreach ($c in $candidateEntries) {
-   if ([string]$c.Description -match $modelRegex) {
+   if ([string]$c.Description -match $usbModRegex) {
     & $addMatch $c (U "\uC815\uD655 \uC77C\uCE58 - \uBAA8\uB378\uBA85") $true
    }
   }
  }
 
- # Tier 3: Partition number + UEFI/USB keyword match
+ # Tier 3: Partition number + UEFI/USB/Disk keyword match
  if ($matched.Count -eq 0 -and $usbPartPatterns -and $usbPartPatterns.Count -gt 0) {
   $partRegex = ($usbPartPatterns | Select-Object -Unique) -join "|"
   foreach ($c in $candidateEntries) {
-   if ([string]$c.Description -match $partRegex -and [string]$c.Description -match "UEFI|USB|Partition") {
+   if ([string]$c.Description -match $partRegex -and [string]$c.Description -match "(?i)UEFI|USB|Partition|Part|Removable|PMAP|UDisk|Flash|Disk|Storage") {
     & $addMatch $c (U "\uD30C\uD2F0\uC158 \uC77C\uCE58") $true
    }
   }
  }
 
- # Tier 4: Generic UEFI USB NVRAM entry fallback
+ # Tier 4: Generic UEFI USB NVRAM entry or removable \EFI\BOOT\BOOTX64.EFI fallback
  if ($matched.Count -eq 0 -and $anyEfiReadyUsb) {
-  $genericUsbRegex = "USB Hard Drive|USB Flash|USB Device|Removable Device|External|Mass Storage|\bUSB\b"
+  $genericUsbRegex = "(?i)(USB Hard Drive|USB Flash|USB Storage|USB Key|USB Disk|USB Device|USB Floppy|USB:|Removable|External|Mass Storage|\bUSB\b|\bPMAP\b|\bUDisk\b|Flash\s*Disk|Flash\s*Drive|Thumb\s*Drive|Memory\s*Stick|JetFlash|DataTraveler|Cruzer|Ventoy)"
   foreach ($c in $candidateEntries) {
-   if ([string]$c.Description -match $genericUsbRegex) {
+   $cDesc = [string]$c.Description
+   $cPath = [string]$c.Path
+   if (($cDesc -match $genericUsbRegex) -or ($cPath -match "(?i)^\\EFI\\BOOT\\BOOT(X64|IA32|AA64)\.EFI$")) {
     & $addMatch $c (U "\uBC94\uC6A9 UEFI USB \uD56D\uBAA9") $false
    }
   }
@@ -173,30 +325,46 @@ function Find-MatchedUsbNvramEntries(
 }
 
 # Shared snapshot collector for STEP 2 (used by both WinForms GUI and Console TUI)
-function Get-PreSidStep2Snapshot($sysInfo) {
+function Get-PreSidStep2Snapshot($sysInfo, $preClassifiedDisks = $null) {
  $bcdRes = Invoke-NativeOem "bcdedit.exe" "/enum firmware"
  $bcdOutput = @($bcdRes.Lines)
  $entries = @(Parse-BcdFirmwareLines $bcdOutput)
 
- $diskSplit = Get-ClassifiedDisks $false
+ $diskSplit = if ($null -ne $preClassifiedDisks) { $preClassifiedDisks } else { Get-ClassifiedDisks $false }
  $usbDisks = @($diskSplit.UsbDisks)
  $internalDisks = @($diskSplit.InternalDisks)
- $internalDriveLetters = @()
+ $internalDrivePatterns = @()
+ $internalModelPatterns = @()
+ foreach ($idisk in $internalDisks) {
+  if ($idisk -and $idisk.FriendlyName) {
+   $iClean = (([string]$idisk.FriendlyName) -replace "(?i)\s+(SCSI|USB|SATA|NVMe|ATA)?\s*Disk\s+Device$", "").Trim()
+   if ($iClean.Length -ge 4) { $internalModelPatterns += [regex]::Escape($iClean) }
+   foreach ($itok in ($iClean -split "[\s_-]+")) {
+    if ($itok.Length -ge 5 -and $itok -match "\d" -and $itok -notmatch "^(?i)(SATA|NVMe|PCIe|Gen\d)") {
+     $internalModelPatterns += [regex]::Escape($itok)
+    }
+   }
+  }
+ }
  $internalDiskNums = @($internalDisks | Select-Object -ExpandProperty Number)
  if ($internalDiskNums.Count -gt 0 -and (Test-StorageCmdletsAvailable)) {
-  $internalDriveLetters = @(Get-Partition -DiskNumber $internalDiskNums -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | ForEach-Object { "partition=$($_.DriveLetter):" })
+  foreach ($ip in @(Get-Partition -DiskNumber $internalDiskNums -ErrorAction SilentlyContinue)) {
+   $internalDrivePatterns += @(Get-PartitionDevicePatterns $ip)
+  }
  }
 
  $usbInfo = Get-PhysicalUsbInfo $usbDisks $internalDisks
  $matchedEntries = @()
  if ($usbDisks.Count -gt 0) {
+  $allowGenericFallback = ([bool]$usbInfo.AnyEfiReadyUsb -or ($usbDisks.Count -gt 0))
   $matchedEntries = @(Find-MatchedUsbNvramEntries `
    $entries `
-   $internalDriveLetters `
+   $internalDrivePatterns `
    $usbInfo.UsbDrivePatterns `
    $usbInfo.UsbStrictModelPatterns `
    $usbInfo.UsbPartPatterns `
-   $usbInfo.AnyEfiReadyUsb)
+   $allowGenericFallback `
+   $internalModelPatterns)
  }
 
  $diag = Get-BiosDiagnostics $sysInfo $usbDisks $entries $matchedEntries.Count
@@ -206,7 +374,7 @@ function Get-PreSidStep2Snapshot($sysInfo) {
   BcdEntries = $entries
   UsbDisks = $usbDisks
   InternalDisks = $internalDisks
-  InternalDriveLetters = $internalDriveLetters
+  InternalDriveLetters = $internalDrivePatterns
   UsbInfo = $usbInfo
   MatchedEntries = $matchedEntries
   BiosDiag = $diag
@@ -235,7 +403,8 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
   Show-BiosStatusDashboard $diag $step1Bypassed
 
   if (-not $gate1Ignored) {
-   $g1 = Invoke-Gate1Check $diag $bcdOutput
+   $isVty = ($null -ne $usbInfo.PSObject.Properties["IsVentoy"] -and [bool]$usbInfo.IsVentoy)
+   $g1 = Invoke-Gate1Check $diag $bcdOutput $matchedEntries.Count $isVty
    if ($g1 -eq "RETURN_MAIN") { return }
    $gate1Ignored = $true
   }
@@ -269,7 +438,7 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
 
   # Gate 2: Physical USB found, but 0 matching NVRAM entries
   if ($matchedEntries.Count -eq 0) {
-   $isLikelyHotPlug = ($diag.UsbBootState -eq "Enabled" -and -not $diag.FastBootWarn)
+   $isLikelyHotPlug = (($diag.UsbBootState -eq "Enabled" -or [bool]$usbInfo.AnyEfiReadyUsb) -and -not $diag.IsConfirmedBlocked -and -not $diag.FastBootWarn)
    $rescanNow = $false
    while ($true) {
     Write-Host "`n==================================================================" -ForegroundColor Yellow

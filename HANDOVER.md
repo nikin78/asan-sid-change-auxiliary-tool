@@ -1,14 +1,29 @@
 # [인수인계서] SID 변경 사전·사후 보조 툴 (`SID_Change_Aux_Tool.bat`)
 
 > [!IMPORTANT]
-> **현재 버전: `v2.2.0` (2026-11-26 작업 마감 기준 — 다른 PC AI 에이전트 즉시 이어받기용 최신 상태):**
-> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **아산병원 현장 데스크톱 디자인 시스템(`asan-desktop-ui`) 기반 WinForms GUI 전면 개편, 상용 UX 라이팅, 다중 신호 BIOS 교차 검증 엔진, 비동기 프린터 스풀러 초기화, 3종 실행 환경 하드닝, 체계적 SemVer 버저닝(`VERSION` + `CHANGELOG.md` + `Build-Tool.ps1 -Bump`), GitHub 사용자용 `README.md`(시각자료 포함) 작성 및 152개 자동/레이아웃/시각 감사**까지 완료했습니다.
+> **현재 버전: `v2.3.0` (2026-11-27 작업 기준 — 실장비 인벤토리 반영 및 부팅 디스크·BIOS 탐지 고도화 완료):**
+> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **병원 전체 PC 인벤토리(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 세대별 프로필, UASP 외장 NVMe/SSD 인클로저(`RTL9210B-CG`·`HSEN 10G-NVME`·`JMicron`·`FireCuda`) PnP `ContainerID` 분류, 무파일 인메모리 `QueryDosDeviceW` 숨김 EFI 커널 볼륨 매핑, HP G8/G9 체크박스(`Checked`/`Unchecked`)·한글 BIOS·Dell `AttributeValue`·Lenovo WMI·4중 신호(`Win32_DeviceGuard` 포함) Secure Boot 교차 검증, Hot-Plug 부팅 디스크 UX 및 178개 자동/레이아웃 테스트**까지 완료했습니다.
 > 사용자 안내서는 [README.md](README.md), 변경 이력은 [CHANGELOG.md](CHANGELOG.md), 상세 의사결정 배경은 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
-> **다음에 해야 할 일:** **5단계 실장비 검증(Samsung S8, HP G9, Dell, 실제 WinPE, 메인/클라이언트 공유 프린터, 쓰기 금지 USB/로컬/공유폴더 3종 매체)** 후 현장 피드백 반영 및 6단계 최종 확정.
+> **다음에 해야 할 일:** 개선된 `v2.3.0` 빌드로 **5단계 실장비 재검증(Samsung `S8/S9`, HP `H1/H2/H6/H8`, Dell `D1/D8`, 실제 WinPE, 공유 프린터)** 후 최종 확정.
 
 ---
 
-## 0. 최근 작업 세션 인수인계 요약 (2026-11-26 완료)
+## 0. 최근 작업 세션 인수인계 요약 (2026-11-27 `v2.3.0` 업데이트)
+
+### 2026-11-27 완료한 작업 (`v2.2.0` → `v2.3.0` — 실장비 피드백 반영 및 전반적 코드 리뷰 개선)
+1. **병원 망분리/교체 대상 PC 전체 인벤토리(9,803대 + 신규 교체분) 기종 매핑 반영 (`modules/03_Vendor_Bios_Diagnostics.ps1`):**
+   * `S4/S5`(삼성 구형 i5-650/2300), `S8`(`Samsung DB400T8A`, i5-8500), `S9`(`Samsung DB400T9A`, i5-9500), `H3`(`HP Compaq Pro 6300 / Elite 8300`), `H4/HS`(`HP ProDesk 600 G1`), `H6`(`HP ProDesk 600 G2`), `H8`(`HP ProDesk 600 G3`), `H1`(`HP EliteDesk 800 G8`, i5-11500), `H2`(`HP Elite Tower 800 G9`, i5-12500/13500), `D1`(`Dell OptiPlex 3070/5070/7070`, i5-9500), `D8`(2026 신규 교체 `Dell OptiPlex 7010·7020 / Pro Tower`) 식별 및 세대별 정확한 BIOS 설정 경로 안내 추가.
+2. **부팅 디스크 미인식 근본 원인 5종 해결 (`modules/01`, `02`, `04`, `06`):**
+   * **UASP 외장 NVMe/SATA 인클로저 PnP `ContainerID`·`Capabilities` 분류 (`Get-UsbPnpDiskLookup`):** `Get-Disk`에서 `BusType=SCSI/NVMe` 및 `IsRemovable=False`로 잡히던 `Realtek RTL9210B-CG`, `HSEN 10G-NVME`, `JMicron Generic PCIE/SATA`, `Seagate FireCuda SSD`를 USB 부모 `ContainerID` 대조로 100% 외장 부팅 디스크로 분류.
+   * **외장 인클로저 제품명 `NVMe`/`SATA` 오탐 차단 수정:** `UEFI: HSEN 10G-NVME`, `UEFI: JMicron Generic SATA`가 `\b(SATA|NVMe)\b` 필터에 걸려 내장 디스크로 탈락하던 버그 해결.
+   * **무파일 인메모리 `QueryDosDeviceW` 숨김 EFI 커널 볼륨 매핑 (`Resolve-DosDeviceTarget`):** 드라이브 문자가 없는 숨김 ESP(`VTOYEFI`, `UEFI:NTFS`, 다중 파티션 SSD EFI)도 `Volume{GUID}` → `\Device\HarddiskVolumeX`로 직접 매핑해 Tier 1 정확 일치 달성(`UEFI: PMAP` 등 컨트롤러명 표기 포함, `csc.exe`/임시 DLL 0건 유지).
+   * **숨김 MBR FAT(`0x11,0x14,0x16,0x1B,0x1C,0x1E`), 미마운트 `Volume{GUID}` 부팅 파일 검사, `Generic Flash Disk`/`UDisk`/`PMAP` Tier 4 보강.**
+   * **Hot-Plug 부팅 디스크 UX 개선:** Windows 실행 중 꽂은 정상 부팅 USB를 `부팅 디스크 · 고급 부팅 준비`로 명확히 표시하고 바로 고급 부팅(`장치 사용`)으로 안내.
+3. **Secure Boot 및 BIOS USB Boot 탐지 정확도 개선 (`modules/01`, `03`):**
+   * **HP G8/G9(`H1/H2`) 체크박스형 WMI 값(`*Checked,Unchecked`) 및 한글 BIOS 로컬라이징 지원, 설정명 공백 `.Trim()`, `HPBIOS_BIOSEnumeration`·`HP_BIOSOrderedList` 병합, 구형 G1~G5 복합 `Configure Legacy Support and Secure Boot` 우선순위 적용**(회색 비활성 `Secure Boot=Enable`로 인한 거짓 충돌 제거).
+   * **Dell(`D1/D8`) `AttributeValue` 속성·접두형 열거값(`EnableUsbBoot`/`DisableUsbBoot`/`AllDisable`)·`SecBoot`·`Fastboot=Auto` 안내 및 Lenovo(`Lenovo_BiosSetting`) WMI 추가.**
+   * **4중 신호 Secure Boot 교차 검증(`Win32_DeviceGuard` 추가, Legacy MBR `해당 없음` 분리) 및 `HKLM\...\Nls\CodePage\OEMCP` 우선 조회**(영문 지역 형식 설정 한국어 Windows에서 `bcdedit`/`diskpart` CP949 깨짐 방지).
+   * `RefreshPreSid` 중복 디스크 스캔 제거 및 **178개 자동/레이아웃 테스트 전항목 통과**.
 
 다른 PC의 AI 에이전트가 이전 채팅 기록 없이 바로 이어받을 수 있도록 오늘 완료한 작업과 수정된 파일을 요약합니다.
 
@@ -129,7 +144,7 @@ modules/
   07_Main_Entry.ps1                      # WinPE 자동 분기, GUI 우선 실행 + 콘솔 TUI 폴백(--cli)
 tools/
   Build-Tool.ps1                         # VERSION 기반 버전 주입(-Bump 지원), modules/ -> .bat 빌드 및 자동 검증
-  Test-Tool.ps1                          # 빌드된 .bat 대상 152개 자동 단위/GUI 레이아웃/버전 정합성 테스트
+  Test-Tool.ps1                          # 빌드된 .bat 대상 178개 자동 단위/GUI 레이아웃/버전 정합성 테스트
 docs/
   DIRECTION_AND_DECISIONS.md             # 방향 전환 결정 사항 및 단계별 진행 현황
   images/                                # README.md용 비식별 GUI 미리보기 PNG (01~03)
@@ -145,7 +160,7 @@ HANDOVER.md                              # 본 인수인계서
   * **릴리스 절차:**
     1. `modules/` 수정 후 아래 빌드 명령(필요 시 `-Bump Patch|Minor|Major` 사용)으로 버전 갱신 및 `.bat` 재생성
     2. [`CHANGELOG.md`](CHANGELOG.md)에 `[vX.Y.Z]` 섹션 기록
-    3. `tools\Test-Tool.ps1`으로 152개 테스트(레이아웃 감사·버전·`CHANGELOG.md` 정합성 포함) 전항목 통과 확인
+    3. `tools\Test-Tool.ps1`으로 178개 테스트(레이아웃 감사·버전·`CHANGELOG.md` 정합성 포함) 전항목 통과 확인
     4. Git 커밋 후 `git tag -a vX.Y.Z -m "..."` 주석 태그 생성 및 원격 푸시(`--follow-tags`)
 * **빌드 및 검증 명령:**
   ```powershell
@@ -153,7 +168,7 @@ HANDOVER.md                              # 본 인수인계서
   powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1
   # 버전 자동 증가(Patch / Minor / Major) 후 빌드
   powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1 -Bump Patch
-  # 전체 자동 테스트 (152개: 코어 + BIOS 교차 검증 + WinForms GUI 레이아웃 감사 + 버전 정합성)
+  # 전체 자동 테스트 (178개: 코어 + 병원 기종/UASP/숨김 ESP + BIOS 교차 검증 + WinForms GUI 레이아웃 감사 + 버전 정합성)
   powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Test-Tool.ps1
   ```
 * **부가 운영 팁:** USB 루트 상대 경로 바로가기(`.lnk`) — 대상: `cmd.exe /c start "" "\유틸리티\SID_Change_Aux_Tool.bat"`, 시작 위치: `\`, 실행: 최소화. 콘솔 전용 실행이 필요할 때는 `--cli` 인자 추가.
@@ -187,7 +202,7 @@ HANDOVER.md                              # 본 인수인계서
 
 ### 다른 PC AI 에이전트 이어받기 가이드
 * **코드 수정 원칙:** `SID_Change_Aux_Tool.bat`를 직접 수정하지 말고 반드시 `modules/*.{bat,ps1}`를 수정한 뒤 `tools/Build-Tool.ps1`(기능·버그 변경 시 `-Bump Patch|Minor|Major` 병행 및 `CHANGELOG.md` 갱신)로 재생성·검증하고 `tools/Test-Tool.ps1`을 실행할 것. UI 변경 시 반드시 `asan-desktop-ui` 스킬 지침에 따라 자동 레이아웃 감사 및 실제 렌더링 스크린샷 시각 감사를 수행할 것.
-* **현재 위치:** `v2.2.0` (1~4단계 구현, 3종 실행 환경 하드닝, 아산병원 디자인 시스템 기반 WinForms GUI 전면 개편, BIOS 다중 신호 교차 검증, 체계적 SemVer 버저닝, **152개 자동 테스트** 및 픽셀 시각 감사 통과 상태). 사용자가 5단계 실장비 테스트 결과를 공유하면 발견된 현장 이슈/튜닝을 `modules/`에 반영하고 버전을 올려 재빌드·재검증 후 6단계(최종 문서 확정)를 마무리하면 됨.
+* **현재 위치:** `v2.3.0` (병원 전체 PC 인벤토리 `S4~S9`/`H0~H8`/`D1·D8` 세대별 프로필 반영, UASP 외장 NVMe/SSD 인클로저 PnP 분류, 무파일 `QueryDosDeviceW` 숨김 EFI 커널 볼륨 매핑, HP G8/G9 체크박스·한글 BIOS·Dell·Lenovo·4중 신호 `Win32_DeviceGuard` Secure Boot 교차 검증, **178개 자동 테스트** 및 픽셀 시각 감사 통과 상태). 사용자가 5단계 실장비 테스트 결과를 공유하면 발견된 현장 이슈/튜닝을 `modules/`에 반영하고 버전을 올려 재빌드·재검증 후 6단계(최종 문서 확정)를 마무리하면 됨.
 
 ### 남은 작업 — 5단계 실장비 검증 체크리스트
 1. **실행 환경 3종 + WinForms GUI 기본 동작 검증 (쓰기 금지 USB / 로컬 / 공유폴더):**

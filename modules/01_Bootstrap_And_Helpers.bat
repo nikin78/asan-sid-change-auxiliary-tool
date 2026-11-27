@@ -39,15 +39,69 @@ $script:BuildCommit = "__BUILD_COMMIT__"
 $gptEfiGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
 $gptRecoveryGuid = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"
 $gptMsrGuid = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
-$mbrEfiFatTypes = @(1, 4, 6, 11, 12, 14, 239)
+$mbrEfiFatTypes = @(1, 4, 6, 11, 12, 14, 17, 20, 22, 27, 28, 30, 239)
+$script:DosDevQueryType = $null
+$script:DosDevInitAttempted = $false
 
-# Resolve system OEM encoding (CP949 on Korean Windows, CP437 on EN-US, 65001 if UTF-8 beta)
+# Resolve actual Windows system OEM encoding (reads HKLM NLS OEMCP first so en-US regional format on KO Windows still decodes CP949!)
 function Get-SystemOemEncoding {
+ try {
+  $nlsOem = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage" -Name "OEMCP" -ErrorAction Stop).OEMCP
+  if ($nlsOem -and ([string]$nlsOem) -match "^\d+$" -and [int]$nlsOem -gt 0) {
+   return [System.Text.Encoding]::GetEncoding([int]$nlsOem)
+  }
+ } catch {}
+ try {
+  $uiCp = [System.Globalization.CultureInfo]::InstalledUICulture.TextInfo.OEMCodePage
+  if ($uiCp -gt 0) { return [System.Text.Encoding]::GetEncoding($uiCp) }
+ } catch {}
  try {
   $cp = [System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage
   if ($cp -gt 0) { return [System.Text.Encoding]::GetEncoding($cp) }
  } catch {}
  return [System.Text.Encoding]::Default
+}
+
+# Pure in-memory QueryDosDeviceW helper (zero csc.exe / zero temp DLLs on disk!)
+# Maps "E:" or "Volume{GUID}" -> "\Device\HarddiskVolumeX" for exact hidden-ESP NVRAM matching
+function Resolve-DosDeviceTarget([string]$dosDeviceName) {
+ if ([string]::IsNullOrWhiteSpace($dosDeviceName)) { return "" }
+ if (-not $script:DosDevInitAttempted) {
+  $script:DosDevInitAttempted = $true
+  try {
+   $dynAsm = New-Object System.Reflection.AssemblyName("SidAuxDosDevMapper")
+   $asmBld = [AppDomain]::CurrentDomain.DefineDynamicAssembly($dynAsm, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+   $modBld = $asmBld.DefineDynamicModule("Main")
+   $typBld = $modBld.DefineType("NativeDosMapper", "Public,Class")
+   $mb = $typBld.DefinePInvokeMethod(
+    "QueryDosDeviceW",
+    "kernel32.dll",
+    "Public,Static,PinvokeImpl",
+    [System.Reflection.CallingConventions]::Standard,
+    [uint32],
+    @([string], [System.Text.StringBuilder], [uint32]),
+    [System.Runtime.InteropServices.CallingConvention]::Winapi,
+    [System.Runtime.InteropServices.CharSet]::Unicode
+   )
+   $mb.SetImplementationFlags($mb.GetMethodImplementationFlags() -bor [System.Reflection.MethodImplAttributes]::PreserveSig)
+   $script:DosDevQueryType = $typBld.CreateType()
+  } catch {
+   $script:DosDevQueryType = $null
+  }
+ }
+ if (-not $script:DosDevQueryType) { return "" }
+ try {
+  $clean = $dosDeviceName.Trim().TrimEnd('\')
+  if ($clean -match '^\\\\\?\\(.+)$') { $clean = $matches[1] }
+  $sb = New-Object System.Text.StringBuilder 512
+  $rc = $script:DosDevQueryType::QueryDosDeviceW($clean, $sb, 512)
+  if ($rc -gt 0) {
+   $val = $sb.ToString().Trim([char]0).Trim()
+   if ($val -match '^(\\Device\\[^\0]+)') { return $matches[1] }
+   return $val
+  }
+ } catch {}
+ return ""
 }
 
 # Run native console commands (bcdedit, diskpart, bcdboot, shutdown) safely with OEM decoding & timeout
@@ -205,6 +259,13 @@ function Get-DiskDebugText {
   [void]$sb.AppendLine($t1.TrimEnd())
   [void]$sb.AppendLine("")
   [void]$sb.AppendLine($t2.TrimEnd())
+  try {
+   $t3 = Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction Stop | Sort-Object Index | Format-Table Index, Model, InterfaceType, MediaType, PNPDeviceID -AutoSize | Out-String
+   if ($t3) {
+    [void]$sb.AppendLine("")
+    [void]$sb.AppendLine($t3.TrimEnd())
+   }
+  } catch {}
  } else {
   [void]$sb.AppendLine((U "Storage \uBAA8\uB4C8(Get-Disk) \uBBF8\uC9C0\uC6D0 \uD658\uACBD - diskpart \uC9C4\uB2E8\uC73C\uB85C \uB300\uCCB4\uD569\uB2C8\uB2E4."))
   $dpRes = Invoke-NativeOem "diskpart.exe" "" "list disk`r`nlist volume`r`nexit`r`n"
@@ -217,10 +278,10 @@ function Get-DiskDebugText {
 function Parse-BcdFirmwareLines([array]$lines) {
  $entries = @()
  $currentEntry = $null
- $reId   = "^(identifier|" + (U "\uC2DD\uBCC4\uC790") + ")\s+(\{[^\}]+\})"
- $reDesc = "^(description|" + (U "\uC124\uBA85") + ")\s+(.+)$"
- $rePath = "^(path|" + (U "\uACBD\uB85C") + ")\s+(.+)$"
- $reDev  = "^(device|" + (U "\uC7A5\uCE58") + ")\s+(.+)$"
+ $reId   = "^(identifier|" + (U "\uC2DD\uBCC4\uC790") + ")(?:\s+|\s*:\s*)(\{[^\}]+\})"
+ $reDesc = "^(description|" + (U "\uC124\uBA85") + ")(?:\s+|\s*:\s*)(.+)$"
+ $rePath = "^(path|" + (U "\uACBD\uB85C") + ")(?:\s+|\s*:\s*)(.+)$"
+ $reDev  = "^(device|" + (U "\uC7A5\uCE58") + ")(?:\s+|\s*:\s*)(.+)$"
 
  foreach ($line in $lines) {
   $trimmed = ([string]$line).Trim()
@@ -228,7 +289,8 @@ function Parse-BcdFirmwareLines([array]$lines) {
    if ($currentEntry -and $currentEntry.Identifier) { $entries += $currentEntry }
    $currentEntry = @{ Identifier = ""; Description = ""; Path = ""; Device = "" }
   } elseif ($currentEntry) {
-   if ($trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
+   if (-not $currentEntry.Identifier -and $trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
+   elseif ($trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
    elseif ($trimmed -match $reDesc) { $currentEntry.Description = $matches[2].Trim() }
    elseif ($trimmed -match $rePath) { $currentEntry.Path = $matches[2].Trim() }
    elseif ($trimmed -match $reDev) { $currentEntry.Device = $matches[2].Trim() }

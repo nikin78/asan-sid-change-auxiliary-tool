@@ -1,9 +1,9 @@
 # SID 변경 사전·사후 보조 도구 (`SID_Change_Aux_Tool.bat`)
 
-![Version](https://img.shields.io/badge/version-v2.2.0-006769?style=flat-square)
+![Version](https://img.shields.io/badge/version-v2.3.0-006769?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%2F%20WinPE-0B4F51?style=flat-square)
 ![Delivery](https://img.shields.io/badge/delivery-Single%20ASCII%20.bat-F68B1F?style=flat-square)
-![Tests](https://img.shields.io/badge/automated%20tests-152%20passed-148A5E?style=flat-square)
+![Tests](https://img.shields.io/badge/automated%20tests-178%20passed-148A5E?style=flat-square)
 
 골든 이미지 복제 PC에서 **WinPE 부팅 USB로 C 드라이브의 Windows SID를 변경할 때, 작업 전·후에 반복되는 부팅 충돌과 공유 프린터 먹통 문제를 한 번에 예방·해결하는 단일 실행 파일 도구**입니다.
 
@@ -57,7 +57,7 @@ PC가 공유 프린터를 호스팅하는 **메인 프린터 PC**인지 **클라
 | 영역 | 주요 기능 | 안전·편의 설계 |
 | :--- | :--- | :--- |
 | **사전 1단계**<br/>내장 디스크 부트로더 점검 | C 드라이브 외 내장 디스크의 잔존 **GPT EFI** 및 **MBR 활성 부트로더** 탐지·비파괴 비활성화 | 파티션 삭제·포맷 금지(`EFI ↔ EFI_OLD`, `bootmgr/Boot ↔ _OLD` + `inactive/active`). 현재 Windows·외장 USB·WinPE 매체·읽기 전용 디스크 자동 보호 |
-| **사전 2단계**<br/>BIOS 교차 검증 & USB 부팅 | 부팅 방식·보안 부팅 3중 신호 교차 검증, HP/Dell WMI 정밀 진단, 물리 USB·UEFI NVRAM 4단계 매칭 | WMI 미지원 보드(삼성 AMI 등) `허용` 오추정 금지, HP `Legacy USB Boot` 오탐 차단, 반드시 사용자 확인 후 1회성 재부팅(`bootsequence`) |
+| **사전 2단계**<br/>BIOS 교차 검증 & USB 부팅 | 부팅 방식·보안 부팅 4중 신호(`Confirm-SecureBootUEFI` + 커널 레지스트리 + `Win32_DeviceGuard` + 제조사 WMI), HP G8/G9 체크박스(`Checked`)·한글 BIOS·Dell·Lenovo 정밀 진단, 외장 UASP NVMe/SSD 인클로저(`RTL9210B`/`HSEN`/`JMicron`) 및 숨김 EFI(`\Device\HarddiskVolumeX`) 4단계 매칭 | WMI 미지원 보드(삼성 AMI 등) `허용` 오추정 금지, HP `Legacy USB Boot` 및 복합 보안 부팅 오탐 차단, Windows 실행 중 연결(Hot-Plug) 부팅 디스크 즉시 인식, 반드시 사용자 확인 후 1회성 재부팅(`bootsequence`) |
 | **사후 복구**<br/>프린터 스풀러 초기화 | `Spooler` 및 의존 서비스 중지 → `PRINTERS` 대기열 정리 → `Disabled` 시작 유형 자동 복구 → 서비스 재시작 | 기존 프린터·드라이버·공유 설정 비삭제, 호스트(방화벽·네트워크 프로필) / 클라이언트(원격 SMB 응답) 상태 진단, 비동기 실행으로 UI 멈춤 방지 |
 | **WinPE 비상 복구**<br/>(`X:` 환경 자동 진입) | WinPE에서 실행 시 자동으로 비상 복구 창 진입, 내장 디스크 GPT EFI / MBR 부트로더 즉시 복구·전환 | Storage 모듈이 없는 경량 WinPE에서도 `diskpart`(영문·한글) 파서로 자동 폴백 |
 | **진단 리포트 & 폴백** | BIOS 교차 검증 근거·NVRAM 원본·디스크 구성·작업 로그 통합 조회 및 파일 저장·클립보드 복사 | 오류 시 민감정보 자동 마스킹(`[REDACTED]`) 후 로컬 폴더 저장 안내, GUI 불가 환경 또는 `--cli` 실행 시 콘솔 모드 자동 전환 |
@@ -152,7 +152,7 @@ powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1
 # 버전 자동 증가(Patch / Minor / Major) 후 빌드
 powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1 -Bump Patch
 
-# 전체 자동 테스트 (152개: 단위 + BIOS 교차 검증 + WinForms GUI 레이아웃 감사 + 버전 정합성)
+# 전체 자동 테스트 (178개: 단위 + 병원 기종/UASP/숨김 ESP + BIOS 교차 검증 + WinForms GUI 레이아웃 감사 + 버전 정합성)
 powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Test-Tool.ps1
 ```
 
