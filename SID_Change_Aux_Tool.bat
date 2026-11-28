@@ -33,9 +33,9 @@ function U([string]$str) {
 }
 
 $ErrorActionPreference = "Continue"
-$script:ToolVersion = "2.4.0"
+$script:ToolVersion = "2.4.1"
 $script:BuildDate = "2026-11-29"
-$script:BuildCommit = "182dc6f"
+$script:BuildCommit = "860f33a"
 $gptEfiGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
 $gptRecoveryGuid = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"
 $gptMsrGuid = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
@@ -455,7 +455,7 @@ function Parse-DiskpartDetailDisk([array]$lines) {
   }
  }
 
- $isBridgeModel = ($model -match "(?i)(RTL9210|JMS583|JMS578|JMS567|JMicron\s+Generic|ASM236|ASMedia|HSEN\s*10G|10G-NVME|VL716)")
+ $isBridgeModel = ($model -match "(?i)(RTL9210|RTL9220|JMS583|JMS580|JMS578|JMS576|JMS567|JMS586|JMicron\s+Generic|ASM236|ASM2464|ASM1153|ASM235|ASMedia|HSEN\s*10G|10G-NVME|VL711|VL715|VL716|GL322\d|Norelsys|NS106[68]|SM2320)")
  return [PSCustomObject]@{
   FriendlyName = $model
   BusType = $busType
@@ -546,7 +546,7 @@ function Get-UsbPnpDiskLookup {
  $map = @{}
  $baseContainer = "{00000000-0000-0000-ffff-ffffffffffff}"
  $usbContainers = @{}
- foreach ($usbSubPath in @("SYSTEM\CurrentControlSet\Enum\USB", "SYSTEM\CurrentControlSet\Enum\USBSTOR")) {
+ foreach ($usbSubPath in @("SYSTEM\CurrentControlSet\Enum\USB", "SYSTEM\CurrentControlSet\Enum\USBSTOR", "SYSTEM\CurrentControlSet\Enum\USB4")) {
   $usbRoot = $null
   try {
    $usbRoot = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($usbSubPath)
@@ -578,8 +578,7 @@ function Get-UsbPnpDiskLookup {
   } catch {} finally { if ($usbRoot) { $usbRoot.Dispose() } }
  }
 
- $bridgeRegex = "(?i)(RTL9210|JMS583|JMS578|JMS567|JMicron\s+Generic|ASM236|ASMedia|HSEN\s*10G|10G-NVME|VL716)"
- $internalPnpBusRe = "^(?i)(IDE\\|PCI\\|NVME\\|STORAGE\\|SCSI\\Disk&Ven_(ATA|NVMe|MSFT|RAID|Intel|AMD|LSI|VMware|Red_Hat|VirtIO)&)"
+ $bridgeRegex = "(?i)(RTL9210|RTL9220|JMS583|JMS580|JMS578|JMS576|JMS567|JMS586|JMicron\s+Generic|ASM236|ASM2464|ASM1153|ASM235|ASMedia|HSEN\s*10G|10G-NVME|VL711|VL715|VL716|GL322\d|Norelsys|NS106[68]|SM2320)"
  try {
   foreach ($dd in @(Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction SilentlyContinue)) {
    if ($null -eq $dd.Index) { continue }
@@ -589,7 +588,7 @@ function Get-UsbPnpDiskLookup {
    $media = [string]$dd.MediaType
    $model = [string]$dd.Model
    $matchedUsbContainer = $false
-   $isUsb = ($iface -match "^(?i)(USB|1394)$") -or ($pnpId -match "^(?i)(USBSTOR|USB|SD|MMC)\\") -or ($media -match "(?i)External\s+hard\s+disk|Removable\s+media") -or ($model -match $bridgeRegex) -or ($pnpId -match $bridgeRegex)
+   $isUsb = ($iface -match "^(?i)(USB|1394)$") -or ($pnpId -match "^(?i)(USBSTOR|USB|USB4|SD|MMC|SBP2)\\") -or ($media -match "(?i)External\s+hard\s+disk|Removable\s+media") -or ($model -match $bridgeRegex) -or ($pnpId -match $bridgeRegex)
 
    $pnpTokens = New-Object System.Collections.ArrayList
    if ($pnpId -match "(?i)VEN_([^&\\]+)") {
@@ -612,19 +611,9 @@ function Get-UsbPnpDiskLookup {
      if ($devKey) {
       $cidRaw2 = $devKey.GetValue("ContainerID")
       $cid = if ($cidRaw2) { ([string]$cidRaw2).Trim().ToLower() } else { "" }
-      $capsRaw = $devKey.GetValue("Capabilities")
-      $remRaw = $devKey.GetValue("RemovalPolicy")
-      $caps = if ($null -ne $capsRaw) { [int]$capsRaw } else { 0 }
-      $remPol = if ($null -ne $remRaw) { [int]$remRaw } else { 0 }
-      if ($cid -and $cid -ne $baseContainer) {
-       if ($usbContainers.ContainsKey($cid)) {
-        $isUsb = $true
-        $matchedUsbContainer = $true
-       } elseif (-not $isUsb -and ($pnpId -notmatch $internalPnpBusRe) -and ($iface -notmatch "^(?i)(IDE|HDC)$")) {
-        if ((($caps -band 0x84) -ne 0) -or ($remPol -ge 2)) {
-         $isUsb = $true
-        }
-       }
+      if ($cid -and $cid -ne $baseContainer -and $usbContainers.ContainsKey($cid)) {
+       $isUsb = $true
+       $matchedUsbContainer = $true
       }
      }
     } catch {} finally { if ($devKey) { $devKey.Dispose() } }
@@ -1513,52 +1502,74 @@ function Show-BootloaderManager([bool]$isWinPE) {
 #            & Contextual Pre-SID Action Guidance Engine
 # ==============================================================================
 
-# Map Asan Hospital fleet asset codes & SMBIOS models (S4/S5/S8/S9, H0/H1/H2/H3/H4/HS/H6/H8, D1/D8)
+# Map Asan Hospital fleet asset codes & SMBIOS models across the full IT asset database:
+# - Samsung: S3/S4/S5 (Legacy i5-650/i5-2300), S8 (DB400T8A i5-8500), S9 (DB400T9A i5-8500/i5-9500), NS (Notebook)
+# - HP: H3 (2013 Compaq Pro 6300 i5-3470 OR 2024+ reused Elite Tower G9 i5-13500), H4/HS (ProDesk 600 G1 i5-4570/4590),
+#       H6/HD (ProDesk/EliteDesk G2 i5-6500), H8 (ProDesk 600 G3 i5-7500/6500), H9/HA/HB/HC/HE (Z/Elite/Pro),
+#       H1 (EliteDesk 800 G8 i5-11500), H2 (2023 G8/G9 i5-11500/12500 & 2024-2025 Elite Tower 800 G9 i5-13500), NH (Notebook)
+#       Note: H0 (2019 i7-6700K) & H7 (2026 mixed re-tagged Samsung/Dell/HP) never force HP vendor if SMBIOS says otherwise!
+# - Dell: D1 (OptiPlex 3070/5070/7070 i5-9500), D8 (2026 OptiPlex 7010/7020 / Dell Pro Tower), DP (Precision), D4/D7, DC, ND
+# - LG: L6/L7/NL | Lenovo/Tablet: N2/N3/N4/NA/NE/TB/T1/T2/TX/TP
 function Resolve-HospitalModelProfile([string]$vendor, [string]$hintVendor, [string]$modelName, [string]$cpuName, [string]$compName) {
  $assetCode = ""
- if ($compName -and $compName -match "^(?i)C\d{5,7}([A-Z0-9]{2})$") {
-  $assetCode = $matches[1].ToUpper()
+ $assetYear = -1
+ if ($compName -and $compName -match "^(?i)[CX](\d{2})\d{3,5}([A-Z0-9]{2})$") {
+  $yy = [int]$matches[1]
+  $assetYear = if ($yy -le 40) { 2000 + $yy } else { 1900 + $yy }
+  $assetCode = $matches[2].ToUpper()
  }
  $effVendor = if ($vendor -ne "Standard") { $vendor } elseif ($hintVendor -ne "Standard") { $hintVendor } else { "" }
  if (-not $effVendor -and $assetCode) {
-  if ($assetCode -match "^S\d$") { $effVendor = "Samsung" }
-  elseif ($assetCode -match "^H[0-9SBD]$") { $effVendor = "HP" }
-  elseif ($assetCode -match "^D[0-9C]$") { $effVendor = "Dell" }
+  # Only infer OEM vendor from unambiguous fleet codes (exclude mixed/re-tagged codes like H0, H7, J1, M1, GB)
+  if ($assetCode -in @("S3","S4","S5","S8","S9","NS")) { $effVendor = "Samsung" }
+  elseif ($assetCode -in @("H1","H2","H4","HS","H6","HD","H8","H9","HB","HC","HE","NH")) { $effVendor = "HP" }
+  elseif ($assetCode -eq "H3" -and ($assetYear -le 0 -or $assetYear -le 2015 -or $assetYear -ge 2023)) { $effVendor = "HP" }
+  elseif ($assetCode -in @("D1","D4","D7","D8","DP","DC","ND")) { $effVendor = "Dell" }
+  elseif ($assetCode -in @("L6","L7","NL")) { $effVendor = "LG" }
  }
 
  $genFamily = ""
  $resolvedModel = $modelName
+ $isGenericModel = ($resolvedModel -match "^(?i)(Desktop PC|Samsung Desktop System|HP Desktop|Dell System)$")
+
  if ($effVendor -eq "Samsung") {
-  if ($modelName -match "(?i)DB400T9A|DM500T9A" -or $assetCode -eq "S9" -or $cpuName -match "i[357]-9\d{3}") {
+  if ($modelName -match "(?i)DB400T9A|DM500T9A" -or $assetCode -eq "S9" -or $cpuName -match "i[3579]-9\d{3}") {
    $genFamily = "SAMSUNG_DB400T"
-   if ($resolvedModel -eq "Desktop PC") { $resolvedModel = "Samsung DB400T9A (S9)" }
-  } elseif ($modelName -match "(?i)DB400T8A|DB400T7B|DM500T8A" -or $assetCode -eq "S8" -or $cpuName -match "i[357]-8\d{3}") {
+   if ($isGenericModel) { $resolvedModel = "Samsung DB400T9A (S9)" }
+  } elseif ($modelName -match "(?i)DB400T8A|DB400T7B|DM500T8A" -or $assetCode -eq "S8" -or $cpuName -match "i[3579]-8\d{3}") {
    $genFamily = "SAMSUNG_DB400T"
-   if ($resolvedModel -eq "Desktop PC") { $resolvedModel = "Samsung DB400T8A (S8)" }
-  } elseif ($assetCode -in @("S4","S5") -or $cpuName -match "i[357]-(650|2\d{3})") {
+   if ($isGenericModel) { $resolvedModel = "Samsung DB400T8A (S8)" }
+  } elseif ($assetCode -in @("S3","S4","S5") -or $cpuName -match "i[357]-(650|2\d{3})") {
    $genFamily = "SAMSUNG_LEGACY"
-   if ($resolvedModel -eq "Desktop PC") { $resolvedModel = "Samsung Desktop (" + $(if ($assetCode) { $assetCode } else { "Legacy" }) + ")" }
+   if ($isGenericModel) { $resolvedModel = "Samsung Desktop (" + $(if ($assetCode) { $assetCode } else { "Legacy" }) + ")" }
   } else {
    $genFamily = "SAMSUNG_DB400T"
   }
  } elseif ($effVendor -eq "HP") {
-  if ($modelName -match "(?i)\bG(6|7|8|9|10|11)\b|Elite\s+Tower\s+[68]00|Pro\s+Tower\s+400" -or $assetCode -in @("H0","H1","H2") -or $cpuName -match "i[3579]-1[0-4]\d{3}|Core\s+Ultra") {
+  $isModernCpu = ($cpuName -match "i[3579]-1[0-4]\d{3}|Core\s*(\(TM\)\s*)?Ultra|Core\s+[3579]\s+\d{3}|Ryzen\s+[3579]\s+(?:PRO\s+)?[4-9]\d{3}")
+  $isLegacyOrProDeskCpu = ($cpuName -match "i[3579]-[2-9]\d{3}")
+  if ($modelName -match "(?i)\bG(6|7|8|9|10|11)\b|Elite\s+Tower\s+[68]00|Pro\s+Tower\s+[24]00|Elite\s+(Mini|SFF)\s+[68]00" -or
+      $isModernCpu -or
+      ((-not $isLegacyOrProDeskCpu) -and ($assetCode -in @("H1","H2","HB","HC","HE") -or ($assetCode -eq "H3" -and $assetYear -ge 2022)))) {
    $genFamily = "HP_G8_G9"
-   if ($resolvedModel -eq "Desktop PC") {
-    $resolvedModel = if ($assetCode -eq "H0" -or $cpuName -match "i[3579]-10\d{3}") {
-     "HP EliteDesk / ProDesk G6 (H0)"
-    } elseif ($cpuName -match "i[3579]-1[2-4]\d{3}|Core\s+Ultra") {
+   if ($isGenericModel) {
+    $resolvedModel = if ($cpuName -match "i[3579]-10\d{3}") {
+     "HP EliteDesk 800 G6"
+    } elseif ($cpuName -match "i[3579]-1[2-4]\d{3}|Core\s*(\(TM\)\s*)?Ultra" -or ($assetCode -in @("H2","H3") -and $assetYear -ge 2024)) {
      "HP Elite Tower 800 G9"
     } else {
      "HP EliteDesk 800 G8"
     }
    }
-  } elseif ($modelName -match "(?i)ProDesk\s+600\s*G[1-5]|EliteDesk\s+800\s*G[1-5]|Compaq\s+(Pro\s+6300|Elite\s+8300)" -or $assetCode -in @("H3","H4","HS","H6","H7","H8")) {
+  } elseif ($modelName -match "(?i)ProDesk\s+[46]00\s*G[1-5]|EliteDesk\s+[78]00\s*G[1-5]|Compaq\s+(Pro\s+6300|Elite\s+8300)" -or
+            $isLegacyOrProDeskCpu -or
+            $assetCode -in @("H3","H4","HS","H6","HD","H8","H9","H0")) {
    $genFamily = "HP_PRODESK_G1_G5"
-   if ($resolvedModel -eq "Desktop PC") {
+   if ($isGenericModel) {
     $resolvedModel = switch ($assetCode) {
      "H8" { "HP ProDesk 600 G3" }
      "H6" { "HP ProDesk 600 G2" }
+     "HD" { "HP ProDesk 600 G2 DM" }
      "H4" { "HP ProDesk 600 G1" }
      "HS" { "HP ProDesk 600 G1" }
      "H3" { "HP Compaq Pro 6300" }
@@ -1567,18 +1578,22 @@ function Resolve-HospitalModelProfile([string]$vendor, [string]$hintVendor, [str
    }
   }
  } elseif ($effVendor -eq "Dell") {
-  if ($modelName -match "(?i)OptiPlex\s*(Tower|Plus|SFF|Micro)?\s*(7010|7020|5090|7090|3090|3080|5080|7080)|Dell\s+Pro\s+(Tower|Max|Slim)" -or $assetCode -eq "D8" -or $cpuName -match "i[3579]-1[2-4]\d{3}|Core\s+Ultra") {
+  if ($modelName -match "(?i)OptiPlex\s*(Tower|Plus|SFF|Micro)?\s*(7010|7020|5090|7090|3090|3080|5080|7080)|Dell\s+Pro\s+(Tower|Max|Slim|Micro)|Precision\s+\d{4}" -or
+      $assetCode -in @("D8","DP") -or $cpuName -match "i[3579]-1[0-4]\d{3}|Core\s*(\(TM\)\s*)?Ultra") {
    $genFamily = "DELL_MODERN"
-   if ($resolvedModel -eq "Desktop PC") { $resolvedModel = "Dell OptiPlex / Pro Tower (D8)" }
-  } elseif ($modelName -match "(?i)OptiPlex\s*(3070|5070|7070|3060|5060|7060|3050|5050|7050)" -or $assetCode -eq "D1" -or $cpuName -match "i[357]-9\d{3}") {
+   if ($isGenericModel) {
+    $resolvedModel = if ($assetCode -eq "DP") { "Dell Precision Tower (DP)" } else { "Dell OptiPlex / Pro Tower (D8)" }
+   }
+  } elseif ($modelName -match "(?i)OptiPlex\s*(3070|5070|7070|3060|5060|7060|3050|5050|7050|3040|5040|7040)" -or $assetCode -eq "D1" -or $cpuName -match "i[3579]-[6-9]\d{3}") {
    $genFamily = "DELL_OPTIPLEX_70"
-   if ($resolvedModel -eq "Desktop PC") { $resolvedModel = "Dell OptiPlex 3070/5070/7070 (D1)" }
+   if ($isGenericModel) { $resolvedModel = "Dell OptiPlex 3070/5070/7070 (D1)" }
   }
  }
 
  return [PSCustomObject]@{
   EffectiveVendor = $effVendor
   AssetCode = $assetCode
+  AssetYear = $assetYear
   GenFamily = $genFamily
   ModelName = $resolvedModel
  }
@@ -1606,7 +1621,7 @@ function Get-SystemInfo {
  $cspVen = if ($csp -and $csp.Vendor) { [string]$csp.Vendor } else { "" }
  $rawVendor = "$csMan $cspVen $bbMan $biosMan".Trim()
 
- $placeholderRe = "^(?i)(System Product Name|To be filled.*|Default string|All Series|Not Specified|None|OEM|Desktop|Standard PC.*)$"
+ $placeholderRe = "^(?i)(System Product Name|To be filled.*|Default string|All Series|Not Specified|None|OEM|Desktop|Samsung Desktop System|HP Desktop|Dell System|Standard PC.*)$"
  $modelCandidates = @(
   $(if ($cs) { [string]$cs.Model } else { "" }),
   $regSysProd,
@@ -1640,6 +1655,7 @@ function Get-SystemInfo {
   elseif ($rawVendor -match "(?i)ASRock") { $hintVendor = "ASRock" }
   elseif ($rawVendor -match "(?i)Gigabyte") { $hintVendor = "Gigabyte" }
   elseif ($rawVendor -match "(?i)Micro-Star|\bMSI\b") { $hintVendor = "MSI" }
+  elseif ($rawVendor -match "(?i)Microsoft Corporation" -and $modelName -match "(?i)Surface") { $hintVendor = "Surface" }
  }
 
  $cpuName = if ($cpuObj -and $cpuObj.Name) { ([string]$cpuObj.Name).Trim() } else { "" }
@@ -1647,6 +1663,8 @@ function Get-SystemInfo {
  if ($vendor -eq "Standard" -and $hospProf.EffectiveVendor -in @("Samsung","HP","Dell")) {
   $vendor = $hospProf.EffectiveVendor
   $hintVendor = $vendor
+ } elseif ($hintVendor -eq "Standard" -and $hospProf.EffectiveVendor) {
+  $hintVendor = $hospProf.EffectiveVendor
  }
  $modelName = $hospProf.ModelName
 
@@ -1668,6 +1686,7 @@ function Get-SystemInfo {
   "ASRock"   { U "ASRock BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Security\uC5D0\uC11C Secure Boot \uB044\uAE30" }
   "Gigabyte" { U "Gigabyte BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F12 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot \uB044\uAE30" }
   "MSI"      { U "MSI BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11 \u00B7 Settings > Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot \uB044\uAE30" }
+  "Surface"  { U "Surface UEFI \uBCFC\uB968 \uC5C5+\uC804\uC6D0 \u00B7 Boot Configuration\uC5D0\uC11C USB Storage \uCF1C\uAE30, \uD544\uC694 \uC2DC Secure Boot \uB044\uAE30" }
   default    { U "BIOS F2/Del \u00B7 USB Boot \uCF1C\uAE30, Fast Boot \uB044\uAE30, \uD544\uC694 \uC2DC Secure Boot \uB044\uAE30" }
  }
 
@@ -1681,6 +1700,7 @@ function Get-SystemInfo {
   "ASRock"   { U "ASRock \u00B7 BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11" }
   "Gigabyte" { U "Gigabyte \u00B7 BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F12" }
   "MSI"      { U "MSI \u00B7 BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11" }
+  "Surface"  { U "Surface \u00B7 UEFI \uBCFC\uB968 \uC5C5+\uC804\uC6D0" }
   default    { U "BIOS F2 \uB610\uB294 Del \u00B7 \uBD80\uD305 \uBA54\uB274 \uB2E8\uCD95\uD0A4" }
  }
 
@@ -1835,12 +1855,16 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
  $reOnVal  = "^(?i)(Enable|Enabled|Yes|On|Checked|True|Available|Allow|Allowed)$|^(" + (U "\uD65C\uC131|\uD65C\uC131\uD654|\uC0AC\uC6A9|\uC0AC\uC6A9\uD568|\uC608|\uC120\uD0DD\uB428|\uCCB4\uD06C\uB428|\uCCB4\uD06C|\uD5C8\uC6A9") + ")$"
  $reOffVal = "^(?i)(Disable|Disabled|No|Off|Unchecked|False|Hidden|Deny|Denied|Block|Blocked)$|^(" + (U "\uBE44\uD65C\uC131|\uBE44\uD65C\uC131\uD654|\uC0AC\uC6A9\s*\uC548\s*\uD568|\uC544\uB2C8\uC624|\uC544\uB2C8\uC694|\uC120\uD0DD\s*\uC548\s*\uD568|\uCCB4\uD06C\s*\uD574\uC81C|\uCCB4\uD06C\uD574\uC81C\uB428|\uD574\uC81C\uB428|\uC228\uAE40|\uCC28\uB2E8") + ")$"
 
- $rePrimaryUsbName = "(?i)(USB\s*Storage\s*Boot|Removable\s*Media\s*Boot|USB\s*Device\s*Boot|UEFI\s*USB\s*Boot|USB\s*Flash\s*Media|Boot\s*from\s*USB|\bUSB\s*Boot\b|" + (U "USB\s*\uC800\uC7A5\uC18C\s*\uBD80\uD305|USB\s*\uC2A4\uD1A0\uB9AC\uC9C0\s*\uBD80\uD305|\uC774\uB3D9\uC2DD\s*\uBBF8\uB514\uC5B4\s*\uBD80\uD305|USB\s*\uC7A5\uCE58\s*\uBD80\uD305|USB\s*\uBD80\uD305") + ")"
- $rePrimaryExclude = "(?i)(Legacy|" + (U "\uB808\uAC70\uC2DC") + "|Charge|" + (U "\uCDA9\uC804") + "|Wake|" + (U "\uC808\uC804") + "|Security|Network|" + (U "\uB124\uD2B8\uC6CC\uD06C") + "|PXE|Optical|" + (U "\uAD11\uD559") + "|CD|DVD|Order|" + (U "\uC21C\uC11C") + ")"
- $rePortName       = "(?i)(Legacy.*USB|USB.*Legacy|USB\s*Ports?|External\s*USB|Front\s*USB|Rear\s*USB|" + (U "\uB808\uAC70\uC2DC.*USB|USB.*\uB808\uAC70\uC2DC|USB\s*\uD3EC\uD2B8|\uC678\uBD80\s*USB|\uC804\uBA74\s*USB|\uD6C4\uBA74\s*USB") + ")"
+ $rePrimaryUsbName = "(?i)(USB\s*Storage\s*Boot|Removable\s*Media\s*Boot|External\s*Media\s*Boot|USB\s*Flash\s*Drive\s*Boot|USB\s*Device\s*Boot|UEFI\s*USB\s*Boot|USB\s*Flash\s*Media|Boot\s*from\s*USB|\bUSB\s*Boot\b|" + (U "USB\s*\uC800\uC7A5\uC18C\s*\uBD80\uD305|USB\s*\uC2A4\uD1A0\uB9AC\uC9C0\s*\uBD80\uD305|\uC774\uB3D9\uC2DD\s*\uBBF8\uB514\uC5B4\s*\uBD80\uD305|\uC678\uBD80\s*\uBBF8\uB514\uC5B4\s*\uBD80\uD305|USB\s*\uC7A5\uCE58\s*\uBD80\uD305|USB\s*\uBD80\uD305") + ")"
+ $rePrimaryExclude = "(?i)(Legacy|" + (U "\uB808\uAC70\uC2DC") + "|Charge|" + (U "\uCDA9\uC804") + "|Wake|" + (U "\uC808\uC804") + "|Security|Provisioning|Redirection|Network|" + (U "\uB124\uD2B8\uC6CC\uD06C") + "|PXE|Optical|" + (U "\uAD11\uD559") + "|CD|DVD|Order|" + (U "\uC21C\uC11C") + ")"
+ $rePortAllName    = "^(?i)(USB\s*Ports?|External\s*USB(\s*Ports?)?|" + (U "USB\s*\uD3EC\uD2B8|\uC678\uBD80\s*USB(\s*\uD3EC\uD2B8)?") + ")$"
+ $rePortInfoName   = "(?i)(Legacy.*USB|USB.*Legacy|Front\s*USB|Rear\s*USB|USB\s*Port\s*\d+|" + (U "\uB808\uAC70\uC2DC.*USB|USB.*\uB808\uAC70\uC2DC|\uC804\uBA74\s*USB|\uD6C4\uBA74\s*USB") + ")"
  $reFastBootName   = "^(?i)((HP\s+)?Fast\s*Boot(\s*\(.*\))?|" + (U "\uACE0\uC18D\s*\uBD80\uD305|\uBE60\uB978\s*\uBD80\uD305") + ")$"
  $reSecSimpleName  = "^(?i)(Secure\s*Boot|" + (U "\uBCF4\uC548\s*\uBD80\uD305") + ")$"
  $reSecCompName    = "^(?i)(Configure\s+Legacy\s+Support\s+and\s+Secure\s+Boot|" + (U "\uB808\uAC70\uC2DC\s*\uC9C0\uC6D0\s*\uBC0F\s*\uBCF4\uC548\s*\uBD80\uD305\s*\uAD6C\uC131") + ")$"
+ $reLegacySupName  = "^(?i)(Legacy\s*Support|" + (U "\uB808\uAC70\uC2DC\s*\uC9C0\uC6D0") + ")$"
+ $reHpThirdPartyCa = "(?i)(Allow\s*Third\s*Party\s*UEFI\s*CA|Microsoft\s*UEFI\s*CA|Third-?Party\s*UEFI)"
+ $reHpVmdName      = "(?i)(VMD|Configure\s+Storage\s+Controller\s+for\s+(VMD|RAID))"
 
  $primaryEnabled = New-Object System.Collections.ArrayList
  $primaryDisabled = New-Object System.Collections.ArrayList
@@ -1864,7 +1888,7 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
     $activeVal = $valStr
    }
   }
-  if (-not $activeVal) { continue }
+  if (-not $activeVal -or $activeVal -match "^(?i)(Not\s*Implemented|N/A)$") { continue }
   $seenKeys[$dedupKey] = $true
 
   # 1) Primary UEFI USB Boot settings (supports Checked/Unchecked on G8/G9 + Enable/Disable on G1~G7 + KO BIOS)
@@ -1876,13 +1900,15 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
     [void]$primaryEnabled.Add(($name + "=" + $activeVal))
    }
   }
-  # 2) Secondary Legacy USB / USB Port settings (Legacy Disable never overrides UEFI Enable!)
-  elseif ($name -match $rePortName) {
-   [void]$evidence.Add(("HP Secondary USB/Port: " + $name + " = " + $activeVal))
-   if (($name -notmatch "(?i)Legacy|" + (U "\uB808\uAC70\uC2DC")) -and ($activeVal -match $reOffVal)) {
+  # 2) Global External USB Port block vs informational Legacy/Front/Rear port status (partial Front/Rear never locks out working ports!)
+  elseif ($name -match $rePortAllName) {
+   [void]$evidence.Add(("HP All USB Ports: " + $name + " = " + $activeVal))
+   if ($activeVal -match $reOffVal) {
     $portWarn = $true
     $portDetail = "HP WMI: " + $name + " = " + $activeVal
    }
+  } elseif ($name -match $rePortInfoName) {
+   [void]$evidence.Add(("HP Secondary USB/Port: " + $name + " = " + $activeVal))
   }
 
   # 3) Fast Boot (exclude Memory/SATA Fast Boot)
@@ -1894,7 +1920,9 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
    }
   }
 
-  # 4) Secure Boot WMI cross-check signal (Compound Legacy+SecureBoot on G1~G5 has strict priority over grayed-out standalone Secure Boot!)
+  # 4) Secure Boot WMI cross-check signal:
+  #    Both G3 compound 'Configure Legacy Support and Secure Boot' AND G1/G2 standalone 'Legacy Support = Enable'
+  #    override grayed-out standalone 'Secure Boot = Enable' (prevents false Conflict on H4/HS/H6!)
   if ($name -match $reSecCompName) {
    [void]$evidence.Add(("HP Secure Boot (Compound): " + $name + " = " + $activeVal))
    if ($activeVal -match "(?i)Secure\s*Boot\s*Disable|Legacy\s*Support\s*Enable" -or $activeVal -match (U "\uBCF4\uC548\s*\uBD80\uD305\s*(\uBE44\uD65C\uC131|\uC0AC\uC6A9\s*\uC548\s*\uD568)")) {
@@ -1904,10 +1932,23 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
     $secWmi = "On"
     $secCompoundLocked = $true
    }
+  } elseif ($name -match $reLegacySupName) {
+   [void]$evidence.Add(("HP Legacy Support: " + $name + " = " + $activeVal))
+   if ($activeVal -match $reOnVal) {
+    $secWmi = "Off"
+    $secCompoundLocked = $true
+   }
   } elseif (-not $secCompoundLocked -and ($name -match $reSecSimpleName)) {
    [void]$evidence.Add(("HP Secure Boot: " + $name + " = " + $activeVal))
    if ($activeVal -match $reOnVal -or $activeVal -match "(?i)Secure\s*Boot\s*Enable") { $secWmi = "On" }
    elseif ($activeVal -match $reOffVal -or $activeVal -match "(?i)Secure\s*Boot\s*Disable") { $secWmi = "Off" }
+  }
+
+  # 5) Informational HP G8/G9/G10 Third-Party UEFI CA & Intel VMD status
+  if ($name -match $reHpThirdPartyCa) {
+   [void]$evidence.Add(("HP UEFI CA: " + $name + " = " + $activeVal))
+  } elseif ($name -match $reHpVmdName) {
+   [void]$evidence.Add(("HP Storage/VMD: " + $name + " = " + $activeVal))
   }
  }
 
@@ -2008,46 +2049,52 @@ function Resolve-DellBiosDiagnostics([array]$dellSettings) {
   if (-not $val) { continue }
   $seenAttrs[$aKey] = $true
 
-  # 1) Primary USB Boot settings (supports EnableUsbBootSupport, UsbBoot, ExternalUsbBoot, EnableBootSupport; excludes Wake/PowerShare/Legacy)
-  if (($name -match "(?i)^(EnableUsbBootSupport|UsbBootSupport|UsbBoot|BootUsb|ExternalUsbBoot|EnableExternalUsbBoot|UsbStorageBoot|UsbPortsBoot)$") -and
-      ($name -notmatch "(?i)Wake|PowerShare|Legacy")) {
-   [void]$evidence.Add(("Dell Primary USB: " + $name + " = " + $val))
-   if ($val -match "(?i)^(Disable|Disabled|Off|None|No|False|DisableUsbBoot)$|Disable") {
-    [void]$primaryDisabled.Add(($name + "=" + $val))
-   } elseif ($val -match "(?i)^(Enable|Enabled|On|All|AllEnable|Yes|True|EnableUsbBoot)$|Enable") {
-    [void]$primaryEnabled.Add(($name + "=" + $val))
-   }
+ # 1) Primary USB Boot settings (supports EnableUsbBootSupport, UsbBoot, ExternalUsbBoot, ExtUsbBoot; excludes Wake/PowerShare/Legacy)
+ if (($name -match "(?i)^(EnableUsbBootSupport|UsbBootSupport|UsbBoot|BootUsb|ExternalUsbBoot|EnableExternalUsbBoot|ExtUsbBoot|UsbStorageBoot|UsbPortsBoot)$") -and
+     ($name -notmatch "(?i)Wake|PowerShare|Legacy")) {
+  [void]$evidence.Add(("Dell Primary USB: " + $name + " = " + $val))
+  if ($val -match "(?i)^(Disable|Disabled|Off|None|No|False|DisableUsbBoot)$|Disable") {
+   [void]$primaryDisabled.Add(($name + "=" + $val))
+  } elseif ($val -match "(?i)^(Enable|Enabled|On|All|AllEnable|Yes|True|EnableUsbBoot)$|Enable") {
+   [void]$primaryEnabled.Add(($name + "=" + $val))
   }
-  # 2) External USB Port controls (OnlyBackPortsOn is partial rear-only, not total block; AllDisable/Disabled/Off is PortWarn)
-  elseif ($name -match "(?i)^(UsbPortsExternal|ExternalUsbPorts|ExternalUsb|FrontUsb|RearUsb|UsbPorts)$") {
-   [void]$evidence.Add(("Dell USB Port: " + $name + " = " + $val))
-   if (($name -notmatch "(?i)^FrontUsb") -and ($val -match "(?i)^(Disable|Disabled|Off|None|AllDisable|DisableAllPorts)$")) {
-    $portWarn = $true
-    $portDetail = "Dell WMI: " + $name + " = " + $val
-   }
+ }
+ # 2) External USB Port controls (OnlyBackPortsOn/FrontUsb/RearUsb is partial, not total block; only AllDisable/Disabled on global UsbPortsExternal is PortWarn)
+ elseif ($name -match "(?i)^(UsbPortsExternal|ExternalUsbPorts|ExternalUsb|UsbPorts)$") {
+  [void]$evidence.Add(("Dell USB Port: " + $name + " = " + $val))
+  if ($val -match "(?i)^(Disable|Disabled|Off|None|AllDisable|DisableAllPorts)$") {
+   $portWarn = $true
+   $portDetail = "Dell WMI: " + $name + " = " + $val
   }
+ } elseif ($name -match "(?i)^(FrontUsb|RearUsb|FrontUsbPorts|RearUsbPorts)$") {
+  [void]$evidence.Add(("Dell Partial USB Port: " + $name + " = " + $val))
+ }
 
-  # 3) Fastboot (Minimal skips USB init during POST; Auto may skip USB init on warm reboot)
-  if ($name -match "(?i)^Fastboot$") {
-   [void]$evidence.Add(("Dell Fastboot: " + $name + " = " + $val))
-   $fastMode = $val
-   if ($val -match "(?i)Minimal") {
-    $fastWarn = $true
-    $fastDetail = "Dell WMI: Fastboot = " + $val
-   }
+ # 3) Fastboot (Minimal skips USB init during POST; Auto may skip USB init on warm reboot)
+ if ($name -match "(?i)^Fastboot$") {
+  [void]$evidence.Add(("Dell Fastboot: " + $name + " = " + $val))
+  $fastMode = $val
+  if ($val -match "(?i)Minimal") {
+   $fastWarn = $true
+   $fastDetail = "Dell WMI: Fastboot = " + $val
   }
+ }
 
-  # 4) SecureBoot WMI cross-check signal (SecureBoot / SecBoot / SecureBootEnable)
-  if ($name -match "(?i)^(SecureBoot|SecBoot|SecureBootEnable)$") {
-   [void]$evidence.Add(("Dell SecureBoot: " + $name + " = " + $val))
-   if ($val -match "(?i)Enable|On|True|DeployedMode") { $secWmi = "On" }
-   elseif ($val -match "(?i)Disable|Off|False|AuditMode") { $secWmi = "Off" }
-  }
+ # 4) SecureBoot WMI cross-check signal (SecureBoot / SecBoot / SecureBootEnable)
+ if ($name -match "(?i)^(SecureBoot|SecBoot|SecureBootEnable)$") {
+  [void]$evidence.Add(("Dell SecureBoot: " + $name + " = " + $val))
+  if ($val -match "(?i)Enable|On|True|DeployedMode") { $secWmi = "On" }
+  elseif ($val -match "(?i)Disable|Off|False|AuditMode") { $secWmi = "Off" }
+ }
 
-  # 5) UEFI Boot Path Security (informational evidence on OptiPlex D1/D8)
-  if ($name -match "(?i)^UefiBootPathSecurity$") {
-   [void]$evidence.Add(("Dell BootPathSecurity: " + $name + " = " + $val))
-  }
+ # 5) UEFI Boot Path Security, Microsoft UEFI CA & Storage Operation (RAID On / VMD vs AHCI on OptiPlex D1/D8/DP)
+ if ($name -match "(?i)^UefiBootPathSecurity$") {
+  [void]$evidence.Add(("Dell BootPathSecurity: " + $name + " = " + $val))
+ } elseif ($name -match "(?i)^(SataOperation|EmbSata|StorageOperation)$") {
+  [void]$evidence.Add(("Dell StorageMode: " + $name + " = " + $val))
+ } elseif ($name -match "(?i)^(EnableMicrosoftUefiCa|MicrosoftUefiCa)$") {
+  [void]$evidence.Add(("Dell MicrosoftUefiCA: " + $name + " = " + $val))
+ }
  }
 
  if ($primaryDisabled.Count -gt 0 -and $primaryEnabled.Count -gt 0) {
@@ -2180,7 +2227,8 @@ function Resolve-BiosCrossCheckVerdict(
   $confidence = "Conflict"
   $hasConflict = $true
  } elseif ($wmiState -eq "Enabled") {
-  if ($portWarn) {
+  # Never mark PortBlocked if Windows already sees a connected physical USB disk ($physicalUsbCount > 0)!
+  if ($portWarn -and $physicalUsbCount -eq 0 -and (-not $nvramHasStrictUsb) -and $matchedNvramCount -le 0) {
    $finalState = "PortBlocked"
    $confidence = "CrossChecked"
    $summary = $wmiDetail + " | " + $portDetail
@@ -2270,18 +2318,22 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
  }
  $usbHintRe = if ($connectedUsbHints.Count -gt 0) { ($connectedUsbHints | Select-Object -Unique) -join "|" } else { "" }
 
- # Strict NVRAM USB check (excludes disconnected 'unknown' ghost entries, USB NICs, and internal SATA/NVMe)
+ # Strict NVRAM USB check (excludes disconnected 'unknown' ghost entries, HP bare BBS class placeholders with no device/path, USB NICs, and OEM recovery)
  $nvramUsbEntries = @(
   $bcdEntries | Where-Object {
    $desc = [string]$_.Description
    $dev = ([string]$_.Device).Trim()
+   $pth = ([string]$_.Path).Trim()
+   $isBarePlaceholder = ((-not $dev) -and (-not $pth)) -or ($desc -match "(?i)USB\s*Floppy|Floppy/CD")
    $matchesConnUsb = ($usbHintRe -and ($desc -match $usbHintRe))
    $isInternalBusOnly = (-not $matchesConnUsb) -and ($desc -match "(?i)\b(SATA\d*|NVMe\d*)\b") -and ($desc -notmatch "(?i)\bUSB\b|External|Removable")
    $_.Identifier -ne "{fwbootmgr}" -and $_.Identifier -ne "{bootmgr}" -and
+   ($desc -ne "SID Aux Tool - WinPE USB") -and
+   (-not $isBarePlaceholder) -and
    (-not ($dev -and ($dev -match $unknownDevRe))) -and
    ($desc -notmatch $excludeDescPattern) -and
    (-not $isInternalBusOnly) -and
-   ($matchesConnUsb -or ($desc -match "(?i)\bUSB\b|Removable|External|Flash|SanDisk|Ventoy|Phoenix|RTL9210|JMicron|HSEN|FireCuda|ADATA|Kingston|JetFlash|PMAP|UDisk"))
+   ($matchesConnUsb -or ($desc -match "(?i)\bUSB\b|Removable|External|Flash|SanDisk|Ventoy|Phoenix|RTL9210|RTL9220|JMicron|ASMedia|HSEN|FireCuda|ADATA|Kingston|JetFlash|PMAP|UDisk|VendorCo|ProductCode"))
   }
  )
  $nvramHasStrictUsbEntry = ($nvramUsbEntries.Count -gt 0 -or $matchedNvramCount -gt 0)
@@ -2335,6 +2387,9 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
   } catch {}
   try {
    $dellRaw += @(Get-CimInstance -Namespace "root\dcim\sysman\biosattributes" -ClassName "EnumerationAttribute" -ErrorAction Stop)
+  } catch {}
+  try {
+   $dellRaw += @(Get-CimInstance -Namespace "root\dcim\sysman\biosattributes" -ClassName "BooleanAttribute" -ErrorAction Stop)
   } catch {}
 
   if ($dellRaw.Count -gt 0) {
@@ -2595,17 +2650,26 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
    }
   }
   if ($diag.SecureBootState -in @("On","Conflict")) {
+   $hasUefiNtfs = ($null -ne $usbInfo.PSObject.Properties["IsUefiNtfs"] -and [bool]$usbInfo.IsUefiNtfs)
+   $sbDirectMsg = if ($hasUefiNtfs) {
+    U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uBC14\uB85C \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uC2DC\uB3C4\uD558\uB418, \uBCF4\uC548 \uBD80\uD305 \uC778\uC99D \uCC28\uB2E8 \uC2DC BIOS\uC5D0\uC11C \uBCF4\uC548 \uBD80\uD305\uC744 \uAEBC \uC8FC\uC138\uC694."
+   } else {
+    U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uD45C\uC900 WinPE\uB294 \uBC14\uB85C \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC218 \uC788\uC73C\uBA70, \uBE44\uC11C\uBA85 PE \uCC28\uB2E8 \uC2DC\uC5D0\uB9CC \uBCF4\uC548 \uBD80\uD305\uC744 \uAEBC \uC8FC\uC138\uC694."
+   }
    return [PSCustomObject]@{
     Level = "Warn"
     Title = U "WinPE USB \uBD80\uD305 \uC900\uBE44 \uC644\uB8CC \u00B7 \uBCF4\uC548 \uBD80\uD305 \uCF1C\uC9D0"
-    Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uD45C\uC900 WinPE\uB294 \uBC14\uB85C \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC218 \uC788\uC73C\uBA70, \uBE44\uC11C\uBA85 PE \uCC28\uB2E8 \uC2DC\uC5D0\uB9CC \uBCF4\uC548 \uBD80\uD305\uC744 \uAEBC \uC8FC\uC138\uC694."
+    Message = $sbDirectMsg
     RecommendedAction = "USB_REBOOT"
    }
   }
+  $samNote = if ($sysInfo -and $sysInfo.Vendor -eq "Samsung") {
+   U " \uC7AC\uBD80\uD305 \uD6C4 \uBC14\uB85C Windows\uB85C \uCF1C\uC9C0\uBA74 F2 BIOS\uC5D0\uC11C Fast BIOS Mode\uB97C \uAEBC \uC8FC\uC138\uC694."
+  } else { "" }
   return [PSCustomObject]@{
    Level = "OK"
    Title = U "WinPE USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC900\uBE44\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4"
-   Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. 2\uB2E8\uACC4 \uBAA9\uB85D\uC5D0\uC11C USB\uB97C \uD655\uC778\uD55C \uB4A4 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uB20C\uB7EC \uC8FC\uC138\uC694."
+   Message = (U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. 2\uB2E8\uACC4 \uBAA9\uB85D\uC5D0\uC11C USB\uB97C \uD655\uC778\uD55C \uB4A4 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uB20C\uB7EC \uC8FC\uC138\uC694.") + $samNote
    RecommendedAction = "USB_REBOOT"
   }
  }
@@ -2739,6 +2803,7 @@ function Get-PartitionDevicePatterns($partObj) {
   $dl = ([string]$partObj.DriveLetter).Trim([char]0).Trim().TrimEnd(':')
   if ($dl -and ($dl -match '^[A-Za-z]$')) {
    [void]$pats.Add("partition=$($dl):")
+   [void]$pats.Add("[$($dl):]")
    $ntFromLtr = Resolve-DosDeviceTarget "$($dl):"
    if ($ntFromLtr) { [void]$pats.Add(("partition=" + $ntFromLtr)) }
   }
@@ -2809,20 +2874,27 @@ function Find-BestEfiBinaryOnRoot([string]$rootPath) {
    return "\bootmgr.efi"
   }
  } catch {}
- # 2-level scan under \EFI\* for custom PhoenixPE / DISM++ / Linux shim EFI binaries
+ # 2-level scan under \EFI\* for custom PhoenixPE / DISM++ / Linux shim EFI binaries (excluding non-boot helper tools!)
  try {
   $efiRoot = $r + "\EFI"
+  $skipEfiLeafRe = "^(?i)(memtest.*|mokmanager|mmx64|mmia32|mmaa64|fbx64|fbia32|fbaa64|fallback|shell.*|ntfs_.*)\.efi$"
   if ([System.IO.Directory]::Exists($efiRoot)) {
+   $preferredSubHits = New-Object System.Collections.ArrayList
+   $otherSubHits = New-Object System.Collections.ArrayList
    foreach ($subDir in @([System.IO.Directory]::GetDirectories($efiRoot))) {
     $subLeaf = [System.IO.Path]::GetFileName($subDir)
     if ($subLeaf -match "^(?i)Rufus$") { continue }
     foreach ($ef in @([System.IO.Directory]::GetFiles($subDir, "*.efi"))) {
      $fn = [System.IO.Path]::GetFileName($ef)
-     if ($fn -notmatch "^(?i)memtest\.efi$") {
-      return ("\EFI\" + $subLeaf + "\" + $fn)
+     if ($fn -notmatch $skipEfiLeafRe) {
+      $relHit = "\EFI\" + $subLeaf + "\" + $fn
+      if ($fn -match "^(?i)(shimx64|grubx64|bootx64|bootmgfw)\.efi$") { [void]$preferredSubHits.Add($relHit) }
+      else { [void]$otherSubHits.Add($relHit) }
      }
     }
    }
+   if ($preferredSubHits.Count -gt 0) { return [string]$preferredSubHits[0] }
+   if ($otherSubHits.Count -gt 0) { return [string]$otherSubHits[0] }
   }
  } catch {}
  return ""
@@ -2879,6 +2951,7 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
  $anyEfiReadyUsb = $false
  $anyDirectBootUsb = $false
  $anyVentoy = $false
+ $anyUefiNtfs = $false
  $selfLoc = if (Get-Command Get-SelfHostLocationInfo -ErrorAction SilentlyContinue) { Get-SelfHostLocationInfo } else { [PSCustomObject]@{ DiskNumber = -1; DriveLetter = "" } }
 
  # Collect words appearing in internal disk model names to prevent same-brand false matches (e.g. Samsung USB vs Samsung NVMe)
@@ -2906,6 +2979,7 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
   $hasEfi = $false
   $diskHasPePayload = $false
   $diskIsVentoy = $false
+  $diskIsUefiNtfs = $false
   $isSelfUsb = (($null -ne $disk.PSObject.Properties["IsSelfHostUsb"] -and [bool]$disk.IsSelfHostUsb) -or ($selfLoc.DiskNumber -ge 0 -and $dNum -eq $selfLoc.DiskNumber))
   $peLabel = ""
 
@@ -2915,6 +2989,9 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
   $bestBootNtDev = ""
   $bestEfiPath = ""
   $bestPartDisplay = ""
+  $fallbackBootDev = ""
+  $fallbackBootNtDev = ""
+  $fallbackEfiPath = ""
 
   $rawModel = if ($disk.FriendlyName) { [string]$disk.FriendlyName } else { "USB Disk" }
   $cleanName = (($rawModel -replace "(?i)\s+(SCSI|USB|SATA|NVMe|ATA)?\s*Disk\s+Device$", "") -replace "^[\s_]+|[\s_]+$", "" -replace "\s{2,}", " ").Trim()
@@ -2942,6 +3019,10 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
     if ($cw -match "^([A-Za-z]{3,}\d{3,})[A-Za-z]$") {
      [void]$rawCandidateWords.Add($matches[1])
     }
+   }
+   # Also support brand + short series bigrams (e.g. 'Samsung PSSD T7' -> 'Samsung\s+T7', 'Crucial X9' -> 'Crucial\s+X9')
+   if ($cleanName -match "(?i)\b(Samsung|Crucial|Kingston|SanDisk|SK\s*hynix|Lexar|ADATA)\b.*\b([TX]\d|XS\d{3,4})\b") {
+    $usbStrictModelPatterns += ([regex]::Escape($matches[1]) + "\s+" + [regex]::Escape($matches[2]))
    }
    foreach ($word in ($rawCandidateWords | Select-Object -Unique)) {
     $wTrim = ([string]$word).Trim()
@@ -3007,10 +3088,11 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
    }
 
    if ($volLabel -match "(?i)^(VTOYEFI|VENTOY)$") { $diskIsVentoy = $true; $anyVentoy = $true }
+   if ($volLabel -match "(?i)^UEFI_NTFS$") { $diskIsUefiNtfs = $true; $anyUefiNtfs = $true }
    $isEfiGpt = ($p.GptType -eq $gptEfiGuid)
    $isRecovGpt = ($p.GptType -eq $gptRecoveryGuid)
    $isEfiMbr = ($null -ne $p.MbrType -and ($mbrEfiFatTypes -contains [int]$p.MbrType))
-   # UEFI spec natively reads FAT12/FAT16/FAT32 (NOT exFAT without a chainloader like UEFI_NTFS!)
+   # UEFI spec natively reads FAT12/FAT16/FAT32 (HP & Dell BIOS strictly require FAT ESP over NTFS/exFAT!)
    $isTrueFatFs = ($fs -match "^(?i)(FAT|FAT12|FAT16|FAT32)$")
    $isBootLabel = ($volLabel -match "(?i)^(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE.*|WINPE.*|ESD-USB|ESD-ISO|HBCD_PE|EFI|BOOT|SYSTEM)$")
 
@@ -3019,6 +3101,9 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
    $hasPePayload = if ($probeRoot) { Test-WinPePayloadOnRoot $probeRoot } else { $false }
    if ($probeRoot -and ([System.IO.File]::Exists(($probeRoot.TrimEnd('\') + "\ventoy\ventoy.json")) -or [System.IO.File]::Exists(($probeRoot.TrimEnd('\') + "\ventoy.dat")))) {
     $diskIsVentoy = $true; $anyVentoy = $true
+   }
+   if ($probeRoot -and [System.IO.File]::Exists(($probeRoot.TrimEnd('\') + "\EFI\Rufus\ntfs_x64.efi"))) {
+    $diskIsUefiNtfs = $true; $anyUefiNtfs = $true
    }
    if ($hasPePayload) { $diskHasPePayload = $true }
    if (-not $peLabel -and $volLabel -and ($hasPePayload -or $volLabel -match "(?i)PE|WIN|BOOT|ESD|VENTOY") -and $volLabel -notmatch "^(?i)(UEFI_NTFS|EFI|VTOYEFI|Driver|Data|New Volume)$") {
@@ -3033,22 +3118,27 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
     [void]$candidateHiddenParts.Add($pNum)
    }
 
-   # Score this partition as the UEFI Direct Boot target (Dedicated FAT EFI > General FAT EFI > NTFS/exFAT EFI > Hidden ESP)
+   # Score this partition as the UEFI Direct Boot target:
+   # Dedicated FAT EFI (115) > General FAT EFI (105) > Unprobed Hidden FAT/GPT-ESP (90: MUST outrank NTFS on HP/Dell!) > Mounted NTFS/exFAT EFI (75) > Other Hidden Boot (45)
    $partScore = -1
+   $prefDev = if ($pLtr) { "partition=$($pLtr):" } elseif ($ntVolDev) { $ntVolDev } else { "" }
    if ($efiRelPath) {
     if ($isTrueFatFs) {
-     $partScore = 100
+     $partScore = 105
      if ($isEfiGpt -or [int64]$p.Size -le 4GB -or $volLabel -match "(?i)^(UEFI_NTFS|VTOYEFI|EFI|BOOT|SYSTEM)$") { $partScore = 115 }
     } else {
      $partScore = 75
+     if (-not $fallbackEfiPath -and $prefDev) {
+      $fallbackBootDev = $prefDev
+      $fallbackBootNtDev = $ntVolDev
+      $fallbackEfiPath = $efiRelPath
+     }
     }
    } elseif ($isHiddenCandidate -and ($isEfiGpt -or $isTrueFatFs -or ($null -ne $p.MbrType -and [int]$p.MbrType -in @(18, 239)))) {
-    $partScore = 60
+    $partScore = 90
    } elseif ($isHiddenCandidate -and ($isEfiMbr -or $isRecovGpt -or $isBootLabel)) {
     $partScore = 45
    }
-
-   $prefDev = if ($pLtr) { "partition=$($pLtr):" } elseif ($ntVolDev) { $ntVolDev } else { "" }
    if ($partScore -gt $bestScore) {
     $bestScore = $partScore
     $bestPartNum = $pNum
@@ -3106,8 +3196,12 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
    BestBootDevice = $bestBootDev
    BestBootNtDevice = $bestBootNtDev
    BestEfiRelPath = $bestEfiPath
+   FallbackBootDevice = $fallbackBootDev
+   FallbackBootNtDevice = $fallbackBootNtDev
+   FallbackEfiRelPath = $fallbackEfiPath
    CandidatePartNums = @($candidateHiddenParts | Select-Object -Unique)
    IsVentoy = $diskIsVentoy
+   IsUefiNtfs = $diskIsUefiNtfs
    IsReadOnly = [bool]$disk.IsReadOnly
   }
  }
@@ -3123,6 +3217,7 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
   AnyEfiReadyUsb = $anyEfiReadyUsb
   AnyDirectBootUsb = $anyDirectBootUsb
   IsVentoy = $anyVentoy
+  IsUefiNtfs = $anyUefiNtfs
  }
 }
 
@@ -3226,6 +3321,14 @@ function Invoke-DirectUsbEfiBootSetup($usbDiskItem) {
   }
  }
 
+ # Secondary fallback: if hidden partitions had no .efi or could not mount, try any mounted secondary bootable partition (e.g. NTFS PE partition on AMI boards)
+ $fbDev = if ($usbDiskItem.PSObject.Properties["FallbackBootDevice"]) { [string]$usbDiskItem.FallbackBootDevice } else { "" }
+ $fbNtDev = if ($usbDiskItem.PSObject.Properties["FallbackBootNtDevice"]) { [string]$usbDiskItem.FallbackBootNtDevice } else { "" }
+ $fbPath = if ($usbDiskItem.PSObject.Properties["FallbackEfiRelPath"]) { [string]$usbDiskItem.FallbackEfiRelPath } else { "" }
+ if ($fbDev -and $fbPath) {
+  return (& $registerBcd $fbDev $fbNtDev $fbPath)
+ }
+
  return [PSCustomObject]@{ Success = $false; Guid = ""; Device = ""; Path = ""; Error = $lastErr }
 }
 
@@ -3240,7 +3343,7 @@ function Find-MatchedUsbNvramEntries(
 ) {
  $koBootMgr = U "Windows \uBD80\uD305 \uAD00\uB9AC\uC790"
  $unknownDevRe = "^(?i)(unknown|" + (U "\uC54C\s*\uC218\s*\uC5C6\uC74C") + ")(\s|$)"
- $excludeDesc = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Hard Drive \(SATA|Hard Drive \(NVMe|Onboard NIC|Ethernet|GbE\s+Family|FE\s+Family|\bLAN\b|Wi-?Fi|Bluetooth|Built-in\s+EFI\s+Shell|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update|Diagnostics)"
+ $excludeDesc = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|Windows\s*Recovery\s*Environment|\bWinRE\b|Samsung\s*Recovery|HP\s*Recovery|Dell\s*Recovery|Lenovo\s*Recovery|OS\s*Recovery|System\s*Recovery|Recovery\s*Management|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Hard Drive \(SATA|Hard Drive \(NVMe|Onboard NIC|Ethernet|GbE\s+Family|FE\s+Family|\bLAN\b|Wi-?Fi|Bluetooth|Built-in\s+EFI\s+Shell|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update|Diagnostics|ATAPI\s+CD|Notebook\s+Upgrade\s+Bay)"
  $internalPattern = if ($internalDriveLetters -and $internalDriveLetters.Count -gt 0) {
   (@($internalDriveLetters | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
  } else {
@@ -3252,12 +3355,16 @@ function Find-MatchedUsbNvramEntries(
  $usbModRegex = if ($usbStrictModelPatterns -and $usbStrictModelPatterns.Count -gt 0) {
   (@($usbStrictModelPatterns | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { "(?<![A-Za-z0-9])(?:" + $_ + ")(?![A-Za-z0-9])" })) -join "|"
  } else { "" }
- $intModRegex = if ($internalModelPatterns -and $internalModelPatterns.Count -gt 0) { ($internalModelPatterns | Select-Object -Unique) -join "|" } else { "" }
+ $intModRegex = if ($internalModelPatterns -and $internalModelPatterns.Count -gt 0) {
+  (@($internalModelPatterns | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { "(?<![A-Za-z0-9])(?:" + $_ + ")(?![A-Za-z0-9])" })) -join "|"
+ } else { "" }
 
  $candidateEntries = @($bcdEntries | Where-Object {
   $descStr = [string]$_.Description
   $devStr = ([string]$_.Device).Trim()
+  $pthStr = ([string]$_.Path).Trim()
   $isUnknownGhostDev = ($devStr -ne "" -and ($devStr -match $unknownDevRe))
+  $isBareFloppyCd = ((-not $devStr) -and (-not $pthStr) -and ($descStr -match "(?i)Floppy|CD-ROM|CD/DVD"))
   $matchesInternalDev = ($internalPattern -and ($devStr -match $internalPattern))
   $matchesUsbDev = (-not $isUnknownGhostDev) -and (-not $matchesInternalDev) -and ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
   $matchesUsbMod = (-not $isUnknownGhostDev) -and ($usbModRegex -and ($descStr -match $usbModRegex))
@@ -3270,6 +3377,7 @@ function Find-MatchedUsbNvramEntries(
   $_.Identifier -ne "{bootmgr}" -and
   ([string]$_.Description -ne "SID Aux Tool - WinPE USB") -and
   (-not $isUnknownGhostDev) -and
+  (-not $isBareFloppyCd) -and
   ($matchesUsbDev -or ($descStr -notmatch $excludeDesc)) -and
   (-not $isOpticalNonUsb) -and
   (-not $isInternalBusWithoutUsb) -and
@@ -3323,9 +3431,9 @@ function Find-MatchedUsbNvramEntries(
   }
  }
 
- # Tier 4: Generic UEFI USB NVRAM entry or removable \EFI\BOOT\BOOTX64.EFI fallback
+ # Tier 4: Generic UEFI USB NVRAM entry or removable \EFI\BOOT\BOOTX64.EFI fallback (skip bare BBS group entries with empty Device and empty Path if only generic 'USB Hard Drive' unless no Direct EFI!)
  if ($matched.Count -eq 0 -and $anyEfiReadyUsb) {
-  $genericUsbRegex = "(?i)(USB Hard Drive|USB Flash|USB Storage|USB Key|USB Disk|USB Device|USB Floppy|USB:|Removable|External|Mass Storage|\bUSB\b|\bPMAP\b|\bUDisk\b|Flash\s*Disk|Flash\s*Drive|Thumb\s*Drive|Memory\s*Stick|JetFlash|DataTraveler|Cruzer|Ventoy)"
+  $genericUsbRegex = "(?i)(USB Hard Drive|USB Flash|USB Storage|USB Key|USB Disk|USB Device|USB:|Removable|External|Mass Storage|\bUSB\b|\bPMAP\b|\bUDisk\b|SMI\s*USB|VendorCo|ProductCode|ChipsBnk|Innostor|Alcor|TransMemory|JumpDrive|Flash\s*Disk|Flash\s*Drive|Thumb\s*Drive|Memory\s*Stick|JetFlash|DataTraveler|Cruzer|Ventoy)"
   foreach ($c in $candidateEntries) {
    $cDesc = [string]$c.Description
    $cPath = [string]$c.Path
@@ -3349,12 +3457,13 @@ function Get-PreSidStep2Snapshot($sysInfo, $preClassifiedDisks = $null) {
  $internalDisks = @($diskSplit.InternalDisks)
  $internalDrivePatterns = @()
  $internalModelPatterns = @()
+ $intSkipNoiseRe = "^(?i)(SATA|NVMe|PCIe|SCSI|ATA|Gen\d|3\.2Gen\d|\d+(\.\d+)?|\d+\s*[KMGT]B|\d+G|SSD|HDD|Disk|Drive|Device)$"
  foreach ($idisk in $internalDisks) {
   if ($idisk -and $idisk.FriendlyName) {
    $iClean = (([string]$idisk.FriendlyName) -replace "(?i)\s+(SCSI|USB|SATA|NVMe|ATA)?\s*Disk\s+Device$", "").Trim()
    if ($iClean.Length -ge 4) { $internalModelPatterns += [regex]::Escape($iClean) }
    foreach ($itok in ($iClean -split "[\s_-]+")) {
-    if ($itok.Length -ge 5 -and $itok -match "\d" -and $itok -notmatch "^(?i)(SATA|NVMe|PCIe|Gen\d)") {
+    if ($itok.Length -ge 5 -and $itok -match "\d" -and ($itok -notmatch $intSkipNoiseRe)) {
      $internalModelPatterns += [regex]::Escape($itok)
     }
    }
@@ -6179,6 +6288,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    $u.DgvUsb.Rows.Clear()
    $matched = @($snap.MatchedEntries)
    $firstBootRowIdx = -1
+   $exactOrDirectRowIdx = -1
    $selfPrefRowIdx = -1
    $coveredDiskNums = @{}
 
@@ -6210,6 +6320,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
      $tip = ([string]$m.MatchTag) + "`r`nGUID: " + $m.Identifier + "`r`n" + (U "\uC7A5\uCE58: ") + $devStr
      foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
      if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
+     if ($m.IsExact -and $exactOrDirectRowIdx -lt 0) { $exactOrDirectRowIdx = $rIdx }
      if ($isSelfMatch -and $selfPrefRowIdx -lt 0) { $selfPrefRowIdx = $rIdx }
     }
    }
@@ -6239,6 +6350,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
       Set-AsanCellSemanticStyle $row.Cells[0] "OK" $t $f $true
       Set-AsanCellSemanticStyle $row.Cells[1] $(if ($hasResolvedEfi) { "OK" } else { "Info" }) $t $f $true
       if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
+      if ($exactOrDirectRowIdx -lt 0) { $exactOrDirectRowIdx = $rIdx }
       if ($isSelf -and $selfPrefRowIdx -lt 0) { $selfPrefRowIdx = $rIdx }
      } else {
       $kindBadge = if ($isSelf) { U "\uC2E4\uD589 USB" } else { U "\uC678\uC7A5 USB" }
@@ -6262,7 +6374,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
     $row.DefaultCellStyle.ForeColor = $t.InkMuted
    }
    $u.DgvUsb.ClearSelection()
-   $selTargetIdx = if ($selfPrefRowIdx -ge 0) { $selfPrefRowIdx } else { $firstBootRowIdx }
+   $selTargetIdx = if ($selfPrefRowIdx -ge 0) { $selfPrefRowIdx } elseif ($exactOrDirectRowIdx -ge 0) { $exactOrDirectRowIdx } else { $firstBootRowIdx }
    if ($selTargetIdx -ge 0) { $u.DgvUsb.Rows[$selTargetIdx].Selected = $true }
 
    # 4. Contextual Guidance Banner & Sync All Buttons

@@ -1,14 +1,23 @@
 # [인수인계서] SID 변경 사전·사후 보조 툴 (`SID_Change_Aux_Tool.bat`)
 
 > [!IMPORTANT]
-> **현재 버전: `v2.4.0` (2026-11-29 작업 기준 — 다중 파티션 `PhoenixPE`/`DISM++`/`Rufus` WinPE USB 인식 전면 개편, 자체 실행 `(일반 내장 공간)` USB 자동 식별 및 1회성 UEFI EFI 직접 부팅 등록 완료):**
-> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **다중 파티션(`(EFI) + (부팅파일) + (일반 내장 공간)`) WinPE USB 완벽 인식 및 Hot-Plug 상태 즉시 1회성 EFI 직접 부팅(`Invoke-DirectUsbEfiBootSetup`), 자체 실행 USB(`IsSelfHostUsb`) 자동 우선 선택, 병원 전체 PC 인벤토리(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 세대별 프로필, UASP 외장 SSD PnP 분류, 4중 신호 Secure Boot 교차 검증 및 200개 자동/레이아웃 테스트**까지 완료했습니다.
+> **현재 버전: `v2.4.1` (2026-11-29 작업 기준 — 병원 전체 PC 자산 DB 전수 대조·기종별 BIOS/USB 오탐 제거, 다중 파티션 `PhoenixPE`/`DISM++` 인식 및 1회성 직접 EFI 부팅 완료):**
+> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **병원 전체 자산 DB(`S3~S9/NS`, `H0~H9/HD/HB/HC/HE/NH`, `D1/D8/DP`, `L6/L7/NL`, 재사용 `C24xxxxH3`, 혼합 `H7`) 정밀 식별, HP G1/G2 단독 `Legacy Support` 오탐 제거·부분 포트 잠금 오탐 제거·Intel VMD(`RAID On`) 내장 디스크 보호, 다중 파티션 USB 숨김 `FAT32/ESP` 최우선 선택 및 Hot-Plug 1회성 EFI 직접 부팅(`Invoke-DirectUsbEfiBootSetup`), 224개 자동/레이아웃 테스트 및 `PSScriptAnalyzer` 0건**까지 완료했습니다.
 > 사용자 안내서는 [README.md](README.md), 변경 이력은 [CHANGELOG.md](CHANGELOG.md), 상세 의사결정 배경은 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
-> **다음에 해야 할 일:** 개선된 `v2.4.0` 빌드로 **5단계 실장비 재검증(다중 파티션 PhoenixPE/DISM++ USB, Samsung `S8/S9`, HP `H0/H1/H2/H6/H8`, Dell `D1/D8`, 공유 프린터)** 후 최종 확정.
+> **다음에 해야 할 일:** 개선된 `v2.4.1` 빌드로 **5단계 실장비 재검증(다중 파티션 PhoenixPE/DISM++ USB, Samsung `S8/S9`, HP `H1/H2/H4/H6/H8`, Dell `D1/D8`, 공유 프린터)** 후 최종 확정.
 
 ---
 
-## 0. 최근 작업 세션 인수인계 요약 (2026-11-29 `v2.4.0` 다중 파티션 WinPE USB 인식 및 직접 부팅 개편)
+## 0. 최근 작업 세션 인수인계 요약 (2026-11-29 `v2.4.0` → `v2.4.1` 병원 DB 기반 전수 리뷰 및 다중 파티션 USB 직접 부팅)
+
+### 2026-11-29 추가 완료 (`v2.4.1` — 병원 전체 IT 자산 DB 전수 대조 및 재귀 코드 리뷰)
+1. **병원 실장비 DB(9,803대 + 교체분 `D8` 4,436대 + 전산비품 1.2만 대) 전수 반영 (`modules/03`):**
+   * 관리번호 내 연도(`<YY>`)·CPU·SMBIOS를 교차 분석해 구형 `C14xxxxH3`(`Compaq Pro 6300`)와 2024년 재사용 `C24xxxxH3`(`Elite Tower 800 G9` `i5-13500`)를 분리하고, `HD`(`ProDesk 600 G2 DM`), `DP`(`Dell Precision`), `HB/HC/HE/H9/NH`, `NL/L6/L7`, `NS`, `Surface` 지원 및 혼합 코드(`H7`, `H0`)의 타 제조사 덮어쓰기 방지.
+   * HP G1/G2(`H4/HS/H6/HD`) 단독 `Legacy Support = Enable` 우선순위 적용으로 거짓 `SecureBoot = Conflict` 제거, 전면 포트만 비활성화된 경우나 물리 USB가 이미 연결된 경우 `PortBlocked` 잠금 오탐 제거, Dell `BooleanAttribute`·`SataOperation`(VMD/RAID)·`UefiBootPathSecurity`·`MicrosoftUefiCa` 수집 추가.
+2. **HP·Dell UEFI 호환성 및 NVRAM 매칭 정밀화 (`modules/02`, `04`, `06`):**
+   * 미마운트 숨김 `FAT32/GPT-ESP` 파티션(점수 90)을 마운트된 `NTFS` 파티션(점수 75)보다 우선 선택해 `NTFS` 직접 부팅을 못 읽는 HP·Dell 보드에서도 숨김 `FAT32` EFI로 정확히 부팅(임시 마운트 실패 시 보조 파티션 폴백 유지).
+   * Intel VMD/RST 내장 디스크 오분류 방지, `fbx64`/`MokManager`/`mmx64` 보조 `.efi` 스킵, HP 빈 `USB Floppy/CD`·`Samsung/HP/Dell Recovery` 배제, `Samsung T7` 등 브랜드+시리즈 2글자 조합 및 `VendorCo ProductCode` 지원, 내장 `500GB` 용량 토큰의 외장 SSD 오차단 수정, GUI 행 자동 선택 우선순위 개선.
+3. **IDE 저장 충돌 방지 설정(`.editorconfig`, `.vscode/settings.json`, `PSScriptAnalyzerSettings.psd1`) 추가 및 정적 분석 0건 달성.**
 
 ### 2026-11-29 완료한 작업 (`v2.3.1` → `v2.4.0` — PhoenixPE / DISM++ / 다중 파티션 자체 실행 USB 미인식·부팅 불가 근본 해결)
 1. **다중 파티션 WinPE 부팅 디스크(`PhoenixPE Builder`, `DISM++`, `Rufus UEFI:NTFS`, `Bootice`) 미인식 원인 전수 해결 (`modules/01`, `02`, `04`):**

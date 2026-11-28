@@ -9,6 +9,25 @@
 
 ---
 
+## [v2.4.1] - 2026-11-29
+
+### 추가 및 정밀 보강 (Added / Hardened — 병원 전체 PC 자산 DB 기반 전수 코드 리뷰)
+* **서울아산병원 전체 PC 자산 DB(`현황` · `N0~N3` · 전산비품 전체 목록) 기반 기종 프로필 정밀화 (`modules/03_Vendor_Bios_Diagnostics.ps1`):**
+  * 관리번호(`C<YY><NNNN><코드>`, `X<YY><NNNN><코드>`)에서 **취득 연도(`<YY>`)와 자산 코드를 함께 분석**해 2013~2014년형 `C14xxxxH3`(`HP Compaq Pro 6300`, `i5-3470`)와 2024년 재사용 코드 `C24xxxxH3`(`HP Elite Tower 800 G9`, `i5-13500` DDR5)를 정확히 구분.
+  * 요약표 외 실전 자산 코드 `HD`(`HP ProDesk 600 G2 DM`), `HB/HC/HE/H9/NH`(HP 워크스테이션·미니·노트북), `DP`(`Dell Precision`), `NL/L6/L7`(LG), `NS`(삼성 노트북), `Surface` 단축키 지원 추가.
+  * 재등록·연구용 혼합 코드(`H7`, `H0`, `J1`, `M1` 등)가 비-HP 보드(삼성·ASUS 등)를 `HP`로 잘못 덮어쓰지 않도록 보호하고, `"Samsung Desktop System"`·`"HP Desktop"` 같은 범용 SMBIOS 문자열보다 실제 세부 모델명을 우선 채택.
+* **기종별 BIOS 교차 검증 오탐 원천 제거 (`modules/03_Vendor_Bios_Diagnostics.ps1`):**
+  * **HP ProDesk 600 G1/G2(`H4`·`HS`·`H6`·`HD`, 1,600여 대) `Legacy Support` 우선순위 반영:** 구형 HP BIOS에서 단독 `Legacy Support = Enable`일 때 비활성 상태로 남아 있는 `Secure Boot = Enable` WMI 값 때문에 `SecureBoot = Conflict` 거짓 경고가 뜨던 문제 해결.
+  * **부분 포트 비활성(`Front USB Ports = Disable` 등) 및 장착된 USB 포트 잠금 오탐 차단:** 전면 포트만 꺼진 경우 전체 포트 차단(`PortBlocked`)으로 오판하지 않도록 분리하고, 물리 USB가 이미 Windows에 정상 인식된 상태(`$physicalUsbCount > 0`)에서는 절대 `PortBlocked`로 재부팅 버튼을 잠그지 않도록 개선.
+  * **Dell `biosattributes`(`BooleanAttribute` 포함)·`SataOperation`(`RAID On`/VMD)·`UefiBootPathSecurity`·`MicrosoftUefiCa` 및 HP `Third-Party UEFI CA`·`VMD` 진단 근거 수집 추가**, 삼성(`S8/S9`) Hot-Plug 시 `Fast BIOS Mode` 안내 및 Secured-Core PC `UEFI:NTFS` 보안 부팅 안내 세분화.
+* **다중 파티션 USB 및 제조사별 UEFI NVRAM 부팅 인식 정밀도 극대화 (`modules/02`, `04`, `06`):**
+  * **숨김 `FAT32`/`GPT-EFI` 파티션 우선순위 상향 (HP·Dell UEFI 호환성 보장):** `(숨김 FAT32 EFI) + (마운트된 NTFS 부팅파일) + (일반 공간)` 구조에서 미마운트 숨김 `FAT32/ESP` 파티션(점수 90)이 마운트된 `NTFS` 파티션(점수 75)보다 항상 우선 선택되도록 조정해 `NTFS` 직접 부팅을 지원하지 않는 HP·Dell 보드에서도 100% 정상 부팅되도록 개선(임시 마운트 실패 시 보조 파티션 자동 폴백 포함).
+  * **Intel VMD / RST(`RAID On`) 내장 NVMe·SATA 오분류 원천 차단 (`Get-UsbPnpDiskLookup`):** `Enum\USB4` 컨테이너 지원 및 최신 브릿지 칩(`RTL9220`, `ASM2464`, `SM2320`, `JMS586`, `VL715`, `GL322x`, `NS1068` 등)을 추가하는 한편, 비-USB 컨테이너 내장 슬롯이 핫플러그 속성만으로 외장 USB로 빠지지 않도록 고정.
+  * **HP 빈 클래스 항목(`USB Floppy/CD`)·OEM 복구 파티션(`Samsung/HP/Dell Recovery`)·보조 `.efi`(`fbx64`, `MokManager`, `mmx64`) 배제 및 동일 제조사 외장 SSD(`Samsung T7` 등)·범용 컨트롤러(`VendorCo ProductCode`) 매칭 강화**, 내장 `500GB` HDD 용량 토큰이 동용량 외장 SSD를 차단하던 버그 수정, GUI 기본 선택 우선순위(`실행 USB` > `정확 일치` / `EFI 직접 부팅` > `범용 항목`) 정교화.
+* **IDE 저장 충돌 방지 및 `PSScriptAnalyzer` 경고 0건 유지 (`.editorconfig`, `.vscode/settings.json`, `PSScriptAnalyzerSettings.psd1`).**
+
+---
+
 ## [v2.4.0] - 2026-11-29
 
 ### 추가 및 대폭 개선 (Added / Overhauled)

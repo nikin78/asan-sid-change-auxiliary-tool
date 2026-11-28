@@ -81,7 +81,7 @@ function Parse-DiskpartDetailDisk([array]$lines) {
   }
  }
 
- $isBridgeModel = ($model -match "(?i)(RTL9210|JMS583|JMS578|JMS567|JMicron\s+Generic|ASM236|ASMedia|HSEN\s*10G|10G-NVME|VL716)")
+ $isBridgeModel = ($model -match "(?i)(RTL9210|RTL9220|JMS583|JMS580|JMS578|JMS576|JMS567|JMS586|JMicron\s+Generic|ASM236|ASM2464|ASM1153|ASM235|ASMedia|HSEN\s*10G|10G-NVME|VL711|VL715|VL716|GL322\d|Norelsys|NS106[68]|SM2320)")
  return [PSCustomObject]@{
   FriendlyName = $model
   BusType = $busType
@@ -172,7 +172,7 @@ function Get-UsbPnpDiskLookup {
  $map = @{}
  $baseContainer = "{00000000-0000-0000-ffff-ffffffffffff}"
  $usbContainers = @{}
- foreach ($usbSubPath in @("SYSTEM\CurrentControlSet\Enum\USB", "SYSTEM\CurrentControlSet\Enum\USBSTOR")) {
+ foreach ($usbSubPath in @("SYSTEM\CurrentControlSet\Enum\USB", "SYSTEM\CurrentControlSet\Enum\USBSTOR", "SYSTEM\CurrentControlSet\Enum\USB4")) {
   $usbRoot = $null
   try {
    $usbRoot = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($usbSubPath)
@@ -204,8 +204,7 @@ function Get-UsbPnpDiskLookup {
   } catch {} finally { if ($usbRoot) { $usbRoot.Dispose() } }
  }
 
- $bridgeRegex = "(?i)(RTL9210|JMS583|JMS578|JMS567|JMicron\s+Generic|ASM236|ASMedia|HSEN\s*10G|10G-NVME|VL716)"
- $internalPnpBusRe = "^(?i)(IDE\\|PCI\\|NVME\\|STORAGE\\|SCSI\\Disk&Ven_(ATA|NVMe|MSFT|RAID|Intel|AMD|LSI|VMware|Red_Hat|VirtIO)&)"
+ $bridgeRegex = "(?i)(RTL9210|RTL9220|JMS583|JMS580|JMS578|JMS576|JMS567|JMS586|JMicron\s+Generic|ASM236|ASM2464|ASM1153|ASM235|ASMedia|HSEN\s*10G|10G-NVME|VL711|VL715|VL716|GL322\d|Norelsys|NS106[68]|SM2320)"
  try {
   foreach ($dd in @(Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction SilentlyContinue)) {
    if ($null -eq $dd.Index) { continue }
@@ -215,7 +214,7 @@ function Get-UsbPnpDiskLookup {
    $media = [string]$dd.MediaType
    $model = [string]$dd.Model
    $matchedUsbContainer = $false
-   $isUsb = ($iface -match "^(?i)(USB|1394)$") -or ($pnpId -match "^(?i)(USBSTOR|USB|SD|MMC)\\") -or ($media -match "(?i)External\s+hard\s+disk|Removable\s+media") -or ($model -match $bridgeRegex) -or ($pnpId -match $bridgeRegex)
+   $isUsb = ($iface -match "^(?i)(USB|1394)$") -or ($pnpId -match "^(?i)(USBSTOR|USB|USB4|SD|MMC|SBP2)\\") -or ($media -match "(?i)External\s+hard\s+disk|Removable\s+media") -or ($model -match $bridgeRegex) -or ($pnpId -match $bridgeRegex)
 
    $pnpTokens = New-Object System.Collections.ArrayList
    if ($pnpId -match "(?i)VEN_([^&\\]+)") {
@@ -238,19 +237,9 @@ function Get-UsbPnpDiskLookup {
      if ($devKey) {
       $cidRaw2 = $devKey.GetValue("ContainerID")
       $cid = if ($cidRaw2) { ([string]$cidRaw2).Trim().ToLower() } else { "" }
-      $capsRaw = $devKey.GetValue("Capabilities")
-      $remRaw = $devKey.GetValue("RemovalPolicy")
-      $caps = if ($null -ne $capsRaw) { [int]$capsRaw } else { 0 }
-      $remPol = if ($null -ne $remRaw) { [int]$remRaw } else { 0 }
-      if ($cid -and $cid -ne $baseContainer) {
-       if ($usbContainers.ContainsKey($cid)) {
-        $isUsb = $true
-        $matchedUsbContainer = $true
-       } elseif (-not $isUsb -and ($pnpId -notmatch $internalPnpBusRe) -and ($iface -notmatch "^(?i)(IDE|HDC)$")) {
-        if ((($caps -band 0x84) -ne 0) -or ($remPol -ge 2)) {
-         $isUsb = $true
-        }
-       }
+      if ($cid -and $cid -ne $baseContainer -and $usbContainers.ContainsKey($cid)) {
+       $isUsb = $true
+       $matchedUsbContainer = $true
       }
      }
     } catch {} finally { if ($devKey) { $devKey.Dispose() } }

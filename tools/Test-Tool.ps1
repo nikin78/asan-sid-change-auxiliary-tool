@@ -911,6 +911,80 @@ try {
     $directGuid = Get-PreSidGuidance ([PSCustomObject]@{ Vendor = "Standard" }) $okEfiRepMock $directDiagMock $multiRes @() $false
     Assert-Eq $directGuid.Level "OK" "Hot-plugged Direct-EFI USB yields Level=OK guidance"
     Assert-Eq $directGuid.RecommendedAction "USB_REBOOT" "Hot-plugged Direct-EFI USB recommends direct USB_REBOOT instead of ADV_BOOT detour"
+
+    # ==============================================================================
+    # 14. v2.4.1 Asan Hospital IT Asset DB Full Fleet & Deep BIOS/USB Quirks Tests
+    # ==============================================================================
+    Write-Host "`n--- [14] v2.4.1 Hospital Asset DB Fleet & Deep BIOS/USB Quirks Tests ---" -ForegroundColor Yellow
+
+    # 14a. Reused H3 asset code disambiguation by acquisition year & CPU (2014 Compaq 6300 vs 2024 Elite Tower G9)
+    $profH3Old = Resolve-HospitalModelProfile "HP" "HP" "Desktop PC" "Intel(R) Core(TM) i5-3470 CPU" "C140007H3"
+    Assert-Eq $profH3Old.GenFamily "HP_PRODESK_G1_G5" "2014 C140007H3 (i5-3470) mapped to legacy HP_PRODESK_G1_G5"
+    $profH3New = Resolve-HospitalModelProfile "HP" "HP" "Desktop PC" "13th Gen Intel(R) Core(TM) i5-13500" "C240001H3"
+    Assert-Eq $profH3New.GenFamily "HP_G8_G9" "2024 C240001H3 (i5-13500) mapped to modern HP_G8_G9"
+    Assert-Eq $profH3New.ModelName "HP Elite Tower 800 G9" "2024 C240001H3 generic Desktop PC resolved to HP Elite Tower 800 G9"
+
+    # 14b. Mixed/re-tagged H7 & custom H0 codes never override non-HP SMBIOS vendor; HD, DP, NL mapped accurately
+    $profH7Mixed = Resolve-HospitalModelProfile "Samsung" "Samsung" "DB400T8A" "Intel(R) Core(TM) i5-8500" "C260011H7"
+    Assert-Eq $profH7Mixed.EffectiveVendor "Samsung" "Re-tagged C260011H7 on Samsung DB400T8A preserves Samsung vendor"
+    $profH7Std = Resolve-HospitalModelProfile "Standard" "ASUS" "PRIME Z390-P" "Intel(R) Core(TM) i7-9700" "C260013H7"
+    Assert-Eq $profH7Std.EffectiveVendor "ASUS" "Re-tagged C260013H7 on ASUS board never forces HP vendor"
+    $profHD = Resolve-HospitalModelProfile "HP" "HP" "Desktop PC" "Intel(R) Core(TM) i5-6500T" "C161437HD"
+    Assert-Eq $profHD.ModelName "HP ProDesk 600 G2 DM" "C161437HD mapped to HP ProDesk 600 G2 DM"
+    $profDP = Resolve-HospitalModelProfile "Dell" "Dell" "Desktop PC" "13th Gen Intel(R) Core(TM) i7-13700" "C230056DP"
+    Assert-Eq $profDP.GenFamily "DELL_MODERN" "C230056DP Dell Precision mapped to DELL_MODERN"
+    $profNL = Resolve-HospitalModelProfile "Standard" "Standard" "15Z90P" "11th Gen Intel(R) Core(TM) i5-1135G7" "C210003NL"
+    Assert-Eq $profNL.EffectiveVendor "LG" "C210003NL mapped to LG"
+
+    # 14c. HP ProDesk 600 G1/G2 (H4/HS/H6) standalone 'Legacy Support = *Enable' overrides grayed-out 'Secure Boot = *Enable'
+    $hpG1G2Mock = @(
+        [PSCustomObject]@{ Name = "Removable Media Boot"; CurrentValue = ""; Value = "Disable,*Enable" },
+        [PSCustomObject]@{ Name = "Legacy Support"; CurrentValue = ""; Value = "*Enable,Disable" },
+        [PSCustomObject]@{ Name = "Secure Boot"; CurrentValue = ""; Value = "*Enable,Disable" },
+        [PSCustomObject]@{ Name = "Front USB Ports"; CurrentValue = ""; Value = "*Disable,Enable" }
+    )
+    $hpG1G2Res = Resolve-HpBiosDiagnostics $hpG1G2Mock
+    Assert-Eq $hpG1G2Res.UsbState "Enabled" "HP G1/G2 Removable Media Boot Enable parsed"
+    Assert-Eq $hpG1G2Res.SecureBootWmi "Off" "HP G1/G2 standalone Legacy Support=Enable overrides grayed-out Secure Boot=Enable"
+    Assert-Eq $hpG1G2Res.PortWarn $false "HP partial Front USB Ports=Disable does NOT trigger global PortWarn lockout"
+
+    # 14d. Connected physical USB ($physicalUsbCount > 0) NEVER triggers PortBlocked lockout even if global PortWarn=true
+    $verdConnUsb = Resolve-BiosCrossCheckVerdict "HP" "Enabled" "USB Storage Boot=Checked" $false $true "USB Ports=Disable" $false 1 0
+    Assert-Eq $verdConnUsb.UsbBootState "Enabled" "Physically connected USB proves active port and prevents false PortBlocked lockout"
+    Assert-True (-not $verdConnUsb.IsConfirmedBlocked) "IsConfirmedBlocked stays false when physical USB is online"
+
+    # 14e. Unprobed Hidden FAT32/GPT-ESP Partition (Score 90) outranks mounted NTFS PE Partition (Score 75) for HP/Dell UEFI compatibility!
+    $mockHpSafeParts = @(
+        [PSCustomObject]@{ PartitionNumber = 1; DriveLetter = ""; Size = 300MB; GptType = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"; MbrType = $null; AccessPaths = @(); Guid = "{aaaa0001-0000-0000-0000-000000000001}"; MockFileSystem = "FAT32"; MockLabel = "EFI"; MockProbeRoot = ""; MockNtDevice = "" },
+        [PSCustomObject]@{ PartitionNumber = 2; DriveLetter = "L"; Size = 7GB; GptType = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}"; MbrType = $null; AccessPaths = @("L:\"); Guid = "{aaaa0002-0000-0000-0000-000000000002}"; MockFileSystem = "NTFS"; MockLabel = "PhoenixPE"; MockProbeRoot = $dirPeNtfs; MockNtDevice = "partition=\Device\HarddiskVolume42" },
+        [PSCustomObject]@{ PartitionNumber = 3; DriveLetter = "P"; Size = 22GB; GptType = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}"; MbrType = $null; AccessPaths = @("P:\"); Guid = "{aaaa0003-0000-0000-0000-000000000003}"; MockFileSystem = "exFAT"; MockLabel = "GeneralSpace"; MockProbeRoot = $dirDataExfat; MockNtDevice = "partition=\Device\HarddiskVolume43" }
+    )
+    $mockHpSafeDisk = [PSCustomObject]@{ Number = 60; FriendlyName = "SanDisk Extreme"; Size = 30GB; IsReadOnly = $false; IsSelfHostUsb = $true; MockPartitions = $mockHpSafeParts }
+    $hpSafeRes = Get-PhysicalUsbInfo @($mockHpSafeDisk) @()
+    Assert-Eq $hpSafeRes.PhysicalUsbList[0].BestBootPartNum 1 "Hidden FAT32 GPT-EFI Partition 1 (Score 90) outranks mounted NTFS Partition 2 (Score 75)"
+    Assert-Eq $hpSafeRes.PhysicalUsbList[0].FallbackBootDevice "partition=L:" "Mounted NTFS Partition 2 preserved as FallbackBootDevice"
+
+    # 14f. 2-level EFI scan skips fbx64.efi / MokManager.efi / mmx64.efi and picks real bootloader; brand+series bigram & OEM recovery/floppy filtering
+    $dirShimEfi = Join-Path $peMockRoot "Part_ShimLoader"
+    [void](New-Item -ItemType Directory -Path (Join-Path $dirShimEfi "EFI\CustomBoot") -Force)
+    [System.IO.File]::WriteAllText((Join-Path $dirShimEfi "EFI\CustomBoot\fbx64.efi"), "MZ")
+    [System.IO.File]::WriteAllText((Join-Path $dirShimEfi "EFI\CustomBoot\MokManager.efi"), "MZ")
+    [System.IO.File]::WriteAllText((Join-Path $dirShimEfi "EFI\CustomBoot\mmx64.efi"), "MZ")
+    [System.IO.File]::WriteAllText((Join-Path $dirShimEfi "EFI\CustomBoot\grubx64.efi"), "MZ")
+    Assert-Eq (Find-BestEfiBinaryOnRoot $dirShimEfi) "\EFI\CustomBoot\grubx64.efi" "Find-BestEfiBinaryOnRoot skips fbx64/MokManager/mmx64 and selects grubx64.efi"
+
+    $t7Disk = [PSCustomObject]@{ Number = 61; FriendlyName = "Samsung PSSD T7"; Size = 500GB; IsReadOnly = $false; MockPartitions = @() }
+    $intSamDisk = [PSCustomObject]@{ Number = 0; FriendlyName = "Samsung SSD 860 EVO 500GB"; Size = 500GB; IsReadOnly = $false }
+    $t7Info = Get-PhysicalUsbInfo @($t7Disk) @($intSamDisk)
+    $trickyBcd = @(
+        [PSCustomObject]@{ Identifier = "{b1111111-1111-1111-1111-111111111111}"; Description = "USB Floppy/CD"; Device = ""; Path = "" },
+        [PSCustomObject]@{ Identifier = "{b2222222-2222-2222-2222-222222222222}"; Description = "Samsung Recovery"; Device = ""; Path = "\EFI\BOOT\BOOTX64.EFI" },
+        [PSCustomObject]@{ Identifier = "{b3333333-3333-3333-3333-333333333333}"; Description = "UEFI: Samsung T7"; Device = ""; Path = "\EFI\BOOT\BOOTX64.EFI" }
+    )
+    $t7Match = @(Find-MatchedUsbNvramEntries $trickyBcd @("partition=C:") @() $t7Info.UsbStrictModelPatterns @() $true @("Samsung\ SSD\ 860\ EVO\ 500GB", "860"))
+    Assert-Eq $t7Match.Count 1 "Brand+series bigram matches 'UEFI: Samsung T7' while excluding HP 'USB Floppy/CD' and 'Samsung Recovery'"
+    Assert-Eq $t7Match[0].Identifier "{b3333333-3333-3333-3333-333333333333}" "Exact Samsung T7 NVRAM GUID selected without colliding with internal Samsung 500GB SSD"
+    Assert-True $t7Match[0].IsExact "Samsung T7 matched at Tier 2 (IsExact=true)"
 } finally {
     if (Test-Path -LiteralPath $peMockRoot) {
         Remove-Item -LiteralPath $peMockRoot -Recurse -Force -ErrorAction SilentlyContinue

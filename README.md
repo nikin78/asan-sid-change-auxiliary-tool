@@ -101,14 +101,15 @@ WinPE에서 SID 변경 작업을 마치고 윈도우로 정상 부팅했다면, 
 <details>
 <summary><strong>관리자 및 개발자 참고 사항 (지원 환경 · 내부 동작 · 빌드 방법)</strong></summary>
 
-### 1. 지원 환경 및 주요 기술 사양 (`v2.4.0`)
+### 1. 지원 환경 및 주요 기술 사양 (`v2.4.1`)
 
 * **지원 OS:** Windows 10 / 11 (UEFI 및 Legacy MBR — 사후 프린터 복구는 Legacy PC에서도 지원), WinPE (`X:`)
 * **외부 의존성:** 없음 (Windows 기본 내장 PowerShell 5.1, GAC `System.Windows.Forms`, `diskpart`, `bcdedit`, `bcdboot`, `mountvol`, `shutdown`만 사용하며 임시 DLL·`csc.exe` 컴파일을 발생시키지 않음)
 * **현장 장비 및 외장 매체 대응:**
-  * 병원 내 주요 데스크톱 자산 코드(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 및 CPU 세대 교차 식별
-  * **다중 파티션 WinPE USB(`PhoenixPE Builder`, `DISM++`, `Rufus UEFI:NTFS`, `Bootice`, `Ventoy`) 완벽 지원:** `(EFI) + (부팅파일) + (일반 내장 공간)` 구성에서 일반 공간에 둔 도구를 직접 실행할 때 자기 USB(`실행 USB`)를 자동 식별·선택하며, GPT 복구 GUID(`{de94bba4-...}`)·숨김 MBR(`0x12/0x17/0x27`)·무마운트 VBR 시그니처 탐색 및 `DISM++` `"Windows Boot Manager"` USB 항목 매칭, Windows 실행 중 연결(Hot-Plug)된 USB의 **1회성 UEFI EFI 직접 부팅 등록(`Invoke-DirectUsbEfiBootSetup`)**을 지원
-  * UASP 외장 NVMe/SATA 인클로저(`Realtek RTL9210B-CG`, `HSEN 10G-NVME`, `JMicron`, `ASMedia`, `FireCuda` 등)를 PnP `ContainerID` 기준으로 정확히 분류하되, 내장 AHCI 핫플러그 SATA 디스크나 마운트된 `.vhdx` 가상 디스크는 외장 USB로 오분류하지 않도록 보호
+  * 병원 전체 PC 자산 DB 기반 기종·연도 교차 식별(`S3/S4/S5/S8/S9/NS`, `H0/H1/H2/H3(구형·2024년형 분리)/H4/HS/H6/HD/H8/H9/HB/HC/HE/NH`, `D1/D8/DP/ND`, `L6/L7/NL`, 재등록 혼합 `H7` 오분류 방지 포함)
+  * **다중 파티션 WinPE USB(`PhoenixPE Builder`, `DISM++`, `Rufus UEFI:NTFS`, `Bootice`, `Ventoy`) 완벽 지원:** `(EFI) + (부팅파일) + (일반 내장 공간)` 구성에서 일반 공간에 둔 도구를 직접 실행할 때 자기 USB(`실행 USB`)를 자동 식별·선택하며, HP·Dell UEFI 보드를 위해 숨김 `FAT32/ESP` 파티션을 마운트된 `NTFS`보다 우선 선택하고 Windows 실행 중 연결(Hot-Plug)된 USB의 **1회성 UEFI EFI 직접 부팅 등록(`Invoke-DirectUsbEfiBootSetup`)**을 지원
+  * UASP/USB4 외장 NVMe/SATA 인클로저(`RTL9210/9220`, `HSEN 10G-NVME`, `JMicron`, `ASMedia ASM236x/2464`, `SM2320`, `FireCuda`, `Samsung T7` 등)를 PnP `ContainerID` 기준으로 정확히 분류하되, Intel VMD/RST(`RAID On`) 및 AHCI 핫플러그 내장 디스크나 `.vhdx` 가상 디스크는 외장 USB로 오분류하지 않도록 보호
+  * HP G1/G2 단독 `Legacy Support` 및 G3 복합 설정 우선순위, 부분 USB 포트 비활성 오탐 방지, HP 빈 `USB Floppy/CD` 항목·OEM 복구 파티션(`Samsung/HP/Dell Recovery`)·끊어진 `unknown` 유령 항목 배제를 포함한 **4중 신호 BIOS·NVRAM 교차 검증** 지원
   * 드라이브 문자가 없는 숨김 EFI/Ventoy(`VTOYEFI`)/Rufus 파티션을 인메모리 `QueryDosDeviceW`(`\Device\HarddiskVolumeX`) 및 `\\?\Volume{GUID}\` 무마운트 탐색으로 매칭하고, 분리된 예전 장치가 남긴 `device = unknown` 유령 NVRAM 항목 및 USB 유선랜(PXE) 항목 오매칭을 차단
   * 부팅 방식 3중 신호 및 보안 부팅 4중 신호(`Confirm-SecureBootUEFI` + 커널 레지스트리 + `Win32_DeviceGuard` + HP/Dell/Lenovo WMI) 교차 검증 지원 (삼성 AMI 등 WMI 미지원 보드는 임의로 `허용`으로 추정하지 않음)
 * **콘솔 전용 실행:** GUI를 띄울 수 없는 환경에서는 자동으로 텍스트 메뉴로 전환되며, 강제로 콘솔 모드를 열 때는 `SID_Change_Aux_Tool.bat --cli`로 실행합니다.

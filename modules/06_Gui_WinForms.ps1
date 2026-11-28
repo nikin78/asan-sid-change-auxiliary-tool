@@ -1968,6 +1968,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    $u.DgvUsb.Rows.Clear()
    $matched = @($snap.MatchedEntries)
    $firstBootRowIdx = -1
+   $exactOrDirectRowIdx = -1
    $selfPrefRowIdx = -1
    $coveredDiskNums = @{}
 
@@ -1999,6 +2000,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
      $tip = ([string]$m.MatchTag) + "`r`nGUID: " + $m.Identifier + "`r`n" + (U "\uC7A5\uCE58: ") + $devStr
      foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
      if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
+     if ($m.IsExact -and $exactOrDirectRowIdx -lt 0) { $exactOrDirectRowIdx = $rIdx }
      if ($isSelfMatch -and $selfPrefRowIdx -lt 0) { $selfPrefRowIdx = $rIdx }
     }
    }
@@ -2028,6 +2030,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
       Set-AsanCellSemanticStyle $row.Cells[0] "OK" $t $f $true
       Set-AsanCellSemanticStyle $row.Cells[1] $(if ($hasResolvedEfi) { "OK" } else { "Info" }) $t $f $true
       if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
+      if ($exactOrDirectRowIdx -lt 0) { $exactOrDirectRowIdx = $rIdx }
       if ($isSelf -and $selfPrefRowIdx -lt 0) { $selfPrefRowIdx = $rIdx }
      } else {
       $kindBadge = if ($isSelf) { U "\uC2E4\uD589 USB" } else { U "\uC678\uC7A5 USB" }
@@ -2051,7 +2054,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
     $row.DefaultCellStyle.ForeColor = $t.InkMuted
    }
    $u.DgvUsb.ClearSelection()
-   $selTargetIdx = if ($selfPrefRowIdx -ge 0) { $selfPrefRowIdx } else { $firstBootRowIdx }
+   $selTargetIdx = if ($selfPrefRowIdx -ge 0) { $selfPrefRowIdx } elseif ($exactOrDirectRowIdx -ge 0) { $exactOrDirectRowIdx } else { $firstBootRowIdx }
    if ($selTargetIdx -ge 0) { $u.DgvUsb.Rows[$selTargetIdx].Selected = $true }
 
    # 4. Contextual Guidance Banner & Sync All Buttons
