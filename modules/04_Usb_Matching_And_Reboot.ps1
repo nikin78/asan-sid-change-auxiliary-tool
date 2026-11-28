@@ -689,9 +689,7 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
 
   $snap = Get-PreSidStep2Snapshot $sysInfo
   $bcdOutput = $snap.BcdOutput
-  $entries = $snap.BcdEntries
   $usbDisks = $snap.UsbDisks
-  $internalDisks = $snap.InternalDisks
   $usbInfo = $snap.UsbInfo
   $matchedEntries = $snap.MatchedEntries
   $diag = $snap.BiosDiag

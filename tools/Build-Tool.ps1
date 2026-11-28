@@ -177,7 +177,7 @@ if ($outText -notmatch '(?m)^#>\r?$') {
 # 4. PowerShell AST Syntax Check
 $tokens = $null
 $parseErrors = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseInput($outText, [ref]$tokens, [ref]$parseErrors)
+$null = [System.Management.Automation.Language.Parser]::ParseInput($outText, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors -and $parseErrors.Count -gt 0) {
     foreach ($pe in $parseErrors) {
         $allErrors += "${OutputName} PS syntax error at line $($pe.Extent.StartLineNumber) col $($pe.Extent.StartColumnNumber): $($pe.Message)"

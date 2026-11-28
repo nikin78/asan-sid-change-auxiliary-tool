@@ -11,7 +11,8 @@ $RECYCLE.BIN/
 # ==============================================================
 # Editor / IDE settings and caches
 # ==============================================================
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 *.code-workspace
 *.swp

@@ -35,7 +35,7 @@ function U([string]$str) {
 $ErrorActionPreference = "Continue"
 $script:ToolVersion = "2.4.0"
 $script:BuildDate = "2026-11-29"
-$script:BuildCommit = "09a966d"
+$script:BuildCommit = "182dc6f"
 $gptEfiGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
 $gptRecoveryGuid = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"
 $gptMsrGuid = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
@@ -3407,9 +3407,7 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
 
   $snap = Get-PreSidStep2Snapshot $sysInfo
   $bcdOutput = $snap.BcdOutput
-  $entries = $snap.BcdEntries
   $usbDisks = $snap.UsbDisks
-  $internalDisks = $snap.InternalDisks
   $usbInfo = $snap.UsbInfo
   $matchedEntries = $snap.MatchedEntries
   $diag = $snap.BiosDiag
@@ -4475,25 +4473,25 @@ function New-AsanButton([string]$text, [int]$width, [int]$height, [string]$varia
 
  $localCtx = $uiCtx
  $btn.Add_EnabledChanged({
-  param($sender, $e)
-  Apply-AsanButtonVisual $sender $localCtx
+  param($src)
+  Apply-AsanButtonVisual $src $localCtx
  }.GetNewClosure())
 
  # Custom dashed disabled button renderer (never relies on WinForms GrayText)
  $btn.Add_Paint({
-  param($sender, $e)
-  if ($sender.Enabled) { return }
+  param($src, $ev)
+  if ($src.Enabled) { return }
   $t = $localCtx.Theme
-  $rect = New-Object System.Drawing.Rectangle(0, 0, $sender.Width, $sender.Height)
+  $rect = New-Object System.Drawing.Rectangle(0, 0, $src.Width, $src.Height)
   $bgBrush = New-Object System.Drawing.SolidBrush($t.DisabledBg)
   $dashPen = New-Object System.Drawing.Pen($t.DisabledBorder, 1)
   $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
   try {
-   $e.Graphics.FillRectangle($bgBrush, $rect)
-   $e.Graphics.DrawRectangle($dashPen, 0, 0, ($sender.Width - 1), ($sender.Height - 1))
-   $drawFont = if ($sender.Font.Size -lt 8.8) { $localCtx.Fonts.Small } else { $localCtx.Fonts.Base }
+   $ev.Graphics.FillRectangle($bgBrush, $rect)
+   $ev.Graphics.DrawRectangle($dashPen, 0, 0, ($src.Width - 1), ($src.Height - 1))
+   $drawFont = if ($src.Font.Size -lt 8.8) { $localCtx.Fonts.Small } else { $localCtx.Fonts.Base }
    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
-   [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $drawFont, $rect, $t.DisabledFg, $flags)
+   [System.Windows.Forms.TextRenderer]::DrawText($ev.Graphics, $src.Text, $drawFont, $rect, $t.DisabledFg, $flags)
   } finally {
    $bgBrush.Dispose()
    $dashPen.Dispose()
@@ -4514,9 +4512,9 @@ function Register-AsanDisabledTooltipTree($root, $uiCtx) {
  if ($hasChildBtn) {
   $localCtx = $uiCtx
   $root.Add_MouseMove({
-   param($sender, $e)
+   param($src, $ev)
    if (-not $localCtx.ToolTip) { return }
-   $hit = $sender.GetChildAtPoint($e.Location)
+   $hit = $src.GetChildAtPoint($ev.Location)
    if ($hit -and ($hit -is [System.Windows.Forms.Button]) -and (-not $hit.Enabled)) {
     $reason = ""
     if ($localCtx.DisabledReasons.ContainsKey($hit)) {
@@ -4528,9 +4526,9 @@ function Register-AsanDisabledTooltipTree($root, $uiCtx) {
      if ($localCtx.LastDisabledBtn -ne $hit) {
       if ($localCtx.LastDisabledHost) { try { $localCtx.ToolTip.Hide($localCtx.LastDisabledHost) } catch {} }
       try {
-       $localCtx.ToolTip.Show($reason, $sender, ($hit.Left + 4), ($hit.Bottom + 4), 7000)
+       $localCtx.ToolTip.Show($reason, $src, ($hit.Left + 4), ($hit.Bottom + 4), 7000)
        $localCtx.LastDisabledBtn = $hit
-       $localCtx.LastDisabledHost = $sender
+       $localCtx.LastDisabledHost = $src
       } catch {}
      }
      return
@@ -4544,9 +4542,9 @@ function Register-AsanDisabledTooltipTree($root, $uiCtx) {
   }.GetNewClosure())
 
   $root.Add_MouseLeave({
-   param($sender, $e)
-   if ($localCtx.LastDisabledHost -eq $sender -and $localCtx.ToolTip) {
-    try { $localCtx.ToolTip.Hide($sender) } catch {}
+   param($src)
+   if ($localCtx.LastDisabledHost -eq $src -and $localCtx.ToolTip) {
+    try { $localCtx.ToolTip.Hide($src) } catch {}
     $localCtx.LastDisabledBtn = $null
     $localCtx.LastDisabledHost = $null
    }
@@ -4694,10 +4692,10 @@ function Enable-AsanOwnerDrawTabs($tabControl, $theme, $fonts) {
  $localTheme = $theme
  $localFonts = $fonts
  $tabControl.Add_DrawItem({
-  param($sender, $e)
-  $tp = $sender.TabPages[$e.Index]
-  $rect = $e.Bounds
-  $isSel = ($sender.SelectedIndex -eq $e.Index)
+  param($src, $ev)
+  $tp = $src.TabPages[$ev.Index]
+  $rect = $ev.Bounds
+  $isSel = ($src.SelectedIndex -eq $ev.Index)
   $bgCol = if ($isSel) { $localTheme.CardBg } else { $localTheme.AsanMintSoft }
   $fgCol = if ($isSel) { $localTheme.AsanDeep } else { $localTheme.InkSecondary }
   $fnt = if ($isSel) { $localFonts.Tab } else { $localFonts.TabIdle }
@@ -4706,14 +4704,14 @@ function Enable-AsanOwnerDrawTabs($tabControl, $theme, $fonts) {
   $barBrush = New-Object System.Drawing.SolidBrush($localTheme.AsanGreen)
   $borderPen = New-Object System.Drawing.Pen($localTheme.Border, 1)
   try {
-   $e.Graphics.FillRectangle($bgBrush, $rect)
+   $ev.Graphics.FillRectangle($bgBrush, $rect)
    if ($isSel) {
-    $e.Graphics.FillRectangle($barBrush, $rect.X, $rect.Y, $rect.Width, 4)
+    $ev.Graphics.FillRectangle($barBrush, $rect.X, $rect.Y, $rect.Width, 4)
    }
-   $e.Graphics.DrawRectangle($borderPen, $rect.X, $rect.Y, ($rect.Width - 1), ($rect.Height - 1))
+   $ev.Graphics.DrawRectangle($borderPen, $rect.X, $rect.Y, ($rect.Width - 1), ($rect.Height - 1))
    $textRect = New-Object System.Drawing.Rectangle($rect.X, ($rect.Y + 2), $rect.Width, ($rect.Height - 2))
    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
-   [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $tp.Text.Trim(), $fnt, $textRect, $fgCol, $flags)
+   [System.Windows.Forms.TextRenderer]::DrawText($ev.Graphics, $tp.Text.Trim(), $fnt, $textRect, $fgCol, $flags)
   } finally {
    $bgBrush.Dispose()
    $barBrush.Dispose()
@@ -4961,8 +4959,8 @@ function New-GuiDiagnosticsDialog($sysInfo, $step2Snap, $postStatus, [string]$lo
  $dlgDisposables = @($dlgCtx.ToolTip, $dlgIcon) + @($fonts.Values)
  $dlg.Tag = $dlgDisposables
  $dlg.Add_FormClosed({
-  param($sender, $e)
-  $arr = if ($sender -and $sender.Tag) { $sender.Tag } else { $dlgDisposables }
+  param($src)
+  $arr = if ($src -and $src.Tag) { $src.Tag } else { $dlgDisposables }
   if ($arr) {
    foreach ($o in $arr) { if ($null -ne $o) { try { $o.Dispose() } catch {} } }
   }
@@ -6460,15 +6458,16 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
 
  # Keyboard shortcuts: F5 refresh, Alt+1 / Alt+2 tabs
  $form.Add_KeyDown({
-  param($sender, $e)
-  if ($e.KeyCode -eq [System.Windows.Forms.Keys]::F5 -and -not $ui.State.IsBusy) {
-   $e.SuppressKeyPress = $true
+  param($src, $ev)
+  $null = $src
+  if ($ev.KeyCode -eq [System.Windows.Forms.Keys]::F5 -and -not $ui.State.IsBusy) {
+   $ev.SuppressKeyPress = $true
    & $ui.RefreshAll
-  } elseif ($e.Alt -and $e.KeyCode -eq [System.Windows.Forms.Keys]::D1) {
-   $e.SuppressKeyPress = $true
+  } elseif ($ev.Alt -and $ev.KeyCode -eq [System.Windows.Forms.Keys]::D1) {
+   $ev.SuppressKeyPress = $true
    $ui.TabControl.SelectedIndex = 0
-  } elseif ($e.Alt -and $e.KeyCode -eq [System.Windows.Forms.Keys]::D2) {
-   $e.SuppressKeyPress = $true
+  } elseif ($ev.Alt -and $ev.KeyCode -eq [System.Windows.Forms.Keys]::D2) {
+   $ev.SuppressKeyPress = $true
    $ui.TabControl.SelectedIndex = 1
   }
  }.GetNewClosure())
@@ -6477,12 +6476,14 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $dgvDisks.Add_SelectionChanged({ & $ui.SyncButtonStates }.GetNewClosure())
  $dgvUsb.Add_SelectionChanged({ & $ui.SyncButtonStates }.GetNewClosure())
  $dgvDisks.Add_CellDoubleClick({
-  param($sender, $e)
-  if ($e.RowIndex -ge 0 -and $ui.BtnToggleDisk.Enabled) { $ui.BtnToggleDisk.PerformClick() }
+  param($src, $ev)
+  $null = $src
+  if ($ev.RowIndex -ge 0 -and $ui.BtnToggleDisk.Enabled) { $ui.BtnToggleDisk.PerformClick() }
  }.GetNewClosure())
  $dgvUsb.Add_CellDoubleClick({
-  param($sender, $e)
-  if ($e.RowIndex -ge 0 -and $ui.BtnUsbReboot.Enabled) { $ui.BtnUsbReboot.PerformClick() }
+  param($src, $ev)
+  $null = $src
+  if ($ev.RowIndex -ge 0 -and $ui.BtnUsbReboot.Enabled) { $ui.BtnUsbReboot.PerformClick() }
  }.GetNewClosure())
 
  # STEP 1: One-Stop Fix
@@ -6767,8 +6768,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
 
  # Safe FormClosing / FormClosed cleanup (NEVER blocks or throws on X button!)
  $form.Add_FormClosing({
-  param($sender, $e)
-  $ctx = if ($sender -and $sender.Tag) { $sender.Tag } else { $ui }
+  param($src)
+  $ctx = if ($src -and $src.Tag) { $src.Tag } else { $ui }
   if ($ctx -and $ctx.CopyResetTimer) { try { $ctx.CopyResetTimer.Stop() } catch {} }
   if ($ctx -and $ctx.AsyncPollTimer) { try { $ctx.AsyncPollTimer.Stop() } catch {} }
   if ($ctx -and $ctx.State -and $ctx.State.AsyncPs) {
@@ -6783,8 +6784,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  }.GetNewClosure())
 
  $form.Add_FormClosed({
-  param($sender, $e)
-  $ctx = if ($sender -and $sender.Tag) { $sender.Tag } else { $ui }
+  param($src)
+  $ctx = if ($src -and $src.Tag) { $src.Tag } else { $ui }
   if ($ctx -and $ctx.Disposables) {
    foreach ($obj in $ctx.Disposables) {
     if ($null -ne $obj) { try { $obj.Dispose() } catch {} }
@@ -6973,8 +6974,9 @@ function Show-WinPeEmergencyGui {
 
  $dgv.Add_SelectionChanged({ & $peUi.SyncPeBtn }.GetNewClosure())
  $dgv.Add_CellDoubleClick({
-  param($sender, $e)
-  if ($e.RowIndex -ge 0 -and $peUi.BtnTog.Enabled) { $peUi.BtnTog.PerformClick() }
+  param($src, $ev)
+  $null = $src
+  if ($ev.RowIndex -ge 0 -and $peUi.BtnTog.Enabled) { $peUi.BtnTog.PerformClick() }
  }.GetNewClosure())
  $btnClose.Add_Click({ $peUi.Form.Close() }.GetNewClosure())
  $btnRef.Add_Click({ & $peUi.LoadPe }.GetNewClosure())
@@ -7003,8 +7005,8 @@ function Show-WinPeEmergencyGui {
  }.GetNewClosure())
 
  $form.Add_FormClosed({
-  param($sender, $e)
-  $ctx = if ($sender -and $sender.Tag) { $sender.Tag } else { $peUi }
+  param($src)
+  $ctx = if ($src -and $src.Tag) { $src.Tag } else { $peUi }
   if ($ctx -and $ctx.Disposables) {
    foreach ($obj in $ctx.Disposables) {
     if ($null -ne $obj) { try { $obj.Dispose() } catch {} }

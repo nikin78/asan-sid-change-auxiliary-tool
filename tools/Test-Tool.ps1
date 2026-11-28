@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Automated Unit & Smoke Test Suite for SID_Change_Aux_Tool.bat
 # Loads the actual built deliverable with SID_TOOL_TEST_MODE=1 and tests
 # pure helpers, parsers, media guards, non-destructive renames, and live
@@ -325,7 +325,7 @@ Assert-Eq $ddRo.FriendlyName "Kanguru SS3 Write-Protected USB" "KO select-disk l
 Assert-Eq $ddRo.IsUsb $true "Write-protected USB detected as USB"
 Assert-Eq $ddRo.IsReadOnly $true "KO Current Read-only State : Yes detected"
 
-# 8b. Korean detail partition with '문자' header and CJK wide-char volume row
+# 8b. Korean detail partition with 'Ltr' (\uBB38\uC790) header and CJK wide-char volume row
 $koVol = U "\uBCFC\uB968"
 $koLtr = U "\uBB38\uC790"
 $dpDetPartKo2 = @(
@@ -649,7 +649,7 @@ if ($guiAvail) {
         $formClosedFired = $false
         $guiBundle.Form.Opacity = 0
         $guiBundle.Form.ShowInTaskbar = $false
-        $guiBundle.Form.Add_Shown({ param($s,$e) $s.Close() })
+        $guiBundle.Form.Add_Shown({ param($s) $s.Close() })
         $guiBundle.Form.Add_FormClosed({ $script:testFormClosedFlag = $true })
         $script:testFormClosedFlag = $false
         try {

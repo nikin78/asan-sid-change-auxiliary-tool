@@ -1,0 +1,16 @@
+{
+  "files.eol": "\r\n",
+  "powershell.scriptAnalysis.enable": true,
+  "powershell.scriptAnalysis.settingsPath": "PSScriptAnalyzerSettings.psd1",
+  "[powershell]": {
+    "editor.formatOnSave": false,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 1
+  },
+  "[bat]": {
+    "editor.formatOnSave": false
+  },
+  "[markdown]": {
+    "files.eol": "\r\n"
+  }
+}
