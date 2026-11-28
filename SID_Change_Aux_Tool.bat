@@ -33,13 +33,13 @@ function U([string]$str) {
 }
 
 $ErrorActionPreference = "Continue"
-$script:ToolVersion = "2.3.1"
-$script:BuildDate = "2026-11-28"
-$script:BuildCommit = "ddb7b52"
+$script:ToolVersion = "2.4.0"
+$script:BuildDate = "2026-11-29"
+$script:BuildCommit = "09a966d"
 $gptEfiGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
 $gptRecoveryGuid = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"
 $gptMsrGuid = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
-$mbrEfiFatTypes = @(1, 4, 6, 11, 12, 14, 17, 20, 22, 27, 28, 30, 239)
+$mbrEfiFatTypes = @(1, 4, 6, 11, 12, 14, 17, 18, 20, 22, 23, 27, 28, 30, 39, 239)
 $script:DosDevQueryType = $null
 $script:DosDevInitAttempted = $false
 
@@ -208,7 +208,37 @@ function Invoke-SafeReboot([string]$shutdownArgs, [string]$targetLabel = "") {
  return $false
 }
 
-# Detect execution source label (Local / Read-Only USB / Shared Folder)
+# Resolve drive letter and physical disk number hosting SELF_PATH (critical when running from data partition of a multi-partition WinPE USB!)
+function Get-SelfHostLocationInfo {
+ $p = [string]$env:SELF_PATH
+ $drvLtr = ""
+ $diskNum = -1
+ $busType = ""
+ if ($p -and (-not $p.StartsWith("\\")) -and ($env:SID_TOOL_STAGED -ne "1")) {
+  try {
+   $rt = [System.IO.Path]::GetPathRoot($p)
+   if ($rt -and $rt -match "^([A-Za-z]):") {
+    $drvLtr = $matches[1].ToUpper()
+    if (Test-StorageCmdletsAvailable) {
+     $sp = Get-Partition -DriveLetter $drvLtr -ErrorAction SilentlyContinue | Select-Object -First 1
+     if ($sp -and $null -ne $sp.DiskNumber) {
+      $diskNum = [int]$sp.DiskNumber
+      $sd = Get-Disk -Number $diskNum -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($sd) { $busType = [string]$sd.BusType }
+     }
+    }
+   }
+  } catch {}
+ }
+ return [PSCustomObject]@{
+  SelfPath = $p
+  DriveLetter = $drvLtr
+  DiskNumber = $diskNum
+  BusType = $busType
+ }
+}
+
+# Detect execution source label (Local / External or Multi-Partition USB / Shared Folder)
 function Get-ExecutionSourceInfo {
  $p = [string]$env:SELF_PATH
  if ($env:SID_TOOL_STAGED -eq "1" -or ($p -and $p.StartsWith("\\"))) {
@@ -229,7 +259,16 @@ function Get-ExecutionSourceInfo {
       Label = (U "\uB124\uD2B8\uC6CC\uD06C \uC2E4\uD589")
       Detail = (U "\uB124\uD2B8\uC6CC\uD06C \uB4DC\uB77C\uC774\uBE0C\uC5D0\uC11C \uBA54\uBAA8\uB9AC\uB85C \uB85C\uB4DC\uB418\uC5C8\uC73C\uBA70 \uC6D0\uBCF8 \uD30C\uC77C\uC740 \uBCC0\uACBD\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.")
      }
-    } elseif ($di.DriveType -eq "Removable" -or $di.DriveType -eq "CDRom") {
+    }
+    $selfLoc = Get-SelfHostLocationInfo
+    $isUsbBus = ($selfLoc.BusType -in @("USB", "SD", "MMC", "1394"))
+    if (-not $isUsbBus -and $selfLoc.DiskNumber -ge 0 -and (Get-Command Get-UsbPnpDiskLookup -ErrorAction SilentlyContinue)) {
+     try {
+      $pm = Get-UsbPnpDiskLookup
+      if ($pm.ContainsKey($selfLoc.DiskNumber) -and [bool]$pm[$selfLoc.DiskNumber].IsExternalUsb) { $isUsbBus = $true }
+     } catch {}
+    }
+    if ($di.DriveType -eq "Removable" -or $di.DriveType -eq "CDRom" -or $isUsbBus) {
      return [PSCustomObject]@{
       Mode = "USB"
       Label = (U "\uC678\uC7A5 USB \uC2E4\uD589")
@@ -609,6 +648,8 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
  $usbDisks = @()
  $internalDisks = @()
  $pnpMap = Get-UsbPnpDiskLookup
+ $selfLoc = if (-not $isWinPE -and (Get-Command Get-SelfHostLocationInfo -ErrorAction SilentlyContinue)) { Get-SelfHostLocationInfo } else { [PSCustomObject]@{ DiskNumber = -1; DriveLetter = "" } }
+ $selfDiskNum = [int]$selfLoc.DiskNumber
 
  $sysDiskNum = -1
  if (-not $isWinPE) {
@@ -622,18 +663,20 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
  }
 
  if (Test-StorageCmdletsAvailable) {
-  $allDisks = @(Get-Disk | Where-Object { ([string]$_.OperationalStatus) -match "\bOnline\b" })
+  $allDisks = @(Get-Disk | Where-Object { ([string]$_.OperationalStatus) -match "\bOnline\b" -and [int64]$_.Size -gt 0 })
   foreach ($d in ($allDisks | Sort-Object Number)) {
    $dNum = [int]$d.Number
    $busStr = [string]$d.BusType
    $isVirtualFileDisk = ($busStr -eq "File Backed Virtual")
    $isProtectedOsDisk = (-not $isWinPE) -and ([bool]$d.IsBoot -or [bool]$d.IsSystem -or ($dNum -eq $sysDiskNum))
+   $isSelfDisk = (-not $isWinPE) -and ($selfDiskNum -ge 0) -and ($dNum -eq $selfDiskNum) -and (-not $isProtectedOsDisk)
    $pnpInfo = if ($pnpMap.ContainsKey($dNum)) { $pnpMap[$dNum] } else { $null }
    if ($pnpInfo) {
     try { Add-Member -InputObject $d -NotePropertyName "PnpTokens" -NotePropertyValue $pnpInfo.PnpTokens -Force } catch {}
     try { Add-Member -InputObject $d -NotePropertyName "PnpDeviceId" -NotePropertyValue $pnpInfo.PnpDeviceId -Force } catch {}
    }
    try { Add-Member -InputObject $d -NotePropertyName "IsVirtualDisk" -NotePropertyValue $isVirtualFileDisk -Force } catch {}
+   try { Add-Member -InputObject $d -NotePropertyName "IsSelfHostUsb" -NotePropertyValue $isSelfDisk -Force } catch {}
 
    $isInternalFixedBus = ($busStr -in @('SATA','ATA','RAID','Spaces')) -and
                          (-not ($null -ne $pnpInfo -and ($pnpInfo.MatchedUsbContainer -or $pnpInfo.IsBridgeModel))) -and
@@ -646,20 +689,23 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
     ($null -ne $pnpInfo -and [bool]$pnpInfo.IsExternalUsb)
    )
 
-   # If a non-OS enclosure still masked its PnP bus, check if its mounted partitions carry explicit WinPE/Ventoy USB markers (without a full Windows OS)
-   if (-not $isDirectUsb -and -not $isWinPE -and -not $isProtectedOsDisk -and -not $isVirtualFileDisk -and -not $isInternalFixedBus) {
-    try {
-     $dParts = @(Get-DiskPartitionsNormalized $dNum $false)
-     if ($dParts.Count -gt 0 -and (Test-SiblingPartitionsForWinPE $dParts)) {
-      $hasInstalledOs = $false
-      foreach ($dp in $dParts) {
-       if ($dp.DriveLetter -and (Test-FsEntryExists "$($dp.DriveLetter):\Windows\System32\ntoskrnl.exe")) {
-        $hasInstalledOs = $true; break
+   # If a non-OS disk (especially the disk hosting SELF_PATH!) carries WinPE/Ventoy/Rufus markers without an installed full Windows OS, classify it as external WinPE USB!
+   if (-not $isDirectUsb -and -not $isWinPE -and -not $isProtectedOsDisk -and -not $isVirtualFileDisk) {
+    if (-not $isInternalFixedBus -or $isSelfDisk) {
+     try {
+      $dParts = @(Get-DiskPartitionsNormalized $dNum $false)
+      if ($dParts.Count -gt 0 -and (Test-SiblingPartitionsForWinPE $dParts)) {
+       $hasInstalledOs = $false
+       foreach ($dp in $dParts) {
+        $probeRoot = if ($dp.DriveLetter) { "$($dp.DriveLetter):\" } elseif ($dp.VolumePath) { $dp.VolumePath } else { "" }
+        if ($probeRoot -and (Test-FsEntryExists ($probeRoot.TrimEnd('\') + "\Windows\System32\ntoskrnl.exe"))) {
+         $hasInstalledOs = $true; break
+        }
        }
+       if (-not $hasInstalledOs) { $isDirectUsb = $true }
       }
-      if (-not $hasInstalledOs) { $isDirectUsb = $true }
-     }
-    } catch {}
+     } catch {}
+    }
    }
 
    if ($isDirectUsb) { $usbDisks += $d } else { $internalDisks += $d }
@@ -827,9 +873,9 @@ function Test-PartitionMediaGuard([string]$rootPath) {
  if ((Test-FsEntryExists "$root\sources\boot.wim") -or (Test-FsEntryExists "$root\sources\install.wim") -or (Test-FsEntryExists "$root\sources\install.esd")) {
   $hasWinPE = $true
   $reason = "sources\boot.wim/install"
- } elseif ((Test-FsEntryExists "$root\ventoy\ventoy.json") -or (Test-FsEntryExists "$root\PhoenixPE.cfg") -or (Test-FsEntryExists "$root\HBCD_PE.ini")) {
+ } elseif ((Test-FsEntryExists "$root\ventoy\ventoy.json") -or (Test-FsEntryExists "$root\ventoy.dat") -or (Test-FsEntryExists "$root\EFI\Rufus") -or (Test-FsEntryExists "$root\EFI\Ventoy") -or (Test-FsEntryExists "$root\PhoenixPE.cfg") -or (Test-FsEntryExists "$root\HBCD_PE.ini")) {
   $hasWinPE = $true
-  $reason = "WinPE/Ventoy marker"
+  $reason = "WinPE/Ventoy/Rufus marker"
  } elseif ((Test-FsEntryExists "$root\boot\boot.sdi") -and (Test-FsEntryExists "$root\sources")) {
   $hasWinPE = $true
   $reason = "WinPE boot.sdi"
@@ -1028,20 +1074,36 @@ function Get-PartitionBootloaderProbeState([int]$diskNum, $partObj, [string]$boo
  })
 }
 
-# Check mounted sibling partitions on a disk for WinPE/installer media markers
+# Check sibling partitions (mounted drive letters AND unmounted \\?\Volume{GUID}\ paths!) on a disk for WinPE/installer media markers
 function Test-SiblingPartitionsForWinPE([array]$parts) {
  foreach ($p in $parts) {
-  if ($p.DriveLetter -and (Test-Path "$($p.DriveLetter):\")) {
-   $drv = "$($p.DriveLetter):"
-   if ((Test-Path "$drv\sources\boot.wim") -or (Test-Path "$drv\sources\install.wim") -or (Test-Path "$drv\sources\install.esd") -or (Test-Path "$drv\ventoy\ventoy.json") -or (Test-Path "$drv\PhoenixPE.cfg") -or (Test-Path "$drv\PhoenixPE.ini") -or (Test-Path "$drv\HBCD_PE.ini") -or ((Test-Path "$drv\boot\boot.sdi") -and (Test-Path "$drv\sources")) -or ((Test-Path "$drv\bootmgr.efi") -and (Test-Path "$drv\sources"))) {
-    return $true
-   }
+  $rootsToCheck = New-Object System.Collections.ArrayList
+  if ($p.DriveLetter -and (Test-FsEntryExists "$($p.DriveLetter):\")) {
+   [void]$rootsToCheck.Add("$($p.DriveLetter):")
    try {
     $di = New-Object System.IO.DriveInfo ($p.DriveLetter)
-    if ($di.IsReady -and $di.VolumeLabel -match "^(?i)(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE|WINPE|HBCD_PE|ESD-USB|ESD-ISO)$") {
+    if ($di.IsReady -and $di.VolumeLabel -match "^(?i)(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE.*|WINPE.*|HBCD_PE|ESD-USB|ESD-ISO)$") {
      return $true
     }
    } catch {}
+  }
+  if ($p.PSObject.Properties["VolumePath"] -and $p.VolumePath -and (Test-FsEntryExists $p.VolumePath)) {
+   [void]$rootsToCheck.Add($p.VolumePath.TrimEnd('\'))
+  }
+  foreach ($rt in $rootsToCheck) {
+   if ((Test-FsEntryExists "$rt\sources\boot.wim") -or
+       (Test-FsEntryExists "$rt\sources\install.wim") -or
+       (Test-FsEntryExists "$rt\sources\install.esd") -or
+       (Test-FsEntryExists "$rt\ventoy\ventoy.json") -or
+       (Test-FsEntryExists "$rt\ventoy.dat") -or
+       (Test-FsEntryExists "$rt\EFI\Rufus") -or
+       (Test-FsEntryExists "$rt\PhoenixPE.cfg") -or
+       (Test-FsEntryExists "$rt\PhoenixPE.ini") -or
+       (Test-FsEntryExists "$rt\HBCD_PE.ini") -or
+       ((Test-FsEntryExists "$rt\boot\boot.sdi") -and (Test-FsEntryExists "$rt\sources")) -or
+       ((Test-FsEntryExists "$rt\bootmgr.efi") -and (Test-FsEntryExists "$rt\sources"))) {
+    return $true
+   }
   }
  }
  return $false
@@ -2222,7 +2284,7 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
    ($matchesConnUsb -or ($desc -match "(?i)\bUSB\b|Removable|External|Flash|SanDisk|Ventoy|Phoenix|RTL9210|JMicron|HSEN|FireCuda|ADATA|Kingston|JetFlash|PMAP|UDisk"))
   }
  )
- $nvramHasStrictUsbEntry = ($nvramUsbEntries.Count -gt 0)
+ $nvramHasStrictUsbEntry = ($nvramUsbEntries.Count -gt 0 -or $matchedNvramCount -gt 0)
  $effectiveMatchCount = if ($matchedNvramCount -ge 0) { $matchedNvramCount } else { $nvramUsbEntries.Count }
 
  $bootModeDiag = Get-BootModeDiagnostics
@@ -2406,7 +2468,10 @@ function Format-BiosCrossCheckReport($sysInfo, $diag, $usbInfo, [array]$matchedE
  if ($usbInfo -and $usbInfo.PhysicalUsbList.Count -gt 0) {
   foreach ($u in $usbInfo.PhysicalUsbList) {
    $ro = if ($u.IsReadOnly) { " [ReadOnly]" } else { "" }
-   [void]$sb.AppendLine((" * Disk " + $u.DiskNumber + ": " + $u.Model + " [" + $u.SizeGB + "]" + $ro + " | " + $u.Partitions + " | Ready=" + $u.IsEfiReady))
+   $sh = if ($u.PSObject.Properties["IsSelfHostUsb"] -and $u.IsSelfHostUsb) { " [SelfHost]" } else { "" }
+   $dEfi = if ($u.PSObject.Properties["BestEfiRelPath"] -and $u.BestEfiRelPath) { " | DirectEFI=" + $u.BestBootPartDisplay + $u.BestEfiRelPath } else { "" }
+   $lbl = if ($u.PSObject.Properties["DisplayLabel"] -and $u.DisplayLabel) { $u.DisplayLabel } else { $u.Model }
+   [void]$sb.AppendLine((" * Disk " + $u.DiskNumber + ": " + $lbl + " [" + $u.SizeGB + "]" + $sh + $ro + " | " + $u.Partitions + " | Ready=" + $u.IsEfiReady + $dEfi))
   }
  } else {
   [void]$sb.AppendLine(" * (No physical USB disk connected)")
@@ -2509,7 +2574,42 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
   }
  }
 
- # Physical USB plugged in, 0 NVRAM matches
+ # Physical USB plugged in, 0 NVRAM matches -> check if Direct UEFI EFI boot is available on the USB!
+ $hasDirectBootProp = ($null -ne $usbInfo.PSObject.Properties["AnyDirectBootUsb"] -and [bool]$usbInfo.AnyDirectBootUsb)
+ if ($hasDirectBootProp) {
+  $hasVentoyDirect = ($null -ne $usbInfo.PSObject.Properties["IsVentoy"] -and [bool]$usbInfo.IsVentoy)
+  if ($diag.SecureBootState -eq "On" -and $hasVentoyDirect) {
+   return [PSCustomObject]@{
+    Level = "Warn"
+    Title = U "Ventoy \uBD80\uD305 \uB514\uC2A4\uD06C\uB294 \uBCF4\uC548 \uBD80\uD305 \uD574\uC81C\uAC00 \uD544\uC694\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4"
+    Message = U "\uBCF4\uC548 \uBD80\uD305\uC774 \uCF1C\uC838 \uC788\uC5B4 Ventoy \uBD80\uD305\uC774 \uCC28\uB2E8\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4. BIOS \uC124\uC815 \uC5F4\uAE30\uB85C \uBCF4\uC548 \uBD80\uD305\uC744 \uB044\uAC70\uB098 \uC544\uB798 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."
+    RecommendedAction = "USB_REBOOT"
+   }
+  }
+  if ($diag.FastBootWarn) {
+   return [PSCustomObject]@{
+    Level = "Warn"
+    Title = U "WinPE USB \uBD80\uD305 \uC900\uBE44 \uC644\uB8CC \u00B7 \uBE60\uB978 \uBD80\uD305 \uCF1C\uC9D0"
+    Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uB20C\uB7EC \uBC14\uB85C \uBD80\uD305\uD558\uACE0, \uB9CC\uC57D \uAC74\uB108\uB6F0\uBA74 BIOS\uC5D0\uC11C \uBE60\uB978 \uBD80\uD305\uC744 \uAEBC \uC8FC\uC138\uC694."
+    RecommendedAction = "USB_REBOOT"
+   }
+  }
+  if ($diag.SecureBootState -in @("On","Conflict")) {
+   return [PSCustomObject]@{
+    Level = "Warn"
+    Title = U "WinPE USB \uBD80\uD305 \uC900\uBE44 \uC644\uB8CC \u00B7 \uBCF4\uC548 \uBD80\uD305 \uCF1C\uC9D0"
+    Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uD45C\uC900 WinPE\uB294 \uBC14\uB85C \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC218 \uC788\uC73C\uBA70, \uBE44\uC11C\uBA85 PE \uCC28\uB2E8 \uC2DC\uC5D0\uB9CC \uBCF4\uC548 \uBD80\uD305\uC744 \uAEBC \uC8FC\uC138\uC694."
+    RecommendedAction = "USB_REBOOT"
+   }
+  }
+  return [PSCustomObject]@{
+   Level = "OK"
+   Title = U "WinPE USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC900\uBE44\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4"
+   Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. 2\uB2E8\uACC4 \uBAA9\uB85D\uC5D0\uC11C USB\uB97C \uD655\uC778\uD55C \uB4A4 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uB20C\uB7EC \uC8FC\uC138\uC694."
+   RecommendedAction = "USB_REBOOT"
+  }
+ }
+
  $hasAnyEfiProp = ($null -ne $usbInfo.PSObject.Properties["AnyEfiReadyUsb"])
  $efiReadyUsb = if ($hasAnyEfiProp) { [bool]$usbInfo.AnyEfiReadyUsb } else { $true }
  if (-not $efiReadyUsb) {
@@ -2574,12 +2674,12 @@ function Show-BiosStatusDashboard($diag, [bool]$step1Bypassed) {
 }
 
 # Gate 1: Secure Boot / Confirmed Disabled USB Boot (Console TUI)
-function Invoke-Gate1Check($diag, [array]$bcdOutput, [int]$matchedCount = 0, [bool]$isVentoy = $false) {
+function Invoke-Gate1Check($diag, [array]$bcdOutput, [int]$matchedCount = 0, [bool]$isVentoy = $false, [bool]$anyDirectBoot = $false) {
  if (-not ($diag.SecureBoot -or $diag.IsConfirmedBlocked)) {
   return "CONTINUE"
  }
- # Standard Microsoft-signed WinPE can boot with Secure Boot ON when USB is already matched in NVRAM (unless Ventoy)
- if (-not $diag.IsConfirmedBlocked -and $diag.SecureBootState -eq "On" -and $matchedCount -gt 0 -and -not $isVentoy) {
+ # Standard Microsoft-signed WinPE can boot with Secure Boot ON when USB is matched in NVRAM or Direct-EFI ready (unless Ventoy)
+ if (-not $diag.IsConfirmedBlocked -and $diag.SecureBootState -eq "On" -and ($matchedCount -gt 0 -or $anyDirectBoot) -and -not $isVentoy) {
   Write-Host (U "`n [\uC548\uB0B4] Secure Boot\uAC00 \uCF1C\uC838 \uC788\uC73C\uB098 \uD45C\uC900 \uC11C\uBA85 WinPE\uB294 \uBC14\uB85C \uBD80\uD305\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4 (\uBE44\uC11C\uBA85 USB \uCC28\uB2E8 \uC2DC [B] BIOS \uC124\uC815 \uC0AC\uC6A9).") -ForegroundColor Yellow
   return "CONTINUE"
  }
@@ -2663,43 +2763,123 @@ function Get-PartitionDevicePatterns($partObj) {
  return @($pats | Select-Object -Unique)
 }
 
-# Helper: Probe root path (drive letter or \\?\Volume{GUID}\) safely for UEFI / WinPE boot files
-function Test-UsbBootFilesOnRoot([string]$rootPath) {
- if ([string]::IsNullOrWhiteSpace($rootPath)) { return $false }
+# Helper: Read-only 512-byte VBR probe for hidden/unmounted USB partitions where Get-Volume returns null
+function Get-RawPartitionFsHint([int]$diskNum, [int64]$offset) {
+ if ($diskNum -lt 0 -or $offset -le 0) { return "" }
+ $fsStream = $null
+ try {
+  $fsStream = New-Object System.IO.FileStream("\\.\PhysicalDrive$diskNum", [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+  [void]$fsStream.Seek($offset, [System.IO.SeekOrigin]::Begin)
+  $buf = New-Object byte[] 512
+  $read = $fsStream.Read($buf, 0, 512)
+  if ($read -ge 90 -and $buf[510] -eq 0x55 -and $buf[511] -eq 0xAA) {
+   $oem = [System.Text.Encoding]::ASCII.GetString($buf, 3, 8)
+   $fat16 = [System.Text.Encoding]::ASCII.GetString($buf, 54, 5)
+   $fat32 = [System.Text.Encoding]::ASCII.GetString($buf, 82, 5)
+   if ($fat32 -eq "FAT32") { return "FAT32" }
+   if ($fat16 -match "^FAT1[26]" -or $fat16 -match "^FAT\s") { return "FAT16" }
+   if ($oem -match "^EXFAT") { return "exFAT" }
+   if ($oem -match "^NTFS") { return "NTFS" }
+  }
+ } catch {} finally {
+  if ($fsStream) { try { $fsStream.Dispose() } catch {} }
+ }
+ return ""
+}
+
+# Helper: Locate the best UEFI .efi bootloader binary on a mounted root or \\?\Volume{GUID}\ root
+function Find-BestEfiBinaryOnRoot([string]$rootPath) {
+ if ([string]::IsNullOrWhiteSpace($rootPath)) { return "" }
  $r = $rootPath.TrimEnd('\')
- $relCandidates = @(
+ $orderedEfiCandidates = @(
   "EFI\BOOT\BOOTX64.EFI",
-  "EFI\BOOT\BOOTIA32.EFI",
-  "EFI\BOOT\BOOTAA64.EFI",
-  "EFI\BOOT\grubx64.efi",
   "EFI\Microsoft\Boot\bootmgfw.efi",
-  "EFI\Microsoft\Boot\BCD",
-  "bootmgr.efi",
-  "sources\boot.wim",
-  "PhoenixPE.cfg",
-  "PhoenixPE.ini",
-  "HBCD_PE.ini",
-  "ventoy\ventoy.json"
+  "EFI\BOOT\grubx64.efi",
+  "EFI\BOOT\BOOTAA64.EFI",
+  "EFI\BOOT\BOOTIA32.EFI"
  )
- foreach ($rel in $relCandidates) {
+ foreach ($rel in $orderedEfiCandidates) {
   try {
-   if ([System.IO.File]::Exists(($r + "\" + $rel))) { return $true }
+   if ([System.IO.File]::Exists(($r + "\" + $rel))) { return ("\" + $rel) }
   } catch {}
  }
  try {
+  if ([System.IO.File]::Exists(($r + "\bootmgr.efi")) -and
+      ([System.IO.File]::Exists(($r + "\EFI\Microsoft\Boot\BCD")) -or [System.IO.File]::Exists(($r + "\Boot\BCD")))) {
+   return "\bootmgr.efi"
+  }
+ } catch {}
+ # 2-level scan under \EFI\* for custom PhoenixPE / DISM++ / Linux shim EFI binaries
+ try {
+  $efiRoot = $r + "\EFI"
+  if ([System.IO.Directory]::Exists($efiRoot)) {
+   foreach ($subDir in @([System.IO.Directory]::GetDirectories($efiRoot))) {
+    $subLeaf = [System.IO.Path]::GetFileName($subDir)
+    if ($subLeaf -match "^(?i)Rufus$") { continue }
+    foreach ($ef in @([System.IO.Directory]::GetFiles($subDir, "*.efi"))) {
+     $fn = [System.IO.Path]::GetFileName($ef)
+     if ($fn -notmatch "^(?i)memtest\.efi$") {
+      return ("\EFI\" + $subLeaf + "\" + $fn)
+     }
+    }
+   }
+  }
+ } catch {}
+ return ""
+}
+
+# Helper: Check if a partition root holds WinPE / Ventoy / Rufus / installer payload markers
+function Test-WinPePayloadOnRoot([string]$rootPath) {
+ if ([string]::IsNullOrWhiteSpace($rootPath)) { return $false }
+ $r = $rootPath.TrimEnd('\')
+ $markers = @(
+  "sources\boot.wim",
+  "sources\install.wim",
+  "sources\install.esd",
+  "EFI\Microsoft\Boot\BCD",
+  "bootmgr.efi",
+  "PhoenixPE.cfg",
+  "PhoenixPE.ini",
+  "HBCD_PE.ini",
+  "ventoy\ventoy.json",
+  "ventoy.dat",
+  "EFI\Rufus\ntfs_x64.efi"
+ )
+ foreach ($m in $markers) {
+  try { if ([System.IO.File]::Exists(($r + "\" + $m))) { return $true } } catch {}
+ }
+ try {
   if ([System.IO.File]::Exists(($r + "\bootmgr")) -and [System.IO.File]::Exists(($r + "\Boot\BCD"))) { return $true }
-  if ([System.IO.Directory]::Exists(($r + "\EFI\BOOT")) -or [System.IO.Directory]::Exists(($r + "\ventoy"))) { return $true }
+  if ([System.IO.Directory]::Exists(($r + "\ventoy")) -or [System.IO.Directory]::Exists(($r + "\EFI\Rufus"))) { return $true }
+  if ([System.IO.Directory]::Exists(($r + "\sources"))) {
+   $wims = @([System.IO.Directory]::GetFiles(($r + "\sources"), "*.wim"))
+   if ($wims.Count -gt 0) { return $true }
+  }
+ } catch {}
+ return $false
+}
+
+# Helper: Probe root path (drive letter or \\?\Volume{GUID}\) safely for UEFI / WinPE boot files
+function Test-UsbBootFilesOnRoot([string]$rootPath) {
+ if ([string]::IsNullOrWhiteSpace($rootPath)) { return $false }
+ if (Find-BestEfiBinaryOnRoot $rootPath) { return $true }
+ if (Test-WinPePayloadOnRoot $rootPath) { return $true }
+ $r = $rootPath.TrimEnd('\')
+ try {
+  if ([System.IO.Directory]::Exists(($r + "\EFI\BOOT"))) { return $true }
  } catch {}
  return $false
 }
 
 function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
- $physicalUsbList = @()
+ $rawUsbItems = @()
  $usbDrivePatterns = @()
  $usbStrictModelPatterns = @()
  $usbPartPatterns = @()
  $anyEfiReadyUsb = $false
+ $anyDirectBootUsb = $false
  $anyVentoy = $false
+ $selfLoc = if (Get-Command Get-SelfHostLocationInfo -ErrorAction SilentlyContinue) { Get-SelfHostLocationInfo } else { [PSCustomObject]@{ DiskNumber = -1; DriveLetter = "" } }
 
  # Collect words appearing in internal disk model names to prevent same-brand false matches (e.g. Samsung USB vs Samsung NVMe)
  $internalWords = @{}
@@ -2715,12 +2895,26 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
  $genericNoiseRe = "^(?i)(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|SCSI|SATA|NVMe|PCIE|ATA|Realtek|Pro|Plus|Max|Mini|Ultra|Extreme|Evo|Basic|Portable|External|Pocket|Shield|Gaming|Super|Speed|Dual|Type|TypeC|Corp|Inc|Ltd|Tech|3\.0|2\.0|3\.1|3\.2|3\.2Gen1|3\.2Gen2|Gen1|Gen2|Gen3|Gen4|\d+(\.\d+)?|\d+\s*[KMGT]B|\d+G)$"
  $hasStorage = Test-StorageCmdletsAvailable
  foreach ($disk in $usbDisks) {
+  $dNum = [int]$disk.Number
   $sizeGB = [math]::Round($disk.Size / 1GB, 1)
-  $parts = if ($hasStorage) { @(Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue) } else { @() }
+  $hasMockParts = ($null -ne $disk.PSObject.Properties["MockPartitions"] -and $null -ne $disk.MockPartitions)
+  $parts = if ($hasMockParts) { @($disk.MockPartitions | Sort-Object PartitionNumber) } elseif ($hasStorage) { @(Get-Partition -DiskNumber $dNum -ErrorAction SilentlyContinue | Sort-Object PartitionNumber) } else { @() }
   $drvLetters = @()
   $mountedLettersOnly = @()
+  $diskDevPatterns = @()
+  $candidateHiddenParts = New-Object System.Collections.ArrayList
   $hasEfi = $false
+  $diskHasPePayload = $false
   $diskIsVentoy = $false
+  $isSelfUsb = (($null -ne $disk.PSObject.Properties["IsSelfHostUsb"] -and [bool]$disk.IsSelfHostUsb) -or ($selfLoc.DiskNumber -ge 0 -and $dNum -eq $selfLoc.DiskNumber))
+  $peLabel = ""
+
+  $bestScore = -1
+  $bestPartNum = 0
+  $bestBootDev = ""
+  $bestBootNtDev = ""
+  $bestEfiPath = ""
+  $bestPartDisplay = ""
 
   $rawModel = if ($disk.FriendlyName) { [string]$disk.FriendlyName } else { "USB Disk" }
   $cleanName = (($rawModel -replace "(?i)\s+(SCSI|USB|SATA|NVMe|ATA)?\s*Disk\s+Device$", "") -replace "^[\s_]+|[\s_]+$", "" -replace "\s{2,}", " ").Trim()
@@ -2760,76 +2954,166 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
   }
 
   foreach ($p in $parts) {
-   if ($p.GptType -eq $gptRecoveryGuid -or $p.GptType -eq $gptMsrGuid) { continue }
-   $vol = Get-Volume -Partition $p -ErrorAction SilentlyContinue
-   $fs = if ($vol -and $vol.FileSystem) { [string]$vol.FileSystem } else { "" }
-   $volLabel = if ($vol -and $vol.FileSystemLabel) { [string]$vol.FileSystemLabel } else { "" }
-   if ($volLabel -match "(?i)^(VTOYEFI|VENTOY)$") { $diskIsVentoy = $true; $anyVentoy = $true }
+   # Never skip $gptRecoveryGuid ({de94bba4-...}) on USB disks: DISM++, Bootice, DiskPart & PhoenixPE use it to hide USB EFI/WinPE partitions!
+   if ($p.GptType -eq $gptMsrGuid -or [int64]$p.Size -le 0) { continue }
 
-   $isEfiGpt = ($p.GptType -eq $gptEfiGuid)
-   $isEfiMbr = ($null -ne $p.MbrType -and ($mbrEfiFatTypes -contains [int]$p.MbrType))
-   $isFatFs = ($fs -match "^(?i)(FAT|FAT12|FAT16|FAT32|exFAT)$")
-   $isBootLabel = ($volLabel -match "(?i)^(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE|WINPE|ESD-USB|ESD-ISO|HBCD_PE|EFI|BOOT)$")
+   $pNum = [int]$p.PartitionNumber
+   $pLtr = if ($p.DriveLetter -and ([string]$p.DriveLetter).Trim([char]0).Trim() -match '^([A-Za-z])$') { $matches[1].ToUpper() } else { "" }
+   if ($pLtr -and $selfLoc.DriveLetter -and $pLtr -eq $selfLoc.DriveLetter) { $isSelfUsb = $true }
 
-   # Check unmounted Volume{GUID} path for EFI boot files (works on hidden ESP / VTOYEFI without mounting a letter!)
-   $hasHiddenBootFile = $false
-   if (-not $p.DriveLetter -and $p.AccessPaths) {
+   # Always collect device/GUID patterns from ALL partitions of the physical USB so Tier 1 NVRAM matching never misses hidden partitions
+   $partDevPats = @(Get-PartitionDevicePatterns $p)
+   $usbDrivePatterns += $partDevPats
+   $diskDevPatterns += $partDevPats
+   $usbPartPatterns += "(?:Partition|Part)\s+$pNum\b"
+
+   $vol = if ($hasMockParts) { $null } else { Get-Volume -Partition $p -ErrorAction SilentlyContinue }
+   $fs = if ($p.PSObject.Properties["MockFileSystem"] -and $p.MockFileSystem) { [string]$p.MockFileSystem } elseif ($vol -and $vol.FileSystem) { [string]$vol.FileSystem } else { "" }
+   $volLabel = if ($p.PSObject.Properties["MockLabel"] -and $p.MockLabel) { ([string]$p.MockLabel).Trim() } elseif ($vol -and $vol.FileSystemLabel) { ([string]$vol.FileSystemLabel).Trim() } else { "" }
+
+   $volGuidPath = ""
+   $ntVolDev = if ($p.PSObject.Properties["MockNtDevice"] -and $p.MockNtDevice) { [string]$p.MockNtDevice } else { "" }
+   if ($pLtr -and -not $ntVolDev -and -not $hasMockParts) {
+    $ntFromL = Resolve-DosDeviceTarget "$($pLtr):"
+    if ($ntFromL) { $ntVolDev = "partition=" + $ntFromL }
+   }
+   if ($p.AccessPaths) {
     foreach ($ap in @($p.AccessPaths)) {
      $apStr = ([string]$ap).Trim()
-     if ($apStr -match '^\\\\\?\\Volume\{[^\}]+\}\\?$') {
-      if (Test-UsbBootFilesOnRoot $apStr) { $hasHiddenBootFile = $true; break }
+     if ($apStr -match '^\\\\\?\\(Volume\{[^\}]+\})\\?$') {
+      $volGuidPath = $apStr.TrimEnd('\') + "\"
+      if (-not $ntVolDev -and -not $hasMockParts) {
+       $ntResolved = Resolve-DosDeviceTarget $matches[1]
+       if ($ntResolved) { $ntVolDev = "partition=" + $ntResolved }
+      }
+      break
      }
     }
    }
-   # Small unmounted partition (512KB..4GB) on multi-partition USB (e.g. Ventoy GPT BasicData VTOYEFI or Rufus UEFI:NTFS where Get-Volume returns null)
-   $isLikelyHiddenEsp = (-not $p.DriveLetter) -and ($parts.Count -ge 2 -or $isEfiGpt -or $isEfiMbr) -and ($p.Size -ge 512KB -and $p.Size -le 4GB)
+   if ($ntVolDev) {
+    $usbDrivePatterns += $ntVolDev
+    $diskDevPatterns += $ntVolDev
+   }
 
-   $partDevPats = @(Get-PartitionDevicePatterns $p)
+   if ($pLtr -and -not $volLabel -and -not $hasMockParts) {
+    try {
+     $di = New-Object System.IO.DriveInfo ($pLtr)
+     if ($di.IsReady -and $di.VolumeLabel) { $volLabel = $di.VolumeLabel.Trim() }
+     if ($di.IsReady -and -not $fs -and $di.DriveFormat) { $fs = $di.DriveFormat }
+    } catch {}
+   }
+   if (-not $fs -and -not $pLtr -and -not $hasMockParts -and $p.PSObject.Properties["Offset"] -and $null -ne $p.Offset) {
+    $fs = Get-RawPartitionFsHint $dNum ([int64]$p.Offset)
+   }
 
-   if ($p.DriveLetter) {
-    $d = "$($p.DriveLetter):"
-    $mountedLettersOnly += $d
-    if (-not $volLabel) {
-     try {
-      $di = New-Object System.IO.DriveInfo ($p.DriveLetter)
-      if ($di.IsReady -and $di.VolumeLabel) {
-       $volLabel = $di.VolumeLabel
-       if ($volLabel -match "(?i)^(VTOYEFI|VENTOY)$") { $diskIsVentoy = $true; $anyVentoy = $true }
-       if ($volLabel -match "(?i)^(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE|WINPE|ESD-USB|ESD-ISO|HBCD_PE|EFI|BOOT)$") { $isBootLabel = $true }
-      }
-     } catch {}
+   if ($volLabel -match "(?i)^(VTOYEFI|VENTOY)$") { $diskIsVentoy = $true; $anyVentoy = $true }
+   $isEfiGpt = ($p.GptType -eq $gptEfiGuid)
+   $isRecovGpt = ($p.GptType -eq $gptRecoveryGuid)
+   $isEfiMbr = ($null -ne $p.MbrType -and ($mbrEfiFatTypes -contains [int]$p.MbrType))
+   # UEFI spec natively reads FAT12/FAT16/FAT32 (NOT exFAT without a chainloader like UEFI_NTFS!)
+   $isTrueFatFs = ($fs -match "^(?i)(FAT|FAT12|FAT16|FAT32)$")
+   $isBootLabel = ($volLabel -match "(?i)^(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE.*|WINPE.*|ESD-USB|ESD-ISO|HBCD_PE|EFI|BOOT|SYSTEM)$")
+
+   $probeRoot = if ($p.PSObject.Properties["MockProbeRoot"] -and $p.MockProbeRoot) { [string]$p.MockProbeRoot } elseif ($pLtr -and -not $hasMockParts) { "$($pLtr):\" } elseif ($volGuidPath -and -not $hasMockParts) { $volGuidPath } else { "" }
+   $efiRelPath = if ($probeRoot) { Find-BestEfiBinaryOnRoot $probeRoot } else { "" }
+   $hasPePayload = if ($probeRoot) { Test-WinPePayloadOnRoot $probeRoot } else { $false }
+   if ($probeRoot -and ([System.IO.File]::Exists(($probeRoot.TrimEnd('\') + "\ventoy\ventoy.json")) -or [System.IO.File]::Exists(($probeRoot.TrimEnd('\') + "\ventoy.dat")))) {
+    $diskIsVentoy = $true; $anyVentoy = $true
+   }
+   if ($hasPePayload) { $diskHasPePayload = $true }
+   if (-not $peLabel -and $volLabel -and ($hasPePayload -or $volLabel -match "(?i)PE|WIN|BOOT|ESD|VENTOY") -and $volLabel -notmatch "^(?i)(UEFI_NTFS|EFI|VTOYEFI|Driver|Data|New Volume)$") {
+    $peLabel = $volLabel
+   }
+
+   $isHiddenCandidate = (-not $pLtr) -and (
+    $isEfiGpt -or $isRecovGpt -or $isEfiMbr -or $isTrueFatFs -or $isBootLabel -or
+    ($parts.Count -ge 2 -and [int64]$p.Size -ge 512KB -and [int64]$p.Size -le 16GB)
+   )
+   if (-not $pLtr -and -not $efiRelPath -and $isHiddenCandidate) {
+    [void]$candidateHiddenParts.Add($pNum)
+   }
+
+   # Score this partition as the UEFI Direct Boot target (Dedicated FAT EFI > General FAT EFI > NTFS/exFAT EFI > Hidden ESP)
+   $partScore = -1
+   if ($efiRelPath) {
+    if ($isTrueFatFs) {
+     $partScore = 100
+     if ($isEfiGpt -or [int64]$p.Size -le 4GB -or $volLabel -match "(?i)^(UEFI_NTFS|VTOYEFI|EFI|BOOT|SYSTEM)$") { $partScore = 115 }
+    } else {
+     $partScore = 75
     }
-    if (Test-Path "$d\ventoy\ventoy.json") { $diskIsVentoy = $true; $anyVentoy = $true }
+   } elseif ($isHiddenCandidate -and ($isEfiGpt -or $isTrueFatFs -or ($null -ne $p.MbrType -and [int]$p.MbrType -in @(18, 239)))) {
+    $partScore = 60
+   } elseif ($isHiddenCandidate -and ($isEfiMbr -or $isRecovGpt -or $isBootLabel)) {
+    $partScore = 45
+   }
+
+   $prefDev = if ($pLtr) { "partition=$($pLtr):" } elseif ($ntVolDev) { $ntVolDev } else { "" }
+   if ($partScore -gt $bestScore) {
+    $bestScore = $partScore
+    $bestPartNum = $pNum
+    $bestBootDev = $prefDev
+    $bestBootNtDev = $ntVolDev
+    $bestEfiPath = $efiRelPath
+    $bestPartDisplay = if ($pLtr) { "$($pLtr):" } else { "Partition $pNum" }
+   }
+
+   if ($pLtr) {
+    $d = "$($pLtr):"
+    $mountedLettersOnly += $d
     $fsDisplay = if ($fs) { $fs } else { "Mounted" }
     $drvLetters += "$d($fsDisplay)"
-    $hasBootFile = Test-UsbBootFilesOnRoot "$d\"
-    if ($hasBootFile -or $isEfiGpt -or $isEfiMbr -or $isFatFs -or $isBootLabel) {
+    if ($efiRelPath -or $hasPePayload -or $isEfiGpt -or $isBootLabel -or ($isTrueFatFs -and ([int64]$p.Size -le 4GB -or $parts.Count -ge 2))) {
      $hasEfi = $true
-     $anyEfiReadyUsb = $true
-     $usbDrivePatterns += $partDevPats
-     $usbPartPatterns += "(?:Partition|Part)\s+$($p.PartitionNumber)\b"
     }
-   } elseif ($isEfiGpt -or $isEfiMbr -or $isFatFs -or $isBootLabel -or $hasHiddenBootFile -or $isLikelyHiddenEsp) {
-    $partTag = if ($isEfiGpt) { "GPT-EFI" } elseif ($isEfiMbr) { "MBR-EFI/FAT" } elseif ($isFatFs) { "FAT" } else { "Boot/EFI" }
-    $drvLetters += "Hidden-$partTag(Partition $($p.PartitionNumber))"
-    $hasEfi = $true
-    $anyEfiReadyUsb = $true
-    $usbDrivePatterns += $partDevPats
-    $usbPartPatterns += "(?:Partition|Part)\s+$($p.PartitionNumber)\b"
+   } elseif ($efiRelPath -or $hasPePayload -or $isHiddenCandidate) {
+    $partTag = if ($isEfiGpt) { "GPT-EFI" } elseif ($isTrueFatFs) { $fs } elseif ($isEfiMbr) { "MBR-Boot" } elseif ($isRecovGpt) { "Hidden-PE" } else { "Hidden" }
+    $drvLetters += "Hidden-$partTag(Partition $pNum)"
+    if ($efiRelPath -or $hasPePayload -or $isEfiGpt -or $isTrueFatFs -or $isEfiMbr -or $isRecovGpt -or $isBootLabel) {
+     $hasEfi = $true
+    }
    }
   }
 
-  $physicalUsbList += [PSCustomObject]@{
-   DiskNumber = $disk.Number
+  if ((-not $hasEfi) -and $diskHasPePayload -and $candidateHiddenParts.Count -gt 0) {
+   $hasEfi = $true
+  }
+
+  $canDirectBoot = ([bool]$bestEfiPath -and [bool]$bestBootDev) -or ($hasEfi -and $candidateHiddenParts.Count -gt 0)
+  if ($hasEfi -or $canDirectBoot) { $anyEfiReadyUsb = $true }
+  if ($canDirectBoot) { $anyDirectBootUsb = $true }
+
+  $dispLabel = if ($peLabel -and ($cleanName -notmatch [regex]::Escape($peLabel))) {
+   $cleanName + " (" + $peLabel + ")"
+  } else {
+   $cleanName
+  }
+
+  $rawUsbItems += [PSCustomObject]@{
+   DiskNumber = $dNum
    Model = $cleanName
+   DisplayLabel = $dispLabel
+   PeVolumeLabel = $peLabel
    SizeGB = "$sizeGB GB"
-   DriveSummary = if ($mountedLettersOnly.Count -gt 0) { ($mountedLettersOnly -join ",") } else { "Disk $($disk.Number)" }
+   DriveSummary = if ($mountedLettersOnly.Count -gt 0) { ($mountedLettersOnly -join ",") } else { "Disk $dNum" }
    Partitions = ($drvLetters -join ", ")
+   DevicePatterns = @($diskDevPatterns | Select-Object -Unique)
+   IsSelfHostUsb = $isSelfUsb
    IsEfiReady = $hasEfi
+   CanDirectEfiBoot = $canDirectBoot
+   BestBootPartNum = $bestPartNum
+   BestBootPartDisplay = $bestPartDisplay
+   BestBootDevice = $bestBootDev
+   BestBootNtDevice = $bestBootNtDev
+   BestEfiRelPath = $bestEfiPath
+   CandidatePartNums = @($candidateHiddenParts | Select-Object -Unique)
    IsVentoy = $diskIsVentoy
    IsReadOnly = [bool]$disk.IsReadOnly
   }
  }
+
+ # Prioritize the USB hosting this tool first, then EFI-ready disks, then DiskNumber
+ $physicalUsbList = @($rawUsbItems | Sort-Object @{Expression={if($_.IsSelfHostUsb){0}else{1}}}, @{Expression={if($_.IsEfiReady){0}else{1}}}, DiskNumber)
 
  return [PSCustomObject]@{
   PhysicalUsbList = $physicalUsbList
@@ -2837,8 +3121,112 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
   UsbStrictModelPatterns = @($usbStrictModelPatterns | Select-Object -Unique)
   UsbPartPatterns = @($usbPartPatterns | Select-Object -Unique)
   AnyEfiReadyUsb = $anyEfiReadyUsb
+  AnyDirectBootUsb = $anyDirectBootUsb
   IsVentoy = $anyVentoy
  }
+}
+
+# Register a clean 1-time UEFI firmware boot entry (Boot#### + BootNext) directly from a physical USB's EFI partition!
+# Works even when the USB was Hot-Plugged while Windows was running and has 0 prior NVRAM entries!
+function Invoke-DirectUsbEfiBootSetup($usbDiskItem) {
+ if (-not $usbDiskItem) {
+  return [PSCustomObject]@{ Success = $false; Guid = ""; Device = ""; Path = ""; Error = "NO_USB_ITEM" }
+ }
+ $diskNum = [int]$usbDiskItem.DiskNumber
+ $targetDev = if ($usbDiskItem.PSObject.Properties["BestBootDevice"]) { [string]$usbDiskItem.BestBootDevice } else { "" }
+ $targetNtDev = if ($usbDiskItem.PSObject.Properties["BestBootNtDevice"]) { [string]$usbDiskItem.BestBootNtDevice } else { "" }
+ $targetPath = if ($usbDiskItem.PSObject.Properties["BestEfiRelPath"]) { [string]$usbDiskItem.BestEfiRelPath } else { "" }
+
+ $registerBcd = {
+  param([string]$devTok, [string]$altDevTok, [string]$efiPath)
+  $entryLabel = "SID Aux Tool - WinPE USB"
+  try {
+   $curFw = Invoke-NativeOem "bcdedit.exe" "/enum firmware"
+   $parsedFw = @(Parse-BcdFirmwareLines $curFw.Lines)
+   foreach ($fe in $parsedFw) {
+    if ($fe.Identifier -match '^\{[0-9a-fA-F-]{36}\}$' -and [string]$fe.Description -eq $entryLabel) {
+     $delTry = Invoke-NativeOem "bcdedit.exe" ("/delete " + $fe.Identifier)
+     if ($delTry.ExitCode -ne 0) { $null = Invoke-NativeOem "bcdedit.exe" ("/delete " + $fe.Identifier + " /f") }
+    }
+   }
+  } catch {}
+
+  $crRes = Invoke-NativeOem "bcdedit.exe" ('/create /d "' + $entryLabel + '" /application firmware')
+  $newGuid = ""
+  foreach ($ln in $crRes.Lines) {
+   if ([string]$ln -match '(\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\})') {
+    $newGuid = $matches[1]
+    break
+   }
+  }
+  if ($crRes.ExitCode -ne 0 -or -not $newGuid) {
+   return [PSCustomObject]@{ Success = $false; Guid = ""; Device = $devTok; Path = $efiPath; Error = ("bcdedit /create: " + ($crRes.Lines -join " ")) }
+  }
+
+  $usedDev = $devTok
+  $devRes = Invoke-NativeOem "bcdedit.exe" ("/set " + $newGuid + " device " + $devTok)
+  if ($devRes.ExitCode -ne 0 -and $altDevTok -and $altDevTok -ne $devTok) {
+   $usedDev = $altDevTok
+   $devRes = Invoke-NativeOem "bcdedit.exe" ("/set " + $newGuid + " device " + $altDevTok)
+  }
+  if ($devRes.ExitCode -ne 0) {
+   $null = Invoke-NativeOem "bcdedit.exe" ("/delete " + $newGuid)
+   return [PSCustomObject]@{ Success = $false; Guid = ""; Device = $usedDev; Path = $efiPath; Error = ("bcdedit /set device: " + ($devRes.Lines -join " ")) }
+  }
+
+  $pathRes = Invoke-NativeOem "bcdedit.exe" ('/set ' + $newGuid + ' path "' + $efiPath + '"')
+  if ($pathRes.ExitCode -ne 0) {
+   $null = Invoke-NativeOem "bcdedit.exe" ("/delete " + $newGuid)
+   return [PSCustomObject]@{ Success = $false; Guid = ""; Device = $usedDev; Path = $efiPath; Error = ("bcdedit /set path: " + ($pathRes.Lines -join " ")) }
+  }
+
+  $seqRes = Invoke-NativeOem "bcdedit.exe" ("/set {fwbootmgr} bootsequence " + $newGuid)
+  if ($seqRes.ExitCode -ne 0) {
+   $null = Invoke-NativeOem "bcdedit.exe" ("/delete " + $newGuid)
+   return [PSCustomObject]@{ Success = $false; Guid = ""; Device = $usedDev; Path = $efiPath; Error = ("bcdedit bootsequence: " + ($seqRes.Lines -join " ")) }
+  }
+
+  return [PSCustomObject]@{ Success = $true; Guid = $newGuid; Device = $usedDev; Path = $efiPath; Error = "" }
+ }
+
+ # Fast path: EFI file & partition device already resolved without mounting!
+ if ($targetDev -and $targetPath) {
+  return (& $registerBcd $targetDev $targetNtDev $targetPath)
+ }
+
+ # Hidden partition fallback: temporarily mount candidate unmounted partitions on the USB to locate the .efi binary and register BootNext
+ $partsToProbe = New-Object System.Collections.ArrayList
+ if ($usbDiskItem.PSObject.Properties["BestBootPartNum"] -and [int]$usbDiskItem.BestBootPartNum -gt 0) {
+  [void]$partsToProbe.Add([int]$usbDiskItem.BestBootPartNum)
+ }
+ if ($usbDiskItem.PSObject.Properties["CandidatePartNums"] -and $usbDiskItem.CandidatePartNums) {
+  foreach ($cpn in @($usbDiskItem.CandidatePartNums)) {
+   if ([int]$cpn -gt 0 -and -not $partsToProbe.Contains([int]$cpn)) { [void]$partsToProbe.Add([int]$cpn) }
+  }
+ }
+ if ($partsToProbe.Count -eq 0 -and (Test-StorageCmdletsAvailable)) {
+  foreach ($up in @(Get-Partition -DiskNumber $diskNum -ErrorAction SilentlyContinue | Where-Object { -not $_.DriveLetter -and [int64]$_.Size -gt 0 })) {
+   [void]$partsToProbe.Add([int]$up.PartitionNumber)
+  }
+ }
+
+ $lastErr = U "USB \uB0B4\uC5D0\uC11C UEFI \uBD80\uD305 \uD30C\uC77C(.efi)\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."
+ foreach ($pNum in $partsToProbe) {
+  $mntRes = Invoke-WithEspMount $diskNum $pNum "" {
+   param($drv)
+   $foundEfi = Find-BestEfiBinaryOnRoot "$($drv):\"
+   if (-not $foundEfi) { return $null }
+   $ntD = Resolve-DosDeviceTarget "$($drv):"
+   $altD = if ($ntD) { "partition=" + $ntD } else { "" }
+   return (& $registerBcd "partition=$($drv):" $altD $foundEfi)
+  }
+  if ($mntRes -and $mntRes -ne "MOUNT_FAIL") {
+   if ($mntRes.Success) { return $mntRes }
+   if ($mntRes.Error) { $lastErr = $mntRes.Error }
+  }
+ }
+
+ return [PSCustomObject]@{ Success = $false; Guid = ""; Device = ""; Path = ""; Error = $lastErr }
 }
 
 function Find-MatchedUsbNvramEntries(
@@ -2870,21 +3258,23 @@ function Find-MatchedUsbNvramEntries(
   $descStr = [string]$_.Description
   $devStr = ([string]$_.Device).Trim()
   $isUnknownGhostDev = ($devStr -ne "" -and ($devStr -match $unknownDevRe))
-  $matchesUsbDev = (-not $isUnknownGhostDev) -and ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
+  $matchesInternalDev = ($internalPattern -and ($devStr -match $internalPattern))
+  $matchesUsbDev = (-not $isUnknownGhostDev) -and (-not $matchesInternalDev) -and ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
   $matchesUsbMod = (-not $isUnknownGhostDev) -and ($usbModRegex -and ($descStr -match $usbModRegex))
   $isOpticalNonUsb = ($descStr -match "(?i)CD/DVD|CD-ROM|Optical") -and ($descStr -notmatch "(?i)\bUSB\b")
-  # Never exclude external enclosures like 'HSEN 10G-NVME' or 'JMicron Generic SATA' when they match a connected USB device/model!
+  # Never exclude external enclosures OR DISM++/bcdboot USB entries named 'Windows Boot Manager' when $matchesUsbDev proves the partition is on the USB!
   $isInternalBusWithoutUsb = (-not $matchesUsbDev) -and (-not $matchesUsbMod) -and ($descStr -match "(?i)\b(SATA\d*|NVMe\d*)\b") -and ($descStr -notmatch "(?i)\bUSB\b|External|Removable|Enclosure")
   $isInternalModelOnly = (-not $matchesUsbDev) -and (-not $matchesUsbMod) -and ($intModRegex -and ($descStr -match $intModRegex)) -and ($descStr -notmatch "(?i)\bUSB\b")
 
   $_.Identifier -ne "{fwbootmgr}" -and
   $_.Identifier -ne "{bootmgr}" -and
+  ([string]$_.Description -ne "SID Aux Tool - WinPE USB") -and
   (-not $isUnknownGhostDev) -and
-  ($descStr -notmatch $excludeDesc) -and
+  ($matchesUsbDev -or ($descStr -notmatch $excludeDesc)) -and
   (-not $isOpticalNonUsb) -and
   (-not $isInternalBusWithoutUsb) -and
   (-not $isInternalModelOnly) -and
-  ($matchesUsbDev -or (-not $internalPattern) -or ($devStr -notmatch $internalPattern))
+  ($matchesUsbDev -or (-not $matchesInternalDev))
  })
 
  $matched = New-Object System.Collections.ArrayList
@@ -3028,7 +3418,8 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
 
   if (-not $gate1Ignored) {
    $isVty = ($null -ne $usbInfo.PSObject.Properties["IsVentoy"] -and [bool]$usbInfo.IsVentoy)
-   $g1 = Invoke-Gate1Check $diag $bcdOutput $matchedEntries.Count $isVty
+   $hasDirBoot = ($null -ne $usbInfo.PSObject.Properties["AnyDirectBootUsb"] -and [bool]$usbInfo.AnyDirectBootUsb)
+   $g1 = Invoke-Gate1Check $diag $bcdOutput $matchedEntries.Count $isVty $hasDirBoot
    if ($g1 -eq "RETURN_MAIN") { return }
    $gate1Ignored = $true
   }
@@ -3056,49 +3447,66 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
   Write-Host (U "`n[STEP 2-1] \uD604\uC7AC \uC5F0\uACB0\uB41C \uBB3C\uB9AC USB \uB514\uC2A4\uD06C \uBAA9\uB85D:") -ForegroundColor Cyan
   foreach ($u in $usbInfo.PhysicalUsbList) {
    $efiTag = if ($u.IsEfiReady) { U "UEFI \uBD80\uD305 \uAC00\uB2A5" } else { U "EFI \uD30C\uD2F0\uC158 \uBBF8\uD655\uC778" }
+   $selfTag = if ($u.PSObject.Properties["IsSelfHostUsb"] -and $u.IsSelfHostUsb) { " [" + (U "\uD604\uC7AC \uC2E4\uD589 \uC911\uC778 USB") + "]" } else { "" }
    $roTag = if ($u.IsReadOnly) { " [" + (U "\uC77D\uAE30 \uC804\uC6A9") + "]" } else { "" }
-   Write-Host (" - Disk " + $u.DiskNumber + " : " + $u.Model + " [" + $u.SizeGB + "]" + $roTag + " | " + $u.Partitions + " -> (" + $efiTag + ")") -ForegroundColor White
+   $lblName = if ($u.PSObject.Properties["DisplayLabel"] -and $u.DisplayLabel) { $u.DisplayLabel } else { $u.Model }
+   Write-Host (" - Disk " + $u.DiskNumber + " : " + $lblName + " [" + $u.SizeGB + "]" + $selfTag + $roTag + " | " + $u.Partitions + " -> (" + $efiTag + ")") -ForegroundColor White
   }
 
-  # Gate 2: Physical USB found, but 0 matching NVRAM entries
+  # Gate 2: Physical USB found, 0 pre-existing NVRAM entries -> offer Direct UEFI EFI Boot when EFI partition is ready!
   if ($matchedEntries.Count -eq 0) {
-   $isLikelyHotPlug = ([bool]$usbInfo.AnyEfiReadyUsb -and -not $diag.IsConfirmedBlocked -and -not $diag.FastBootWarn)
+   $directTargetUsb = $usbInfo.PhysicalUsbList | Where-Object { $_.IsEfiReady } | Select-Object -First 1
    $isNonBootUsb = (-not [bool]$usbInfo.AnyEfiReadyUsb)
    $rescanNow = $false
    while ($true) {
     Write-Host "`n==================================================================" -ForegroundColor Yellow
-    if ($isNonBootUsb) {
-     Write-Host (U " [\uC8FC\uC758] \uC5F0\uACB0\uB41C USB\uC5D0\uC11C UEFI/WinPE \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
-     Write-Host (U " - \uC77C\uBC18 \uB370\uC774\uD130 USB\uC774\uAC70\uB098 \uC228\uAE40 \uD30C\uD2F0\uC158\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4. WinPE USB\uAC00 \uB9DE\uC73C\uBA74 [O]\uB97C \uC120\uD0DD\uD558\uC138\uC694.") -ForegroundColor Gray
+    if ($directTargetUsb -and -not $diag.IsConfirmedBlocked) {
+     $dLbl = if ($directTargetUsb.DisplayLabel) { $directTargetUsb.DisplayLabel } else { $directTargetUsb.Model }
+     $dPathInfo = if ($directTargetUsb.BestEfiRelPath) { $directTargetUsb.BestBootPartDisplay + $directTargetUsb.BestEfiRelPath } else { $directTargetUsb.BestBootPartDisplay }
+     Write-Host (U " [\uC900\uBE44 \uC644\uB8CC] WinPE USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4 (EFI \uC9C1\uC811 \uBD80\uD305 \uC9C0\uC6D0).") -ForegroundColor Green
+     Write-Host (" - Disk " + $directTargetUsb.DiskNumber + " : " + $dLbl + " | EFI: " + $dPathInfo) -ForegroundColor Cyan
      Write-Host ""
+     Write-Host (U " [Enter \uB610\uB294 1] \uC704 WinPE USB\uB85C \uBC14\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305 (\uAD8C\uC7A5 - EFI \uC9C1\uC811 \uB4F1\uB85D)") -ForegroundColor Green
+     Write-Host (U " [O] Windows \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9) \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor White
+     Write-Host (U " [B] BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Cyan
+    } elseif ($isNonBootUsb) {
+     Write-Host (U " [\uC8FC\uC758] \uC5F0\uACB0\uB41C USB\uC5D0\uC11C UEFI/WinPE \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
+     Write-Host (U " - \uC228\uAE40 \uD30C\uD2F0\uC158 \uD0D0\uC0C9 \uBD80\uD305\uC740 [1], Windows \uACE0\uAE09 \uBD80\uD305\uC740 [O]\uB97C \uC120\uD0DD\uD558\uC138\uC694.") -ForegroundColor Gray
+     Write-Host ""
+     Write-Host (U " [1] \uC228\uAE40 EFI \uD30C\uD2F0\uC158 \uD0D0\uC0C9 \uBC0F \uC9C1\uC811 \uBD80\uD305 \uC2DC\uB3C4") -ForegroundColor Green
      Write-Host (U " [O] Windows \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9) \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Green
      Write-Host (U " [B] BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Cyan
-    } elseif ($isLikelyHotPlug) {
-     Write-Host (U " [\uC548\uB0B4] \uBB3C\uB9AC USB\uB294 \uC778\uC2DD\uB418\uC5C8\uC73C\uB098 \uD604\uC7AC NVRAM \uBAA9\uB85D\uC5D0 \uB4F1\uB85D\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
-     Write-Host (U " - BIOS USB Boot\uAC00 \uCF1C\uC838 \uC788\uC73C\uBBC0\uB85C Windows \uBD80\uD305 \uD6C4 USB\uB97C \uC5F0\uACB0(Hot-Plug)\uD55C \uC0C1\uD0DC\uC77C \uAC00\uB2A5\uC131\uC774 \uB192\uC2B5\uB2C8\uB2E4.") -ForegroundColor Cyan
-     Write-Host ""
-     Write-Host (U " [Enter \uB610\uB294 O] Windows \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9) \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305 (\uAD8C\uC7A5)") -ForegroundColor Green
-     Write-Host (U " [B] BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Cyan
     } else {
-     Write-Host (U " [\uACBD\uACE0] \uBB3C\uB9AC\uC801 USB\uB294 \uC778\uC2DD\uB418\uC5C8\uC73C\uB098 BIOS(NVRAM) \uBD80\uD305 \uBAA9\uB85D\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4!") -ForegroundColor Red
+     Write-Host (U " [\uACBD\uACE0] BIOS\uC5D0\uC11C USB \uBD80\uD305\uC774 \uCC28\uB2E8\uB418\uC5C8\uAC70\uB098 NVRAM \uBAA9\uB85D\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4.") -ForegroundColor Red
      Write-Host (" - " + $diag.BiosHint) -ForegroundColor Yellow
      Write-Host ""
-     Write-Host (U " [Enter \uB610\uB294 B] \uC989\uC2DC BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815\uC73C\uB85C \uC7AC\uBD80\uD305 (\uAD8C\uC7A5 - Fast Boot / USB Boot \uD655\uC778)") -ForegroundColor Cyan
+     Write-Host (U " [Enter \uB610\uB294 B] \uC989\uC2DC BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815\uC73C\uB85C \uC7AC\uBD80\uD305 (\uAD8C\uC7A5)") -ForegroundColor Cyan
      Write-Host (U " [O] Windows \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9) \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Green
     }
     Write-Host (U " [R] \uB2E4\uC2DC \uC2A4\uCE94 | [E] \uB0B4\uC7A5 \uBD80\uD2B8\uB85C\uB354 \uAD00\uB9AC | [D] NVRAM \uC6D0\uBCF8 | [L] \uB514\uC2A4\uD06C \uC9C4\uB2E8 | [M] \uBA54\uC778 \uBA54\uB274") -ForegroundColor Gray
     Write-Host "------------------------------------------------------------------" -ForegroundColor DarkGray
 
-    $defaultHint = if ($isLikelyHotPlug) { U "Enter=\uC7A5\uCE58 \uC0AC\uC6A9 \uBA54\uB274" } else { U "Enter=BIOS \uC9C4\uC785" }
+    $defaultHint = if ($directTargetUsb -and -not $diag.IsConfirmedBlocked) { U "Enter=USB \uC9C1\uC811 \uBD80\uD305" } elseif ($isNonBootUsb) { "O/1/B" } else { U "Enter=BIOS \uC9C4\uC785" }
     $fbChoice = (Read-Host ((U "\uC791\uC5C5\uC744 \uC120\uD0DD\uD558\uC138\uC694 (") + $defaultHint + ")")).Trim()
 
     if ($fbChoice -match "^[rR]$") { $rescanNow = $true; break }
     elseif ($fbChoice -match "^[eE]$") { Show-BootloaderManager $false; continue }
     elseif ($fbChoice -match "^[dD]$") { Show-BcdDebug $bcdOutput; continue }
     elseif ($fbChoice -match "^[lL]$") { Show-DiskDebug; continue }
-    elseif ($fbChoice -eq "") {
-     if ($isLikelyHotPlug) { $null = Invoke-SafeReboot "/r /o /f /t 0" "Advanced Boot" }
-     else { $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup" }
+    elseif (($fbChoice -eq "1") -or ($fbChoice -eq "" -and $directTargetUsb -and -not $diag.IsConfirmedBlocked)) {
+     $candUsb = if ($directTargetUsb) { $directTargetUsb } else { $usbInfo.PhysicalUsbList[0] }
+     $dSet = Invoke-DirectUsbEfiBootSetup $candUsb
+     if ($dSet.Success) {
+      Write-Host ("`n-> [" + $candUsb.Model + " " + $dSet.Path + (U "] 1\uD68C\uC131 EFI \uBD80\uD305 \uB4F1\uB85D \uC644\uB8CC! \uC989\uC2DC \uC7AC\uBD80\uD305\uD569\uB2C8\uB2E4...")) -ForegroundColor Cyan
+      $null = Invoke-SafeReboot "/r /f /t 0" "USB Direct EFI Boot"
+      return
+     } else {
+      Write-Host ((U "`n[\uC548\uB0B4] EFI \uC9C1\uC811 \uBD80\uD305 \uB4F1\uB85D \uC2E4\uD328: ") + $dSet.Error) -ForegroundColor Yellow
+      $goAdv = (Read-Host (U "Windows \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9)\uC73C\uB85C \uC7AC\uBD80\uD305\uD560\uAE4C\uC694? (Y/N)")).Trim()
+      if ($goAdv -match "^[yY]$") { $null = Invoke-SafeReboot "/r /o /f /t 0" "Advanced Boot"; return }
+     }
+    } elseif ($fbChoice -eq "" -and -not $isNonBootUsb) {
+     $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup"
     } elseif ($fbChoice -match "^[oO]$") { $null = Invoke-SafeReboot "/r /o /f /t 0" "Advanced Boot" }
     elseif ($fbChoice -match "^[bB]$") { $null = Invoke-SafeReboot "/r /fw /f /t 0" "BIOS Setup" }
     elseif ($fbChoice -match "^[mMqQ]$") { return }
@@ -5194,10 +5602,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
 
  # Unified USB Selection DataGridView
  $dgvUsb = New-AsanGrid $theme $fonts
- Add-AsanGridColumn $dgvUsb "Kind"   (U "\uAD6C\uBD84") 98 $false 88
- Add-AsanGridColumn $dgvUsb "Match"  (U "\uC77C\uCE58 \uC218\uC900") 118 $false 110
- Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 254 $false 160
- Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 150 $false 120
+ Add-AsanGridColumn $dgvUsb "Kind"   (U "\uAD6C\uBD84") 88 $false 82
+ Add-AsanGridColumn $dgvUsb "Match"  (U "\uC77C\uCE58 \uC218\uC900") 110 $false 104
+ Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 282 $false 180
+ Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 180 $false 140
  Add-AsanGridColumn $dgvUsb "Guide"  (U "\uC0C1\uD0DC \uC548\uB0B4") 180 $true 150
 
  # Step 2 Bottom Action Bar (46px)
@@ -5594,8 +6002,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
   $isUefi = ($null -ne $snap -and $null -ne $snap.BiosDiag -and [bool]$snap.BiosDiag.BootMode.IsUefi)
   $canStep2Act = (-not $busy -and $isUefi -and -not $isLocked)
   $selUsbTag = if ($ui.DgvUsb.SelectedRows.Count -gt 0) { $ui.DgvUsb.SelectedRows[0].Tag } else { $null }
-  $hasMatchedSel = ($null -ne $selUsbTag -and ($selUsbTag.Kind -in @("NVRAM", "HOTPLUG_READY")) -and (-not $snap.BiosDiag.IsConfirmedBlocked))
-  $canUsbReboot = ($canStep2Act -and $hasMatchedSel)
+  $hasBootableSel = ($null -ne $selUsbTag -and ($selUsbTag.Kind -in @("NVRAM", "DIRECT_EFI_READY", "PHYSICAL_UNVERIFIED")) -and (-not $snap.BiosDiag.IsConfirmedBlocked))
+  $canUsbReboot = ($canStep2Act -and $hasBootableSel)
 
   $step2BlockTip = if ($busy) {
    $busyTip
@@ -5613,15 +6021,14 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    U "BIOS\uC5D0\uC11C USB \uBD80\uD305\uC774 \uCC28\uB2E8\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. BIOS \uC124\uC815 \uC5F4\uAE30\uB85C \uBA3C\uC800 \uD5C8\uC6A9\uD574 \uC8FC\uC138\uC694."
   } elseif (-not $snap -or $snap.UsbInfo.PhysicalUsbList.Count -eq 0) {
    U "WinPE USB\uB97C PC\uC5D0 \uC5F0\uACB0\uD55C \uB4A4 USB \uB2E4\uC2DC \uCC3E\uAE30\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694."
-  } elseif ($null -ne $selUsbTag -and $selUsbTag.Kind -eq "PHYSICAL_ONLY") {
-   U "\uC120\uD0DD\uD55C USB\uC5D0\uC11C UEFI \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC774\uB3D9 \uB610\uB294 \uB2E4\uB978 USB\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694."
   } else {
    U "\uC704 \uBAA9\uB85D\uC5D0\uC11C \uBD80\uD305 \uB300\uC0C1 USB \uD589\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694."
   }
 
   $recAct = if ($st.PreGuidance) { $st.PreGuidance.RecommendedAction } else { "" }
-  $vUsb  = if ($canUsbReboot -and $recAct -eq "USB_REBOOT" -and -not $canAutoFix) { "Primary" } elseif ($canUsbReboot) { "SoftTeal" } else { "Secondary" }
-  $vAdv  = if ($canStep2Act -and $recAct -eq "ADV_BOOT" -and -not $canAutoFix) { "Primary" } elseif ($canStep2Act -and $snap.MatchedEntries.Count -eq 0 -and $snap.UsbInfo.PhysicalUsbList.Count -gt 0) { "SoftTeal" } else { "Secondary" }
+  $isUnverifiedOnly = ($null -ne $selUsbTag -and $selUsbTag.Kind -eq "PHYSICAL_UNVERIFIED")
+  $vUsb  = if ($canUsbReboot -and -not $isUnverifiedOnly -and $recAct -eq "USB_REBOOT" -and -not $canAutoFix) { "Primary" } elseif ($canUsbReboot) { "SoftTeal" } else { "Secondary" }
+  $vAdv  = if ($canStep2Act -and ($recAct -eq "ADV_BOOT" -or $isUnverifiedOnly) -and -not $canAutoFix) { "Primary" } else { "Secondary" }
   $vBios = if ($canStep2Act -and $recAct -eq "BIOS_SETUP" -and -not $canAutoFix) { "Orange" } else { "Secondary" }
 
   Set-AsanButtonState $ui.BtnUsbReboot $canUsbReboot $usbRebootTip $ui $vUsb
@@ -5730,8 +6137,13 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
     $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uBAA9\uB85D \uD655\uC778"
     $u.LblPillUsb.BackColor = $t.InfoTint; $u.LblPillUsb.ForeColor = $t.AsanLight
    } elseif ($d.UsbBootState -eq "SuspectedDisabled") {
-    $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uBBF8\uB4F1\uB85D"
-    $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
+    if ($snap.UsbInfo -and $snap.UsbInfo.PSObject.Properties["AnyDirectBootUsb"] -and [bool]$snap.UsbInfo.AnyDirectBootUsb) {
+     $u.LblPillUsb.Text = U "USB \uBD80\uD305 BIOS \uD655\uC778"
+     $u.LblPillUsb.BackColor = $t.MetaBarBg; $u.LblPillUsb.ForeColor = $t.InkSecondary
+    } else {
+     $u.LblPillUsb.Text = U "USB \uBD80\uD305 \uBBF8\uB4F1\uB85D"
+     $u.LblPillUsb.BackColor = $t.AsanOrangeTint; $u.LblPillUsb.ForeColor = $t.AsanOrangeText
+    }
    } else {
     $u.LblPillUsb.Text = U "USB \uBD80\uD305 BIOS \uD655\uC778"
     $u.LblPillUsb.BackColor = $t.MetaBarBg; $u.LblPillUsb.ForeColor = $t.InkSecondary
@@ -5765,56 +6177,95 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
     $u.ToolTip.SetToolTip($u.LblPhysSummary, $physTip)
    }
 
-   # 3. Populate Unified USB Selection DataGridView
+   # 3. Populate Unified USB Selection DataGridView (combines NVRAM matches AND Direct-EFI physical USBs so no connected WinPE USB is ever hidden!)
    $u.DgvUsb.Rows.Clear()
    $matched = @($snap.MatchedEntries)
    $firstBootRowIdx = -1
+   $selfPrefRowIdx = -1
+   $coveredDiskNums = @{}
+
    if ($matched.Count -gt 0) {
     for ($i = 0; $i -lt $matched.Count; $i++) {
      $m = $matched[$i]
      $devStr = if ($m.Device) { [string]$m.Device } else { U "UEFI \uD38C\uC6E8\uC5B4" }
+     $ownerDisk = $null
+     foreach ($pd in $physList) {
+      $pdPats = if ($pd.PSObject.Properties["DevicePatterns"] -and $pd.DevicePatterns) {
+       (@($pd.DevicePatterns | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
+      } else { "" }
+      if (($pdPats -and $m.Device -and ([string]$m.Device -match $pdPats)) -or
+          ($m.IsExact -and $pd.Model -and ([string]$m.Description -match [regex]::Escape($pd.Model)))) {
+       $ownerDisk = $pd
+       if ($m.IsExact) { $coveredDiskNums[[int]$pd.DiskNumber] = $true }
+       break
+      }
+     }
+     $isSelfMatch = ($null -ne $ownerDisk -and $ownerDisk.PSObject.Properties["IsSelfHostUsb"] -and [bool]$ownerDisk.IsSelfHostUsb)
+     $kindBadge = if ($isSelfMatch) { U "\uC2E4\uD589 USB" } else { U "\uBD80\uD305 \uB300\uC0C1" }
      $matchLvl = if ($m.IsExact) { U "\uC815\uD655 \uC77C\uCE58" } else { U "\uBC94\uC6A9 \uD56D\uBAA9" }
      $guideTxt = if ($m.IsExact) { U "\uBC14\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4" } else { U "\uD56D\uBAA9 \uC774\uB984\uC744 \uD655\uC778\uD55C \uB4A4 \uC7AC\uBD80\uD305\uD574 \uC8FC\uC138\uC694" }
-     $rIdx = $u.DgvUsb.Rows.Add((U "\uBD80\uD305 \uB300\uC0C1"), $matchLvl, [string]$m.Description, $devStr, $guideTxt)
+     $rIdx = $u.DgvUsb.Rows.Add($kindBadge, $matchLvl, [string]$m.Description, $devStr, $guideTxt)
      $row = $u.DgvUsb.Rows[$rIdx]
-     $row.Tag = [PSCustomObject]@{ Kind = "NVRAM"; Entry = $m }
+     $row.Tag = [PSCustomObject]@{ Kind = "NVRAM"; Entry = $m; Disk = $ownerDisk }
      Set-AsanCellSemanticStyle $row.Cells[0] "OK" $t $f $true
      Set-AsanCellSemanticStyle $row.Cells[1] $(if ($m.IsExact) { "OK" } else { "Warn" }) $t $f $true
      $tip = ([string]$m.MatchTag) + "`r`nGUID: " + $m.Identifier + "`r`n" + (U "\uC7A5\uCE58: ") + $devStr
      foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
      if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
+     if ($isSelfMatch -and $selfPrefRowIdx -lt 0) { $selfPrefRowIdx = $rIdx }
     }
-   } elseif ($physList.Count -gt 0) {
+   }
+
+   if ($physList.Count -gt 0) {
     foreach ($ud in $physList) {
+     if ($coveredDiskNums.ContainsKey([int]$ud.DiskNumber)) { continue }
+     $isSelf = ($null -ne $ud.PSObject.Properties["IsSelfHostUsb"] -and [bool]$ud.IsSelfHostUsb)
      $roTag = if ($ud.IsReadOnly) { U " \u00B7 \uC77D\uAE30 \uC804\uC6A9" } else { "" }
+     $efiPartHint = if ($ud.PSObject.Properties["BestBootPartDisplay"] -and $ud.BestBootPartDisplay -and $ud.IsEfiReady) { (U " \u00B7 EFI ") + $ud.BestBootPartDisplay } else { "" }
      $drvPrefix = if ($ud.PSObject.Properties["DriveSummary"] -and $ud.DriveSummary) { [string]$ud.DriveSummary + (U " \u00B7 ") } else { "" }
-     $devStr = $drvPrefix + $ud.SizeGB + $roTag
+     $devStr = $drvPrefix + $ud.SizeGB + $efiPartHint + $roTag
+     $dispName = if ($ud.PSObject.Properties["DisplayLabel"] -and $ud.DisplayLabel) { [string]$ud.DisplayLabel } else { [string]$ud.Model }
+
      if ($ud.IsEfiReady) {
-      $guideTxt = U "\uBD80\uD305 \uD30C\uC77C \uD655\uC778\uB428 \u00B7 \uACE0\uAE09 \uBD80\uD305\uC5D0\uC11C \uC7A5\uCE58 \uC0AC\uC6A9 \uC120\uD0DD"
-      $rIdx = $u.DgvUsb.Rows.Add((U "\uBD80\uD305 \uB514\uC2A4\uD06C"), (U "\uACE0\uAE09 \uBD80\uD305 \uC900\uBE44"), [string]$ud.Model, $devStr, $guideTxt)
+      $kindBadge = if ($isSelf) { U "\uC2E4\uD589 USB" } else { U "\uBD80\uD305 \uB514\uC2A4\uD06C" }
+      $hasResolvedEfi = ($ud.PSObject.Properties["BestEfiRelPath"] -and [bool]$ud.BestEfiRelPath)
+      $matchBadge = if ($hasResolvedEfi) { U "EFI \uC9C1\uC811 \uBD80\uD305" } else { U "\uC228\uAE40 EFI \uBD80\uD305" }
+      $guideTxt = if ($hasResolvedEfi) {
+       U "EFI \uD655\uC778\uB428 \u00B7 \uBC14\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305 \uAC00\uB2A5"
+      } else {
+       U "\uC228\uAE40 \uBD80\uD305 \uC601\uC5ED \uAC10\uC9C0 \u00B7 1\uD68C\uC131 \uC7AC\uBD80\uD305 \uAC00\uB2A5"
+      }
+      $rIdx = $u.DgvUsb.Rows.Add($kindBadge, $matchBadge, $dispName, $devStr, $guideTxt)
       $row = $u.DgvUsb.Rows[$rIdx]
-      $row.Tag = [PSCustomObject]@{ Kind = "HOTPLUG_READY"; Disk = $ud }
+      $row.Tag = [PSCustomObject]@{ Kind = "DIRECT_EFI_READY"; Disk = $ud }
       Set-AsanCellSemanticStyle $row.Cells[0] "OK" $t $f $true
-      Set-AsanCellSemanticStyle $row.Cells[1] "Info" $t $f $true
+      Set-AsanCellSemanticStyle $row.Cells[1] $(if ($hasResolvedEfi) { "OK" } else { "Info" }) $t $f $true
       if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
+      if ($isSelf -and $selfPrefRowIdx -lt 0) { $selfPrefRowIdx = $rIdx }
      } else {
-      $guideTxt = U "UEFI \uBD80\uD305 \uD30C\uD2F0\uC158\uC774\uB098 WinPE \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4"
-      $rIdx = $u.DgvUsb.Rows.Add((U "\uC77C\uBC18 USB"), (U "\uBD80\uD305 \uD30C\uC77C \uC5C6\uC74C"), [string]$ud.Model, $devStr, $guideTxt)
+      $kindBadge = if ($isSelf) { U "\uC2E4\uD589 USB" } else { U "\uC678\uC7A5 USB" }
+      $guideTxt = U "\uC120\uD0DD \uC2DC \uC228\uAE40 \uD30C\uD2F0\uC158 \uD0D0\uC0C9 \uB610\uB294 \uACE0\uAE09 \uBD80\uD305\uC73C\uB85C \uC5F0\uACB0\uD569\uB2C8\uB2E4"
+      $rIdx = $u.DgvUsb.Rows.Add($kindBadge, (U "\uBD80\uD305 \uC2DC\uB3C4 \uAC00\uB2A5"), $dispName, $devStr, $guideTxt)
       $row = $u.DgvUsb.Rows[$rIdx]
-      $row.Tag = [PSCustomObject]@{ Kind = "PHYSICAL_ONLY"; Disk = $ud }
+      $row.Tag = [PSCustomObject]@{ Kind = "PHYSICAL_UNVERIFIED"; Disk = $ud }
       Set-AsanCellSemanticStyle $row.Cells[1] "Warn" $t $f $true
+      if ($firstBootRowIdx -lt 0) { $firstBootRowIdx = $rIdx }
      }
-     $tip = "Disk " + $ud.DiskNumber + " | " + $ud.Model + "`r`n" + (U "\uD30C\uD2F0\uC158: ") + $(if ($ud.Partitions) { $ud.Partitions } else { "-" })
+     $efiTip = if ($ud.PSObject.Properties["BestEfiRelPath"] -and $ud.BestEfiRelPath) { "`r`nEFI: " + $ud.BestBootPartDisplay + $ud.BestEfiRelPath } else { "" }
+     $tip = "Disk " + $ud.DiskNumber + " | " + $dispName + "`r`n" + (U "\uD30C\uD2F0\uC158: ") + $(if ($ud.Partitions) { $ud.Partitions } else { "-" }) + $efiTip
      foreach ($cell in $row.Cells) { $cell.ToolTipText = $tip }
     }
-   } else {
+   }
+
+   if ($u.DgvUsb.Rows.Count -eq 0) {
     $rIdx = $u.DgvUsb.Rows.Add((U "\uC548\uB0B4"), (U "\uBBF8\uC5F0\uACB0"), (U "\uC5F0\uACB0\uB41C WinPE USB\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4"), "-", (U "USB\uB97C \uC5F0\uACB0\uD55C \uB4A4 USB \uB2E4\uC2DC \uCC3E\uAE30\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694"))
     $row = $u.DgvUsb.Rows[$rIdx]
     $row.Tag = $null
     $row.DefaultCellStyle.ForeColor = $t.InkMuted
    }
    $u.DgvUsb.ClearSelection()
-   if ($firstBootRowIdx -ge 0) { $u.DgvUsb.Rows[$firstBootRowIdx].Selected = $true }
+   $selTargetIdx = if ($selfPrefRowIdx -ge 0) { $selfPrefRowIdx } else { $firstBootRowIdx }
+   if ($selTargetIdx -ge 0) { $u.DgvUsb.Rows[$selTargetIdx].Selected = $true }
 
    # 4. Contextual Guidance Banner & Sync All Buttons
    $guid = Get-PreSidGuidance $st.SysInfo $efiRep $snap.BiosDiag $snap.UsbInfo $snap.MatchedEntries $st.Step1Bypassed
@@ -6113,18 +6564,45 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $btnUsbReboot.Add_Click({
   if ($ui.DgvUsb.SelectedRows.Count -eq 0 -or $null -eq $ui.DgvUsb.SelectedRows[0].Tag) { return }
   $rowTag = $ui.DgvUsb.SelectedRows[0].Tag
-  if ($rowTag.Kind -eq "HOTPLUG_READY") {
+  if ($rowTag.Kind -in @("DIRECT_EFI_READY", "PHYSICAL_UNVERIFIED")) {
    $ud = $rowTag.Disk
-   $hpMsg = (U "\uC120\uD0DD\uD55C \uBD80\uD305 \uB514\uC2A4\uD06C\uAC00 Windows \uC2E4\uD589 \uC911 \uC5F0\uACB0\uB418\uC5B4 Windows \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC744 \uD1B5\uD574 \uBD80\uD305\uD569\uB2C8\uB2E4.`r`n\uD30C\uB780 \uD654\uBA74\uC774 \uB098\uD0C0\uB098\uBA74 \uC7A5\uCE58 \uC0AC\uC6A9\uC744 \uB20C\uB7EC \uD574\uB2F9 USB\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.`r`n`r`n") +
-            (U "\uBD80\uD305 \uB514\uC2A4\uD06C: ") + $ud.Model + "  " + $ud.SizeGB + "`r`n`r`n" +
-            (U "\uC9C0\uAE08 \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?")
-   $drHp = [System.Windows.Forms.MessageBox]::Show($ui.Form, $hpMsg, (U "USB \uACE0\uAE09 \uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
-   if ($drHp -ne [System.Windows.Forms.DialogResult]::Yes) { return }
-   & $ui.AppendLog ((U "\uACE0\uAE09 \uBD80\uD305 \uC7AC\uBD80\uD305 \uC2E4\uD589: ") + $ud.Model)
-   $rbHp = Invoke-SafeRebootCore "/r /o /f /t 0"
-   if ($rbHp.Success) { $ui.Form.Close(); return }
-   $errHp = "shutdown /r /o /f /t 0 ExitCode=" + $rbHp.ExitCode + " " + $rbHp.Output
-   Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uACE0\uAE09 \uBD80\uD305 \uC7AC\uBD80\uD305\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errHp
+   $dispLbl = if ($ud.PSObject.Properties["DisplayLabel"] -and $ud.DisplayLabel) { [string]$ud.DisplayLabel } else { [string]$ud.Model }
+   if ($rowTag.Kind -eq "DIRECT_EFI_READY") {
+    $efiInfo = if ($ud.PSObject.Properties["BestEfiRelPath"] -and $ud.BestEfiRelPath) {
+     $ud.BestBootPartDisplay + $ud.BestEfiRelPath
+    } elseif ($ud.PSObject.Properties["BestBootPartDisplay"] -and $ud.BestBootPartDisplay) {
+     $ud.BestBootPartDisplay
+    } else {
+     "UEFI EFI"
+    }
+    $dMsg = (U "\uC544\uB798 WinPE USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC73C\uB85C 1\uD68C\uC131 \uC7AC\uBD80\uD305\uC744 \uC9C4\uD589\uD560\uAE4C\uC694?`r`n\uC774\uBC88 \uC7AC\uBD80\uD305\uC5D0\uB9CC \uC801\uC6A9\uB418\uBA70 \uB2E4\uC74C \uBD80\uD305\uBD80\uD130\uB294 \uC6D0\uB798 Windows\uB85C \uC2DC\uC791\uB429\uB2C8\uB2E4.`r`n`r`n") +
+            (U "\uBD80\uD305 \uB514\uC2A4\uD06C: ") + $dispLbl + "  " + $ud.SizeGB + "`r`n" +
+            (U "\uBD80\uD305 \uACBD\uB85C: ") + $efiInfo
+   } else {
+    $dMsg = (U "\uC120\uD0DD\uD55C USB\uC5D0\uC11C \uC228\uAE40 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uCC3E\uC544 1\uD68C\uC131 \uC7AC\uBD80\uD305\uC744 \uC2DC\uB3C4\uD560\uAE4C\uC694?`r`n\uBD80\uD305 \uD30C\uC77C\uC774 \uC5C6\uC73C\uBA74 Windows \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC73C\uB85C \uC548\uB0B4\uD569\uB2C8\uB2E4.`r`n`r`n") +
+            (U "\uB300\uC0C1 USB: ") + $dispLbl + "  " + $ud.SizeGB
+   }
+   $drD = [System.Windows.Forms.MessageBox]::Show($ui.Form, $dMsg, (U "USB \uC7AC\uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+   if ($drD -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+   $dSet = Invoke-DirectUsbEfiBootSetup $ud
+   if ($dSet.Success) {
+    & $ui.AppendLog ((U "1\uD68C\uC131 EFI \uC9C1\uC811 \uBD80\uD305 \uB4F1\uB85D \uC644\uB8CC: ") + $dispLbl + "  " + $dSet.Device + $dSet.Path)
+    $rbD = Invoke-SafeRebootCore "/r /f /t 0"
+    if ($rbD.Success) { $ui.Form.Close(); return }
+    $errD = "shutdown /r /f /t 0 ExitCode=" + $rbD.ExitCode + " " + $rbD.Output
+    Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uC7AC\uBD80\uD305 \uBA85\uB839 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errD
+    return
+   }
+   & $ui.AppendLog ((U "EFI \uC9C1\uC811 \uBD80\uD305 \uB4F1\uB85D \uC2E4\uD328: ") + $dSet.Error)
+   $fbDirectMsg = (U "USB\uC758 EFI \uBD80\uD305 \uD56D\uBAA9\uC744 \uC9C1\uC811 \uB4F1\uB85D\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.`r`n\uB300\uC2E0 Windows \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC73C\uB85C \uC774\uB3D9\uD574 \uC7A5\uCE58 \uC0AC\uC6A9 \uBA54\uB274\uC5D0\uC11C USB\uB97C \uC120\uD0DD\uD560\uAE4C\uC694?")
+   $drFbD = [System.Windows.Forms.MessageBox]::Show($ui.Form, $fbDirectMsg, (U "\uACE0\uAE09 \uBD80\uD305 \uC804\uD658 \uC548\uB0B4"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+   if ($drFbD -eq [System.Windows.Forms.DialogResult]::Yes) {
+    $rbHp = Invoke-SafeRebootCore "/r /o /f /t 0"
+    if ($rbHp.Success) { $ui.Form.Close(); return }
+    $errHp = "shutdown /r /o /f /t 0 ExitCode=" + $rbHp.ExitCode + " " + $rbHp.Output
+    Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uACE0\uAE09 \uBD80\uD305 \uC7AC\uBD80\uD305\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errHp
+   }
    return
   }
   if ($rowTag.Kind -ne "NVRAM") { return }
@@ -6143,10 +6621,18 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    $rb = Invoke-SafeRebootCore "/r /f /t 0"
    if ($rb.Success) { $ui.Form.Close(); return }
    $errDet = "shutdown /r /f /t 0 ExitCode=" + $rb.ExitCode + " " + $rb.Output
-   Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uC7AC\uBD80\uD305 \uBA85\uB839 \uC2E4\uD589\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errDet
+   Invoke-GuiErrorReportPrompt $ui (U "\uC7AC\uBD80\uD305 \uC624\uB958") (U "\uC7AC\uBD80\uD305 \uBA85\uB839 \uC2E4\uD328\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.") $errDet
   } else {
    $bcdErr = ($setRes.Lines -join " ")
    & $ui.AppendLog ((U "NVRAM \uBD80\uD305 \uC21C\uC11C \uBCC0\uACBD \uC2E4\uD328: ") + $bcdErr)
+   if ($rowTag.Disk -and $rowTag.Disk.IsEfiReady) {
+    $healSet = Invoke-DirectUsbEfiBootSetup $rowTag.Disk
+    if ($healSet.Success) {
+     & $ui.AppendLog ((U "EFI \uC9C1\uC811 \uBD80\uD305 \uB300\uCCB4 \uB4F1\uB85D \uC644\uB8CC: ") + $healSet.Device + $healSet.Path)
+     $rbHeal = Invoke-SafeRebootCore "/r /f /t 0"
+     if ($rbHeal.Success) { $ui.Form.Close(); return }
+    }
+   }
    $fbMsg = (U "NVRAM \uBD80\uD305 \uC21C\uC11C\uB97C \uBCC0\uACBD\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.`r`n\uB300\uC2E0 Windows \uACE0\uAE09 \uBD80\uD305 \uD654\uBA74\uC73C\uB85C \uC774\uB3D9\uD574 \uC7A5\uCE58 \uC0AC\uC6A9 \uBA54\uB274\uC5D0\uC11C USB\uB97C \uC120\uD0DD\uD560\uAE4C\uC694?")
    $drFb = [System.Windows.Forms.MessageBox]::Show($ui.Form, $fbMsg, (U "\uACE0\uAE09 \uBD80\uD305 \uC804\uD658 \uC548\uB0B4"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
    if ($drFb -eq [System.Windows.Forms.DialogResult]::Yes) {

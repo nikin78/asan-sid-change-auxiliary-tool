@@ -774,7 +774,7 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
    ($matchesConnUsb -or ($desc -match "(?i)\bUSB\b|Removable|External|Flash|SanDisk|Ventoy|Phoenix|RTL9210|JMicron|HSEN|FireCuda|ADATA|Kingston|JetFlash|PMAP|UDisk"))
   }
  )
- $nvramHasStrictUsbEntry = ($nvramUsbEntries.Count -gt 0)
+ $nvramHasStrictUsbEntry = ($nvramUsbEntries.Count -gt 0 -or $matchedNvramCount -gt 0)
  $effectiveMatchCount = if ($matchedNvramCount -ge 0) { $matchedNvramCount } else { $nvramUsbEntries.Count }
 
  $bootModeDiag = Get-BootModeDiagnostics
@@ -958,7 +958,10 @@ function Format-BiosCrossCheckReport($sysInfo, $diag, $usbInfo, [array]$matchedE
  if ($usbInfo -and $usbInfo.PhysicalUsbList.Count -gt 0) {
   foreach ($u in $usbInfo.PhysicalUsbList) {
    $ro = if ($u.IsReadOnly) { " [ReadOnly]" } else { "" }
-   [void]$sb.AppendLine((" * Disk " + $u.DiskNumber + ": " + $u.Model + " [" + $u.SizeGB + "]" + $ro + " | " + $u.Partitions + " | Ready=" + $u.IsEfiReady))
+   $sh = if ($u.PSObject.Properties["IsSelfHostUsb"] -and $u.IsSelfHostUsb) { " [SelfHost]" } else { "" }
+   $dEfi = if ($u.PSObject.Properties["BestEfiRelPath"] -and $u.BestEfiRelPath) { " | DirectEFI=" + $u.BestBootPartDisplay + $u.BestEfiRelPath } else { "" }
+   $lbl = if ($u.PSObject.Properties["DisplayLabel"] -and $u.DisplayLabel) { $u.DisplayLabel } else { $u.Model }
+   [void]$sb.AppendLine((" * Disk " + $u.DiskNumber + ": " + $lbl + " [" + $u.SizeGB + "]" + $sh + $ro + " | " + $u.Partitions + " | Ready=" + $u.IsEfiReady + $dEfi))
   }
  } else {
   [void]$sb.AppendLine(" * (No physical USB disk connected)")
@@ -1061,7 +1064,42 @@ function Get-PreSidGuidance($sysInfo, $efiRep, $diag, $usbInfo, [array]$matchedE
   }
  }
 
- # Physical USB plugged in, 0 NVRAM matches
+ # Physical USB plugged in, 0 NVRAM matches -> check if Direct UEFI EFI boot is available on the USB!
+ $hasDirectBootProp = ($null -ne $usbInfo.PSObject.Properties["AnyDirectBootUsb"] -and [bool]$usbInfo.AnyDirectBootUsb)
+ if ($hasDirectBootProp) {
+  $hasVentoyDirect = ($null -ne $usbInfo.PSObject.Properties["IsVentoy"] -and [bool]$usbInfo.IsVentoy)
+  if ($diag.SecureBootState -eq "On" -and $hasVentoyDirect) {
+   return [PSCustomObject]@{
+    Level = "Warn"
+    Title = U "Ventoy \uBD80\uD305 \uB514\uC2A4\uD06C\uB294 \uBCF4\uC548 \uBD80\uD305 \uD574\uC81C\uAC00 \uD544\uC694\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4"
+    Message = U "\uBCF4\uC548 \uBD80\uD305\uC774 \uCF1C\uC838 \uC788\uC5B4 Ventoy \uBD80\uD305\uC774 \uCC28\uB2E8\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4. BIOS \uC124\uC815 \uC5F4\uAE30\uB85C \uBCF4\uC548 \uBD80\uD305\uC744 \uB044\uAC70\uB098 \uC544\uB798 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."
+    RecommendedAction = "USB_REBOOT"
+   }
+  }
+  if ($diag.FastBootWarn) {
+   return [PSCustomObject]@{
+    Level = "Warn"
+    Title = U "WinPE USB \uBD80\uD305 \uC900\uBE44 \uC644\uB8CC \u00B7 \uBE60\uB978 \uBD80\uD305 \uCF1C\uC9D0"
+    Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uB20C\uB7EC \uBC14\uB85C \uBD80\uD305\uD558\uACE0, \uB9CC\uC57D \uAC74\uB108\uB6F0\uBA74 BIOS\uC5D0\uC11C \uBE60\uB978 \uBD80\uD305\uC744 \uAEBC \uC8FC\uC138\uC694."
+    RecommendedAction = "USB_REBOOT"
+   }
+  }
+  if ($diag.SecureBootState -in @("On","Conflict")) {
+   return [PSCustomObject]@{
+    Level = "Warn"
+    Title = U "WinPE USB \uBD80\uD305 \uC900\uBE44 \uC644\uB8CC \u00B7 \uBCF4\uC548 \uBD80\uD305 \uCF1C\uC9D0"
+    Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uD45C\uC900 WinPE\uB294 \uBC14\uB85C \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC218 \uC788\uC73C\uBA70, \uBE44\uC11C\uBA85 PE \uCC28\uB2E8 \uC2DC\uC5D0\uB9CC \uBCF4\uC548 \uBD80\uD305\uC744 \uAEBC \uC8FC\uC138\uC694."
+    RecommendedAction = "USB_REBOOT"
+   }
+  }
+  return [PSCustomObject]@{
+   Level = "OK"
+   Title = U "WinPE USB\uB85C \uC7AC\uBD80\uD305\uD560 \uC900\uBE44\uAC00 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4"
+   Message = U "USB\uC758 EFI \uBD80\uD305 \uC601\uC5ED\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. 2\uB2E8\uACC4 \uBAA9\uB85D\uC5D0\uC11C USB\uB97C \uD655\uC778\uD55C \uB4A4 \uC120\uD0DD\uD55C USB\uB85C \uC7AC\uBD80\uD305\uC744 \uB20C\uB7EC \uC8FC\uC138\uC694."
+   RecommendedAction = "USB_REBOOT"
+  }
+ }
+
  $hasAnyEfiProp = ($null -ne $usbInfo.PSObject.Properties["AnyEfiReadyUsb"])
  $efiReadyUsb = if ($hasAnyEfiProp) { [bool]$usbInfo.AnyEfiReadyUsb } else { $true }
  if (-not $efiReadyUsb) {
@@ -1126,12 +1164,12 @@ function Show-BiosStatusDashboard($diag, [bool]$step1Bypassed) {
 }
 
 # Gate 1: Secure Boot / Confirmed Disabled USB Boot (Console TUI)
-function Invoke-Gate1Check($diag, [array]$bcdOutput, [int]$matchedCount = 0, [bool]$isVentoy = $false) {
+function Invoke-Gate1Check($diag, [array]$bcdOutput, [int]$matchedCount = 0, [bool]$isVentoy = $false, [bool]$anyDirectBoot = $false) {
  if (-not ($diag.SecureBoot -or $diag.IsConfirmedBlocked)) {
   return "CONTINUE"
  }
- # Standard Microsoft-signed WinPE can boot with Secure Boot ON when USB is already matched in NVRAM (unless Ventoy)
- if (-not $diag.IsConfirmedBlocked -and $diag.SecureBootState -eq "On" -and $matchedCount -gt 0 -and -not $isVentoy) {
+ # Standard Microsoft-signed WinPE can boot with Secure Boot ON when USB is matched in NVRAM or Direct-EFI ready (unless Ventoy)
+ if (-not $diag.IsConfirmedBlocked -and $diag.SecureBootState -eq "On" -and ($matchedCount -gt 0 -or $anyDirectBoot) -and -not $isVentoy) {
   Write-Host (U "`n [\uC548\uB0B4] Secure Boot\uAC00 \uCF1C\uC838 \uC788\uC73C\uB098 \uD45C\uC900 \uC11C\uBA85 WinPE\uB294 \uBC14\uB85C \uBD80\uD305\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4 (\uBE44\uC11C\uBA85 USB \uCC28\uB2E8 \uC2DC [B] BIOS \uC124\uC815 \uC0AC\uC6A9).") -ForegroundColor Yellow
   return "CONTINUE"
  }

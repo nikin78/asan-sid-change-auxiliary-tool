@@ -274,6 +274,8 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
  $usbDisks = @()
  $internalDisks = @()
  $pnpMap = Get-UsbPnpDiskLookup
+ $selfLoc = if (-not $isWinPE -and (Get-Command Get-SelfHostLocationInfo -ErrorAction SilentlyContinue)) { Get-SelfHostLocationInfo } else { [PSCustomObject]@{ DiskNumber = -1; DriveLetter = "" } }
+ $selfDiskNum = [int]$selfLoc.DiskNumber
 
  $sysDiskNum = -1
  if (-not $isWinPE) {
@@ -287,18 +289,20 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
  }
 
  if (Test-StorageCmdletsAvailable) {
-  $allDisks = @(Get-Disk | Where-Object { ([string]$_.OperationalStatus) -match "\bOnline\b" })
+  $allDisks = @(Get-Disk | Where-Object { ([string]$_.OperationalStatus) -match "\bOnline\b" -and [int64]$_.Size -gt 0 })
   foreach ($d in ($allDisks | Sort-Object Number)) {
    $dNum = [int]$d.Number
    $busStr = [string]$d.BusType
    $isVirtualFileDisk = ($busStr -eq "File Backed Virtual")
    $isProtectedOsDisk = (-not $isWinPE) -and ([bool]$d.IsBoot -or [bool]$d.IsSystem -or ($dNum -eq $sysDiskNum))
+   $isSelfDisk = (-not $isWinPE) -and ($selfDiskNum -ge 0) -and ($dNum -eq $selfDiskNum) -and (-not $isProtectedOsDisk)
    $pnpInfo = if ($pnpMap.ContainsKey($dNum)) { $pnpMap[$dNum] } else { $null }
    if ($pnpInfo) {
     try { Add-Member -InputObject $d -NotePropertyName "PnpTokens" -NotePropertyValue $pnpInfo.PnpTokens -Force } catch {}
     try { Add-Member -InputObject $d -NotePropertyName "PnpDeviceId" -NotePropertyValue $pnpInfo.PnpDeviceId -Force } catch {}
    }
    try { Add-Member -InputObject $d -NotePropertyName "IsVirtualDisk" -NotePropertyValue $isVirtualFileDisk -Force } catch {}
+   try { Add-Member -InputObject $d -NotePropertyName "IsSelfHostUsb" -NotePropertyValue $isSelfDisk -Force } catch {}
 
    $isInternalFixedBus = ($busStr -in @('SATA','ATA','RAID','Spaces')) -and
                          (-not ($null -ne $pnpInfo -and ($pnpInfo.MatchedUsbContainer -or $pnpInfo.IsBridgeModel))) -and
@@ -311,20 +315,23 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
     ($null -ne $pnpInfo -and [bool]$pnpInfo.IsExternalUsb)
    )
 
-   # If a non-OS enclosure still masked its PnP bus, check if its mounted partitions carry explicit WinPE/Ventoy USB markers (without a full Windows OS)
-   if (-not $isDirectUsb -and -not $isWinPE -and -not $isProtectedOsDisk -and -not $isVirtualFileDisk -and -not $isInternalFixedBus) {
-    try {
-     $dParts = @(Get-DiskPartitionsNormalized $dNum $false)
-     if ($dParts.Count -gt 0 -and (Test-SiblingPartitionsForWinPE $dParts)) {
-      $hasInstalledOs = $false
-      foreach ($dp in $dParts) {
-       if ($dp.DriveLetter -and (Test-FsEntryExists "$($dp.DriveLetter):\Windows\System32\ntoskrnl.exe")) {
-        $hasInstalledOs = $true; break
+   # If a non-OS disk (especially the disk hosting SELF_PATH!) carries WinPE/Ventoy/Rufus markers without an installed full Windows OS, classify it as external WinPE USB!
+   if (-not $isDirectUsb -and -not $isWinPE -and -not $isProtectedOsDisk -and -not $isVirtualFileDisk) {
+    if (-not $isInternalFixedBus -or $isSelfDisk) {
+     try {
+      $dParts = @(Get-DiskPartitionsNormalized $dNum $false)
+      if ($dParts.Count -gt 0 -and (Test-SiblingPartitionsForWinPE $dParts)) {
+       $hasInstalledOs = $false
+       foreach ($dp in $dParts) {
+        $probeRoot = if ($dp.DriveLetter) { "$($dp.DriveLetter):\" } elseif ($dp.VolumePath) { $dp.VolumePath } else { "" }
+        if ($probeRoot -and (Test-FsEntryExists ($probeRoot.TrimEnd('\') + "\Windows\System32\ntoskrnl.exe"))) {
+         $hasInstalledOs = $true; break
+        }
        }
+       if (-not $hasInstalledOs) { $isDirectUsb = $true }
       }
-      if (-not $hasInstalledOs) { $isDirectUsb = $true }
-     }
-    } catch {}
+     } catch {}
+    }
    }
 
    if ($isDirectUsb) { $usbDisks += $d } else { $internalDisks += $d }
@@ -492,9 +499,9 @@ function Test-PartitionMediaGuard([string]$rootPath) {
  if ((Test-FsEntryExists "$root\sources\boot.wim") -or (Test-FsEntryExists "$root\sources\install.wim") -or (Test-FsEntryExists "$root\sources\install.esd")) {
   $hasWinPE = $true
   $reason = "sources\boot.wim/install"
- } elseif ((Test-FsEntryExists "$root\ventoy\ventoy.json") -or (Test-FsEntryExists "$root\PhoenixPE.cfg") -or (Test-FsEntryExists "$root\HBCD_PE.ini")) {
+ } elseif ((Test-FsEntryExists "$root\ventoy\ventoy.json") -or (Test-FsEntryExists "$root\ventoy.dat") -or (Test-FsEntryExists "$root\EFI\Rufus") -or (Test-FsEntryExists "$root\EFI\Ventoy") -or (Test-FsEntryExists "$root\PhoenixPE.cfg") -or (Test-FsEntryExists "$root\HBCD_PE.ini")) {
   $hasWinPE = $true
-  $reason = "WinPE/Ventoy marker"
+  $reason = "WinPE/Ventoy/Rufus marker"
  } elseif ((Test-FsEntryExists "$root\boot\boot.sdi") -and (Test-FsEntryExists "$root\sources")) {
   $hasWinPE = $true
   $reason = "WinPE boot.sdi"
@@ -693,20 +700,36 @@ function Get-PartitionBootloaderProbeState([int]$diskNum, $partObj, [string]$boo
  })
 }
 
-# Check mounted sibling partitions on a disk for WinPE/installer media markers
+# Check sibling partitions (mounted drive letters AND unmounted \\?\Volume{GUID}\ paths!) on a disk for WinPE/installer media markers
 function Test-SiblingPartitionsForWinPE([array]$parts) {
  foreach ($p in $parts) {
-  if ($p.DriveLetter -and (Test-Path "$($p.DriveLetter):\")) {
-   $drv = "$($p.DriveLetter):"
-   if ((Test-Path "$drv\sources\boot.wim") -or (Test-Path "$drv\sources\install.wim") -or (Test-Path "$drv\sources\install.esd") -or (Test-Path "$drv\ventoy\ventoy.json") -or (Test-Path "$drv\PhoenixPE.cfg") -or (Test-Path "$drv\PhoenixPE.ini") -or (Test-Path "$drv\HBCD_PE.ini") -or ((Test-Path "$drv\boot\boot.sdi") -and (Test-Path "$drv\sources")) -or ((Test-Path "$drv\bootmgr.efi") -and (Test-Path "$drv\sources"))) {
-    return $true
-   }
+  $rootsToCheck = New-Object System.Collections.ArrayList
+  if ($p.DriveLetter -and (Test-FsEntryExists "$($p.DriveLetter):\")) {
+   [void]$rootsToCheck.Add("$($p.DriveLetter):")
    try {
     $di = New-Object System.IO.DriveInfo ($p.DriveLetter)
-    if ($di.IsReady -and $di.VolumeLabel -match "^(?i)(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE|WINPE|HBCD_PE|ESD-USB|ESD-ISO)$") {
+    if ($di.IsReady -and $di.VolumeLabel -match "^(?i)(VTOYEFI|VENTOY|UEFI_NTFS|PHOENIXPE.*|WINPE.*|HBCD_PE|ESD-USB|ESD-ISO)$") {
      return $true
     }
    } catch {}
+  }
+  if ($p.PSObject.Properties["VolumePath"] -and $p.VolumePath -and (Test-FsEntryExists $p.VolumePath)) {
+   [void]$rootsToCheck.Add($p.VolumePath.TrimEnd('\'))
+  }
+  foreach ($rt in $rootsToCheck) {
+   if ((Test-FsEntryExists "$rt\sources\boot.wim") -or
+       (Test-FsEntryExists "$rt\sources\install.wim") -or
+       (Test-FsEntryExists "$rt\sources\install.esd") -or
+       (Test-FsEntryExists "$rt\ventoy\ventoy.json") -or
+       (Test-FsEntryExists "$rt\ventoy.dat") -or
+       (Test-FsEntryExists "$rt\EFI\Rufus") -or
+       (Test-FsEntryExists "$rt\PhoenixPE.cfg") -or
+       (Test-FsEntryExists "$rt\PhoenixPE.ini") -or
+       (Test-FsEntryExists "$rt\HBCD_PE.ini") -or
+       ((Test-FsEntryExists "$rt\boot\boot.sdi") -and (Test-FsEntryExists "$rt\sources")) -or
+       ((Test-FsEntryExists "$rt\bootmgr.efi") -and (Test-FsEntryExists "$rt\sources"))) {
+    return $true
+   }
   }
  }
  return $false

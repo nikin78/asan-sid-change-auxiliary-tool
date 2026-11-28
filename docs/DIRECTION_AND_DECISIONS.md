@@ -1,7 +1,7 @@
 # 방향 전환 및 결정 사항 기록 (SID 변경 사전·사후 보조 툴)
 
-> 기록일: 2026-11-25 (최근 갱신: 2026-11-28)
-> 상태: **`v2.3.1` 완료 — 현장 기종 인벤토리(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`), UASP 외장 SSD 및 내장 핫플러그 SATA 분리, `\\?\Volume{GUID}\` 무마운트 점검, 유령 NVRAM·USB 랜카드 오탐 차단, 4중 신호 BIOS 교차 검증 및 사용자 친화 `README.md` 개편 완료.**
+> 기록일: 2026-11-25 (최근 갱신: 2026-11-29)
+> 상태: **`v2.4.0` 완료 — 다중 파티션(`(EFI) + (부팅파일) + (일반 내장 공간)`) `PhoenixPE`/`DISM++`/`Rufus` WinPE USB 완벽 인식, 자체 실행(`실행 USB`) 자동 식별 및 Hot-Plug 1회성 UEFI EFI 직접 부팅(`Invoke-DirectUsbEfiBootSetup`), 병원 기종 인벤토리(`S4~S9`, `H0~H8`, `D1/D8`) 및 4중 신호 BIOS 교차 검증 완료.**
 > 인수인계서: [HANDOVER.md](../HANDOVER.md) | 변경 이력: [CHANGELOG.md](../CHANGELOG.md)
 
 ---

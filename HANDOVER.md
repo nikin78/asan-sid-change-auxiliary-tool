@@ -1,14 +1,25 @@
 # [인수인계서] SID 변경 사전·사후 보조 툴 (`SID_Change_Aux_Tool.bat`)
 
 > [!IMPORTANT]
-> **현재 버전: `v2.3.1` (2026-11-28 작업 기준 — `v2.3.0` 전체 재귀 코드 리뷰·결함 수정, `README.md` 현장 친화 개편 및 GitHub Release 최신화 완료):**
-> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **병원 전체 PC 인벤토리(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 세대별 프로필, UASP 외장 NVMe/SSD 인클로저 PnP `ContainerID` 분류(내장 AHCI 핫플러그 SATA 오분류 방지 포함), 무파일 인메모리 `QueryDosDeviceW` 및 `\\?\Volume{GUID}\` 무마운트 부트 파티션 점검, 유령(`unknown`) NVRAM 및 USB 랜카드 오탐 차단, HP/Dell/Lenovo·4중 신호 Secure Boot 교차 검증, 도메인 PC 로컬 SID 즉시 조회 및 188개 자동/레이아웃 테스트**까지 완료했습니다.
+> **현재 버전: `v2.4.0` (2026-11-29 작업 기준 — 다중 파티션 `PhoenixPE`/`DISM++`/`Rufus` WinPE USB 인식 전면 개편, 자체 실행 `(일반 내장 공간)` USB 자동 식별 및 1회성 UEFI EFI 직접 부팅 등록 완료):**
+> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **다중 파티션(`(EFI) + (부팅파일) + (일반 내장 공간)`) WinPE USB 완벽 인식 및 Hot-Plug 상태 즉시 1회성 EFI 직접 부팅(`Invoke-DirectUsbEfiBootSetup`), 자체 실행 USB(`IsSelfHostUsb`) 자동 우선 선택, 병원 전체 PC 인벤토리(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 세대별 프로필, UASP 외장 SSD PnP 분류, 4중 신호 Secure Boot 교차 검증 및 200개 자동/레이아웃 테스트**까지 완료했습니다.
 > 사용자 안내서는 [README.md](README.md), 변경 이력은 [CHANGELOG.md](CHANGELOG.md), 상세 의사결정 배경은 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
-> **다음에 해야 할 일:** 개선된 `v2.3.1` 빌드로 **5단계 실장비 재검증(Samsung `S8/S9`, HP `H0/H1/H2/H6/H8`, Dell `D1/D8`, 실제 WinPE, 공유 프린터)** 후 최종 확정.
+> **다음에 해야 할 일:** 개선된 `v2.4.0` 빌드로 **5단계 실장비 재검증(다중 파티션 PhoenixPE/DISM++ USB, Samsung `S8/S9`, HP `H0/H1/H2/H6/H8`, Dell `D1/D8`, 공유 프린터)** 후 최종 확정.
 
 ---
 
-## 0. 최근 작업 세션 인수인계 요약 (2026-11-28 `v2.3.1` 재귀 코드 리뷰 및 안정화)
+## 0. 최근 작업 세션 인수인계 요약 (2026-11-29 `v2.4.0` 다중 파티션 WinPE USB 인식 및 직접 부팅 개편)
+
+### 2026-11-29 완료한 작업 (`v2.3.1` → `v2.4.0` — PhoenixPE / DISM++ / 다중 파티션 자체 실행 USB 미인식·부팅 불가 근본 해결)
+1. **다중 파티션 WinPE 부팅 디스크(`PhoenixPE Builder`, `DISM++`, `Rufus UEFI:NTFS`, `Bootice`) 미인식 원인 전수 해결 (`modules/01`, `02`, `04`):**
+   * `Get-PhysicalUsbInfo`에서 `DISM++`/`DiskPart`/`Bootice`가 숨김 USB EFI·WinPE 파티션에 부여하는 GPT 복구 GUID(`{de94bba4-06d1-4d40-a16a-bfd50179d6ac}`)를 건너뛰던 치명 버그를 제거하고, 숨김 MBR 타입(`0x12` EISA, `0x17` 숨김 NTFS, `0x27` WinRE) 및 읽기 전용 512바이트 VBR 시그니처 판별(`Get-RawPartitionFsHint`)을 추가.
+   * `Find-BestEfiBinaryOnRoot`로 표준 `BOOTX64.EFI`, `bootmgfw.efi`, `grubx64.efi`, `bootmgr.efi`+`BCD`, `\EFI\*\*.efi` 커스텀 PE 로더를 탐색하고, 전용 `FAT12/16/32` EFI 파티션(예: `UEFI_NTFS`, Score 115)을 `NTFS`/`exFAT`(Score 75)보다 우선 선택하도록 점수화(`exFAT` 단독 일반 파티션 오탐 방지).
+   * `Find-MatchedUsbNvramEntries`에서 `DISM++`/`bcdboot`로 생성되어 이름이 `"Windows Boot Manager"`인 USB NVRAM 항목도 파티션 경로(`$matchesUsbDev`)가 USB와 일치할 때 Tier 1로 정상 매칭되도록 수정(내장 OS `{bootmgr}` 및 내장 파티션은 계속 차단).
+2. **`(EFI) + (부팅파일) + (일반 내장 공간)` 자체 실행 USB 인지 (`Get-SelfHostLocationInfo`):**
+   * 일반 내장 공간 파티션에 둔 `SID_Change_Aux_Tool.bat`을 직접 실행할 때 `SELF_PATH`가 위치한 물리 디스크를 `IsSelfHostUsb = $true`(`실행 USB`)로 식별해 내장 디스크 오분류를 막고 USB 목록 최상단에 자동 선택, `모델명 (WinPE 볼륨 라벨)` 표시 지원.
+3. **Hot-Plug(NVRAM 미등록) 상태 즉시 1회성 UEFI EFI 직접 부팅 (`Invoke-DirectUsbEfiBootSetup`, `modules/03`, `04`, `06`):**
+   * Windows 실행 중 꽂아 NVRAM 목록에 아직 없는 WinPE USB라도 `bcdedit /create ... /application firmware` + `device` + `path` + `bootsequence`로 1회성 `BootNext` 부팅 항목을 직접 등록해 `선택한 USB로 재부팅` 한 번으로 바로 WinPE로 진입(USB 매체 쓰기 0건, 실패 시 고급 부팅 폴백).
+   * `RefreshPreSid`에서 기존 NVRAM 매칭 유무와 무관하게 연결된 모든 물리 부팅 USB를 통합 표에 함께 노출하도록 개선.
 
 ### 2026-11-28 완료한 작업 (`v2.3.0` → `v2.3.1` — 전 모듈 재귀 코드 리뷰, 엣지 케이스 수정, 사용자용 `README.md` 개편, GitHub Release 배포)
 1. **내장 AHCI 핫플러그 디스크 오분류 차단 및 무마운트 볼륨 점검 (`modules/02_Bootloader_Conflict_Module.ps1`):**

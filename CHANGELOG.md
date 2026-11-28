@@ -9,6 +9,23 @@
 
 ---
 
+## [v2.4.0] - 2026-11-29
+
+### 추가 및 대폭 개선 (Added / Overhauled)
+* **다중 파티션 WinPE 부팅 디스크(`PhoenixPE Builder`, `DISM++`, `Rufus UEFI:NTFS`, `Bootice`, `Ventoy`) 인식 엔진 전면 개편 (`modules/01`, `02`, `04`):**
+  * **GPT 복구 GUID(`{de94bba4-06d1-4d40-a16a-bfd50179d6ac}`) 스킵 버그 제거:** `DISM++`, `DiskPart`, `Bootice` 등이 USB의 숨김 EFI·WinPE 파티션에 부여하는 복구 GUID 파티션을 통째로 건너뛰어 `(일반 내장 공간)`만 남고 부팅 디스크 미인식으로 빠지던 치명 결함을 해결.
+  * **숨김 MBR 파티션 타입 확장 및 무마운트 VBR 파일시스템 판별 (`Get-RawPartitionFsHint`):** `Bootice` EISA 숨김 EFI(`0x12`), 숨김 NTFS(`0x17`), WinRE(`0x27`)를 추가하고, `Get-Volume`이 `$null`을 반환하는 숨김 파티션도 디스크 오프셋 읽기 전용 512바이트 VBR 시그니처(`FAT12/16/32`, `NTFS`, `exFAT`)로 정확히 식별.
+  * **정밀 EFI 부트로더 탐색 및 우선순위 점수화 (`Find-BestEfiBinaryOnRoot`):** `\EFI\BOOT\BOOTX64.EFI`, `\EFI\Microsoft\Boot\bootmgfw.efi`, `\EFI\BOOT\grubx64.efi`, `\bootmgr.efi`+`BCD`, 2단계 `\EFI\*\*.efi` 커스텀 로더까지 전수 탐색하되(`memtest.efi`·`Rufus` 드라이버 제외), 전용 `FAT` EFI 파티션(예: `UEFI_NTFS`)을 `NTFS`/`exFAT`보다 우선 선택하도록 점수화(`exFAT` 데이터 파티션 단독 오탐 방지).
+  * **`DISM++`/`bcdboot` 계열 `"Windows Boot Manager"` USB NVRAM 항목 매칭 허용 (`Find-MatchedUsbNvramEntries`):** 파티션 경로(`device`)가 내장 디스크가 아닌 연결된 USB 파티션과 정확히 일치할 때는 설명이 `"Windows Boot Manager"`라도 제외하지 않고 1단계(Tier 1) 정확 일치로 매칭.
+* **자체 실행(`(EFI) + (부팅파일) + (일반 내장 공간)` 구조에서 실행) USB 자동 인지 (`Get-SelfHostLocationInfo`):**
+  * 다중 파티션 USB의 일반 저장 공간 파티션에 `SID_Change_Aux_Tool.bat`을 넣어 실행할 때 자기 자신의 물리 디스크를 `실행 USB`(`IsSelfHostUsb`)로 최우선 정렬·자동 선택하고, 고정형(`Fixed`)으로 잡히는 외장 SSD/USB도 내장 디스크로 오분류되지 않도록 보호.
+  * 목록에 `모델명 (WinPE 볼륨 라벨)`과 확인된 EFI 파티션 문자를 함께 표시해 직관성 향상.
+* **NVRAM 미등록(Hot-Plug) WinPE USB 1회성 직접 EFI 부팅 등록 (`Invoke-DirectUsbEfiBootSetup`, `modules/03`, `04`, `06`):**
+  * Windows가 켜진 상태에서 꽂아 메인보드 NVRAM에 아직 올라오지 않은 WinPE USB라도, 확인된 EFI 파티션과 `.efi` 경로를 이용해 임시 펌웨어 부팅 항목(`bcdedit /create ... /application firmware` + `bootsequence`)을 1회성(`BootNext`)으로 직접 등록하고 즉시 해당 USB로 재부팅(USB 원본 쓰기 0건 유지, 실패 시 고급 부팅 자동 폴백).
+  * 단일 통합 USB 표(`RefreshPreSid`)에서 일부 NVRAM 항목 존재 시 다른 물리 USB가 숨겨지던 `if/elseif` 분기를 통합해 연결된 모든 부팅 USB가 누락 없이 표시되도록 개선.
+
+---
+
 ## [v2.3.1] - 2026-11-28
 
 ### 버그 수정 및 안정화 (Fixed / Hardened)

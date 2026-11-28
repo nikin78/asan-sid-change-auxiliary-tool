@@ -39,7 +39,7 @@ $script:BuildCommit = "__BUILD_COMMIT__"
 $gptEfiGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
 $gptRecoveryGuid = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"
 $gptMsrGuid = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
-$mbrEfiFatTypes = @(1, 4, 6, 11, 12, 14, 17, 20, 22, 27, 28, 30, 239)
+$mbrEfiFatTypes = @(1, 4, 6, 11, 12, 14, 17, 18, 20, 22, 23, 27, 28, 30, 39, 239)
 $script:DosDevQueryType = $null
 $script:DosDevInitAttempted = $false
 
@@ -208,7 +208,37 @@ function Invoke-SafeReboot([string]$shutdownArgs, [string]$targetLabel = "") {
  return $false
 }
 
-# Detect execution source label (Local / Read-Only USB / Shared Folder)
+# Resolve drive letter and physical disk number hosting SELF_PATH (critical when running from data partition of a multi-partition WinPE USB!)
+function Get-SelfHostLocationInfo {
+ $p = [string]$env:SELF_PATH
+ $drvLtr = ""
+ $diskNum = -1
+ $busType = ""
+ if ($p -and (-not $p.StartsWith("\\")) -and ($env:SID_TOOL_STAGED -ne "1")) {
+  try {
+   $rt = [System.IO.Path]::GetPathRoot($p)
+   if ($rt -and $rt -match "^([A-Za-z]):") {
+    $drvLtr = $matches[1].ToUpper()
+    if (Test-StorageCmdletsAvailable) {
+     $sp = Get-Partition -DriveLetter $drvLtr -ErrorAction SilentlyContinue | Select-Object -First 1
+     if ($sp -and $null -ne $sp.DiskNumber) {
+      $diskNum = [int]$sp.DiskNumber
+      $sd = Get-Disk -Number $diskNum -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($sd) { $busType = [string]$sd.BusType }
+     }
+    }
+   }
+  } catch {}
+ }
+ return [PSCustomObject]@{
+  SelfPath = $p
+  DriveLetter = $drvLtr
+  DiskNumber = $diskNum
+  BusType = $busType
+ }
+}
+
+# Detect execution source label (Local / External or Multi-Partition USB / Shared Folder)
 function Get-ExecutionSourceInfo {
  $p = [string]$env:SELF_PATH
  if ($env:SID_TOOL_STAGED -eq "1" -or ($p -and $p.StartsWith("\\"))) {
@@ -229,7 +259,16 @@ function Get-ExecutionSourceInfo {
       Label = (U "\uB124\uD2B8\uC6CC\uD06C \uC2E4\uD589")
       Detail = (U "\uB124\uD2B8\uC6CC\uD06C \uB4DC\uB77C\uC774\uBE0C\uC5D0\uC11C \uBA54\uBAA8\uB9AC\uB85C \uB85C\uB4DC\uB418\uC5C8\uC73C\uBA70 \uC6D0\uBCF8 \uD30C\uC77C\uC740 \uBCC0\uACBD\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.")
      }
-    } elseif ($di.DriveType -eq "Removable" -or $di.DriveType -eq "CDRom") {
+    }
+    $selfLoc = Get-SelfHostLocationInfo
+    $isUsbBus = ($selfLoc.BusType -in @("USB", "SD", "MMC", "1394"))
+    if (-not $isUsbBus -and $selfLoc.DiskNumber -ge 0 -and (Get-Command Get-UsbPnpDiskLookup -ErrorAction SilentlyContinue)) {
+     try {
+      $pm = Get-UsbPnpDiskLookup
+      if ($pm.ContainsKey($selfLoc.DiskNumber) -and [bool]$pm[$selfLoc.DiskNumber].IsExternalUsb) { $isUsbBus = $true }
+     } catch {}
+    }
+    if ($di.DriveType -eq "Removable" -or $di.DriveType -eq "CDRom" -or $isUsbBus) {
      return [PSCustomObject]@{
       Mode = "USB"
       Label = (U "\uC678\uC7A5 USB \uC2E4\uD589")

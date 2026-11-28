@@ -817,6 +817,106 @@ Assert-True ($maskAdv -notmatch "My Secret 123|tok_999|Pass#123") "Enhanced Conv
 $virtGuiSt = Format-BootloaderGuiStatus ([PSCustomObject]@{ State = "VIRTUAL_PROTECTED" })
 Assert-Eq $virtGuiSt.Kind "Info" "VIRTUAL_PROTECTED disk formatted cleanly for GUI"
 
+# ==============================================================================
+# 13. v2.4.0 Multi-Partition WinPE USB (PhoenixPE / DISM++ / Self-Hosted) & Direct EFI Boot Regression Tests
+# ==============================================================================
+Write-Host "`n--- [13] v2.4.0 Multi-Partition WinPE USB & Direct EFI Boot Tests ---" -ForegroundColor Yellow
+
+$peMockRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("SidAuxTest_v240_" + [guid]::NewGuid().ToString("N"))
+try {
+    $dirFatEfi = Join-Path $peMockRoot "Part_UEFI_NTFS"
+    $dirPeNtfs = Join-Path $peMockRoot "Part_PhoenixPE"
+    $dirDataExfat = Join-Path $peMockRoot "Part_UserData"
+    $dirCustomEfi = Join-Path $peMockRoot "Part_CustomLoader"
+
+    [void](New-Item -ItemType Directory -Path (Join-Path $dirFatEfi "EFI\Boot") -Force)
+    [void](New-Item -ItemType Directory -Path (Join-Path $dirFatEfi "EFI\Rufus") -Force)
+    [System.IO.File]::WriteAllText((Join-Path $dirFatEfi "EFI\Boot\bootx64.efi"), "MZ")
+    [System.IO.File]::WriteAllText((Join-Path $dirFatEfi "EFI\Rufus\ntfs_x64.efi"), "MZ")
+
+    [void](New-Item -ItemType Directory -Path (Join-Path $dirPeNtfs "EFI\Microsoft\Boot") -Force)
+    [void](New-Item -ItemType Directory -Path (Join-Path $dirPeNtfs "sources") -Force)
+    [System.IO.File]::WriteAllText((Join-Path $dirPeNtfs "EFI\Microsoft\Boot\bootmgfw.efi"), "MZ")
+    [System.IO.File]::WriteAllText((Join-Path $dirPeNtfs "EFI\Microsoft\Boot\BCD"), "BCD")
+    [System.IO.File]::WriteAllText((Join-Path $dirPeNtfs "sources\boot.wim"), "WIM")
+
+    [void](New-Item -ItemType Directory -Path $dirDataExfat -Force)
+    [System.IO.File]::WriteAllText((Join-Path $dirDataExfat "SID_Change_Aux_Tool.bat"), "@echo off")
+
+    [void](New-Item -ItemType Directory -Path (Join-Path $dirCustomEfi "EFI\Rufus") -Force)
+    [void](New-Item -ItemType Directory -Path (Join-Path $dirCustomEfi "EFI\PhoenixPE") -Force)
+    [System.IO.File]::WriteAllText((Join-Path $dirCustomEfi "EFI\Rufus\ntfs_x64.efi"), "MZ")
+    [System.IO.File]::WriteAllText((Join-Path $dirCustomEfi "EFI\PhoenixPE\memtest.efi"), "MZ")
+    [System.IO.File]::WriteAllText((Join-Path $dirCustomEfi "EFI\PhoenixPE\PhoenixX64.efi"), "MZ")
+
+    # 13a. Find-BestEfiBinaryOnRoot priority & memtest/Rufus driver filtering
+    Assert-Eq (Find-BestEfiBinaryOnRoot $dirFatEfi) "\EFI\BOOT\BOOTX64.EFI" "Find-BestEfiBinaryOnRoot locates standard BOOTX64.EFI"
+    Assert-Eq (Find-BestEfiBinaryOnRoot $dirPeNtfs) "\EFI\Microsoft\Boot\bootmgfw.efi" "Find-BestEfiBinaryOnRoot locates DISM++/bcdboot bootmgfw.efi"
+    Assert-Eq (Find-BestEfiBinaryOnRoot $dirCustomEfi) "\EFI\PhoenixPE\PhoenixX64.efi" "Find-BestEfiBinaryOnRoot skips Rufus driver & memtest.efi to find custom PE loader"
+    Assert-Eq (Find-BestEfiBinaryOnRoot $dirDataExfat) "" "Find-BestEfiBinaryOnRoot returns empty on plain user data partition"
+
+    # 13b. Multi-partition PhoenixPE + Rufus UEFI_NTFS + Self-Hosted (General Space) USB layout
+    $mockPhoenixParts = @(
+        [PSCustomObject]@{ PartitionNumber = 1; DriveLetter = "L"; Size = 7GB; GptType = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}"; MbrType = $null; AccessPaths = @("L:\"); Guid = "{11111111-1111-1111-1111-111111111111}"; MockFileSystem = "NTFS"; MockLabel = "PhoenixPE_SID_260806"; MockProbeRoot = $dirPeNtfs; MockNtDevice = "partition=\Device\HarddiskVolume21" },
+        [PSCustomObject]@{ PartitionNumber = 2; DriveLetter = "P"; Size = 21GB; GptType = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}"; MbrType = $null; AccessPaths = @("P:\"); Guid = "{22222222-2222-2222-2222-222222222222}"; MockFileSystem = "exFAT"; MockLabel = "Driver"; MockProbeRoot = $dirDataExfat; MockNtDevice = "partition=\Device\HarddiskVolume22" },
+        [PSCustomObject]@{ PartitionNumber = 3; DriveLetter = "Q"; Size = 1MB; GptType = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}"; MbrType = $null; AccessPaths = @("Q:\"); Guid = "{33333333-3333-3333-3333-333333333333}"; MockFileSystem = "FAT"; MockLabel = "UEFI_NTFS"; MockProbeRoot = $dirFatEfi; MockNtDevice = "partition=\Device\HarddiskVolume23" }
+    )
+    $mockPhoenixDisk = [PSCustomObject]@{
+        Number = 40; FriendlyName = "USB SanDisk 3.2Gen1"; Size = 30.7GB; IsReadOnly = $false; IsSelfHostUsb = $true; MockPartitions = $mockPhoenixParts
+    }
+    $mockOtherUsb = [PSCustomObject]@{
+        Number = 10; FriendlyName = "Generic Flash Disk"; Size = 16GB; IsReadOnly = $false; IsSelfHostUsb = $false;
+        MockPartitions = @(
+            [PSCustomObject]@{ PartitionNumber = 1; DriveLetter = "K"; Size = 16GB; GptType = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}"; MbrType = $null; AccessPaths = @("K:\"); Guid = "{44444444-4444-4444-4444-444444444444}"; MockFileSystem = "exFAT"; MockLabel = "OfficeData"; MockProbeRoot = $dirDataExfat }
+        )
+    }
+
+    $multiRes = Get-PhysicalUsbInfo @($mockOtherUsb, $mockPhoenixDisk) @()
+    Assert-True $multiRes.AnyEfiReadyUsb "Multi-partition PhoenixPE USB sets AnyEfiReadyUsb=true"
+    Assert-True $multiRes.AnyDirectBootUsb "Multi-partition PhoenixPE USB sets AnyDirectBootUsb=true"
+    Assert-Eq $multiRes.PhysicalUsbList[0].DiskNumber 40 "Self-hosted WinPE USB (IsSelfHostUsb=true) sorted first ahead of lower DiskNumber"
+    Assert-Eq $multiRes.PhysicalUsbList[0].BestBootDevice "partition=Q:" "Dedicated FAT UEFI_NTFS partition (Q:, Score 115) outranks NTFS PE partition (L:, Score 75)"
+    Assert-Eq $multiRes.PhysicalUsbList[0].BestEfiRelPath "\EFI\BOOT\BOOTX64.EFI" "BestEfiRelPath resolved on Q: without mounting"
+    Assert-True ($multiRes.PhysicalUsbList[0].DisplayLabel -match "PhoenixPE_SID_260806") "DisplayLabel appends WinPE volume label for instant recognition"
+    Assert-True (-not $multiRes.PhysicalUsbList[1].IsEfiReady) "Plain exFAT data-only USB stays IsEfiReady=false"
+
+    # 13c. DISM++ / DiskPart / Bootice hidden GPT Recovery ({de94bba4-...}) EFI + Boot Files + User Space (no drive letter on EFI!)
+    $mockDismParts = @(
+        [PSCustomObject]@{ PartitionNumber = 1; DriveLetter = ""; Size = 512MB; GptType = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"; MbrType = $null; AccessPaths = @("\\?\Volume{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}\"); Guid = "{aaaaaaaa-1111-2222-3333-444444444444}"; MockFileSystem = "FAT32"; MockLabel = "EFI"; MockProbeRoot = $dirFatEfi; MockNtDevice = "partition=\Device\HarddiskVolume31" },
+        [PSCustomObject]@{ PartitionNumber = 2; DriveLetter = ""; Size = 6GB; GptType = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"; MbrType = $null; AccessPaths = @("\\?\Volume{bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee}\"); Guid = "{bbbbbbbb-1111-2222-3333-444444444444}"; MockFileSystem = "NTFS"; MockLabel = "WINPE"; MockProbeRoot = $dirPeNtfs; MockNtDevice = "partition=\Device\HarddiskVolume32" },
+        [PSCustomObject]@{ PartitionNumber = 3; DriveLetter = "M"; Size = 50GB; GptType = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}"; MbrType = $null; AccessPaths = @("M:\"); Guid = "{cccccccc-1111-2222-3333-444444444444}"; MockFileSystem = "NTFS"; MockLabel = "ToolsSpace"; MockProbeRoot = $dirDataExfat; MockNtDevice = "partition=\Device\HarddiskVolume33" }
+    )
+    $mockDismDisk = [PSCustomObject]@{ Number = 50; FriendlyName = "Samsung T7 Shield"; Size = 58GB; IsReadOnly = $false; IsSelfHostUsb = $true; MockPartitions = $mockDismParts }
+    $dismRes = Get-PhysicalUsbInfo @($mockDismDisk) @()
+    Assert-True $dismRes.PhysicalUsbList[0].IsEfiReady "GPT Recovery-hidden ({de94bba4-...}) EFI+WinPE partitions are NOT skipped"
+    Assert-True $dismRes.PhysicalUsbList[0].CanDirectEfiBoot "Unmounted hidden EFI resolved via NT Volume device supports Direct UEFI Boot"
+    Assert-Eq $dismRes.PhysicalUsbList[0].BestBootDevice "partition=\Device\HarddiskVolume31" "Hidden EFI partition mapped directly to NT HarddiskVolume device"
+
+    # 13d. DISM++ / bcdboot NVRAM entry named 'Windows Boot Manager' on USB partition MUST match Tier 1 while internal OS Boot Manager stays excluded
+    $dismNvramEntries = @(
+        [PSCustomObject]@{ Identifier = "{bootmgr}"; Description = "Windows Boot Manager"; Device = "partition=\Device\HarddiskVolume1"; Path = "\EFI\Microsoft\Boot\bootmgfw.efi" },
+        [PSCustomObject]@{ Identifier = "{99999999-aaaa-bbbb-cccc-000000000001}"; Description = "Windows Boot Manager"; Device = "partition=\Device\HarddiskVolume1"; Path = "\EFI\Microsoft\Boot\bootmgfw.efi" },
+        [PSCustomObject]@{ Identifier = "{99999999-aaaa-bbbb-cccc-000000000002}"; Description = "Windows Boot Manager"; Device = "partition=\Device\HarddiskVolume31"; Path = "\EFI\Microsoft\Boot\bootmgfw.efi" }
+    )
+    $dismMatched = @(Find-MatchedUsbNvramEntries $dismNvramEntries @("partition=\Device\HarddiskVolume1", "partition=C:") $dismRes.UsbDrivePatterns $dismRes.UsbStrictModelPatterns $dismRes.UsbPartPatterns $true)
+    Assert-Eq $dismMatched.Count 1 "DISM++/bcdboot 'Windows Boot Manager' on USB partition matched (internal OS Boot Manager excluded)"
+    Assert-Eq $dismMatched[0].Identifier "{99999999-aaaa-bbbb-cccc-000000000002}" "Exact USB DISM++ NVRAM GUID selected"
+
+    # 13e. Get-PreSidGuidance recommends direct USB_REBOOT (Level=OK) when AnyDirectBootUsb=true even with 0 NVRAM matches
+    $directDiagMock = [PSCustomObject]@{
+        BootMode = [PSCustomObject]@{ Mode = "UEFI"; IsUefi = $true; Confidence = "High" }
+        IsConfirmedBlocked = $false; SecureBootState = "Off"; FastBootWarn = $false; HasSignalConflict = $false
+    }
+    $okEfiRepMock = [PSCustomObject]@{ HasBlockingRisk = $false; SplitBoot = $false; Items = @(); ConflictItems = @(); ActionableConflictItems = @() }
+    $directGuid = Get-PreSidGuidance ([PSCustomObject]@{ Vendor = "Standard" }) $okEfiRepMock $directDiagMock $multiRes @() $false
+    Assert-Eq $directGuid.Level "OK" "Hot-plugged Direct-EFI USB yields Level=OK guidance"
+    Assert-Eq $directGuid.RecommendedAction "USB_REBOOT" "Hot-plugged Direct-EFI USB recommends direct USB_REBOOT instead of ADV_BOOT detour"
+} finally {
+    if (Test-Path -LiteralPath $peMockRoot) {
+        Remove-Item -LiteralPath $peMockRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n==================================================================" -ForegroundColor Cyan
 if ($script:Failed -eq 0) {
     Write-Host "[TEST SUMMARY] ALL $($script:Passed) TESTS PASSED!" -ForegroundColor Green
