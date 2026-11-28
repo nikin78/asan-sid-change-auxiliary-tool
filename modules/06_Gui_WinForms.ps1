@@ -658,7 +658,7 @@ function New-GuiDiagnosticsDialog($sysInfo, $step2Snap, $postStatus, [string]$lo
  $tabs = New-Object System.Windows.Forms.TabControl
  $tabs.Dock = [System.Windows.Forms.DockStyle]::Fill
  Enable-AsanOwnerDrawTabs $tabs $theme $fonts
- $tabs.ItemSize = New-Object System.Drawing.Size(165, 32)
+ $tabs.ItemSize = New-Object System.Drawing.Size(168, 32)
 
  $addTab = {
   param([string]$tName, [string]$tBody)
@@ -670,10 +670,10 @@ function New-GuiDiagnosticsDialog($sysInfo, $step2Snap, $postStatus, [string]$lo
   $tp.Controls.Add($pTb.Panel)
   [void]$tabs.TabPages.Add($tp)
  }
- & $addTab (U "BIOS \uAD50\uCC28 \uAC80\uC99D") $biosText
- & $addTab (U "UEFI NVRAM \uC6D0\uBCF8") $nvramText
- & $addTab (U "\uB514\uC2A4\uD06C \uAD6C\uC131") $diskText
- & $addTab (U "\uC791\uC5C5 \uB85C\uADF8") $safeLog
+ & $addTab (U "1. BIOS \uAD50\uCC28 \uAC80\uC99D") $biosText
+ & $addTab (U "2. UEFI NVRAM \uC6D0\uBCF8") $nvramText
+ & $addTab (U "3. \uB514\uC2A4\uD06C \uAD6C\uC131") $diskText
+ & $addTab (U "4. \uC791\uC5C5 \uB85C\uADF8") $safeLog
  if ($errorSummary) { $tabs.SelectedIndex = 3 }
  $bodyWrap.Controls.Add($tabs)
 
@@ -1391,8 +1391,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $dgvUsb = New-AsanGrid $theme $fonts
  Add-AsanGridColumn $dgvUsb "Kind"   (U "\uAD6C\uBD84") 98 $false 88
  Add-AsanGridColumn $dgvUsb "Match"  (U "\uC77C\uCE58 \uC218\uC900") 118 $false 110
- Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 195 $false 145
- Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 192 $false 130
+ Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 254 $false 160
+ Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 150 $false 120
  Add-AsanGridColumn $dgvUsb "Guide"  (U "\uC0C1\uD0DC \uC548\uB0B4") 180 $true 150
 
  # Step 2 Bottom Action Bar (46px)
@@ -1578,8 +1578,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $dgvPrinters = New-AsanGrid $theme $fonts
  Add-AsanGridColumn $dgvPrinters "Type"   (U "\uAD6C\uBD84") 94 $false 84
  Add-AsanGridColumn $dgvPrinters "Name"   (U "\uD504\uB9B0\uD130 \uC774\uB984") 230 $false 150
- Add-AsanGridColumn $dgvPrinters "Share"  (U "\uACF5\uC720 \uACBD\uB85C") 190 $false 120
- Add-AsanGridColumn $dgvPrinters "Port"   (U "\uD3EC\uD2B8") 130 $false 90
+ Add-AsanGridColumn $dgvPrinters "Share"  (U "\uACF5\uC720 \uACBD\uB85C") 216 $false 130
+ Add-AsanGridColumn $dgvPrinters "Port"   (U "\uD3EC\uD2B8") 114 $false 90
  Add-AsanGridColumn $dgvPrinters "Driver" (U "\uB4DC\uB77C\uC774\uBC84") 160 $true 130
 
  $cardPrinters.Controls.Add($dgvPrinters)
@@ -1736,6 +1736,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
   Set-AsanButtonState $ui.BtnRescanUsb  (-not $busy) $busyTip $ui "Secondary"
   Set-AsanButtonState $ui.BtnPostRefresh (-not $busy) $busyTip $ui "Secondary"
   Set-AsanButtonState $ui.BtnSpoolerReset (-not $busy) $busyTip $ui "Primary"
+  $hasValidSid = ($null -ne $st.PostStatus -and [string]$st.PostStatus.MachineSid -match '^S-1-5-21-')
+  $sidBtnTip = if ($busy) { $busyTip } else { U "\uD604\uC7AC PC\uC758 Machine SID\uB97C \uD655\uC778\uD560 \uC218 \uC5C6\uC5B4 \uBCF5\uC0AC\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }
+  $sidBtnVar = if ($ui.BtnCopySid.Text -eq (U "\uBCF5\uC0AC\uB428")) { "SoftTeal" } else { "Secondary" }
+  Set-AsanButtonState $ui.BtnCopySid ($hasValidSid -and -not $busy) $sidBtnTip $ui $sidBtnVar
 
   $efiRep = $st.EfiRep
   $snap = $st.Step2Snap
@@ -1978,10 +1982,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    } elseif ($physList.Count -gt 0) {
     foreach ($ud in $physList) {
      $roTag = if ($ud.IsReadOnly) { U " \u00B7 \uC77D\uAE30 \uC804\uC6A9" } else { "" }
-     $drvPrefix = if ($ud.PSObject.Properties["DriveSummary"] -and $ud.DriveSummary) { $ud.DriveSummary + " \u00B7 " } else { "" }
-     $devStr = (U $drvPrefix) + $ud.SizeGB + $roTag
+     $drvPrefix = if ($ud.PSObject.Properties["DriveSummary"] -and $ud.DriveSummary) { [string]$ud.DriveSummary + (U " \u00B7 ") } else { "" }
+     $devStr = $drvPrefix + $ud.SizeGB + $roTag
      if ($ud.IsEfiReady) {
-      $guideTxt = U "\uBD80\uD305 \uD30C\uC77C \uD655\uC778\uB428 \u00B7 \uACE0\uAE09 \uBD80\uD305\uC758 \uC7A5\uCE58 \uC0AC\uC6A9\uC73C\uB85C \uBC14\uB85C \uBD80\uD305\uD569\uB2C8\uB2E4"
+      $guideTxt = U "\uBD80\uD305 \uD30C\uC77C \uD655\uC778\uB428 \u00B7 \uACE0\uAE09 \uBD80\uD305\uC5D0\uC11C \uC7A5\uCE58 \uC0AC\uC6A9 \uC120\uD0DD"
       $rIdx = $u.DgvUsb.Rows.Add((U "\uBD80\uD305 \uB514\uC2A4\uD06C"), (U "\uACE0\uAE09 \uBD80\uD305 \uC900\uBE44"), [string]$ud.Model, $devStr, $guideTxt)
       $row = $u.DgvUsb.Rows[$rIdx]
       $row.Tag = [PSCustomObject]@{ Kind = "HOTPLUG_READY"; Disk = $ud }
@@ -2018,7 +2022,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    & $u.AppendLog ((U "\uC0AC\uC804 \uC810\uAC80 \uC624\uB958: ") + $_.Exception.Message)
    & $u.SetStatus (U "\uC0AC\uC804 \uC810\uAC80 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4") "Error"
   } finally {
-   if (-not $u.Form.IsDisposed) { $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default }
+   if (-not $u.Form.IsDisposed) {
+    try { & $u.SyncButtonStates } catch {}
+    $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default
+   }
   }
  }.GetNewClosure()
 
@@ -2143,7 +2150,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    & $u.AppendLog ((U "\uC0AC\uD6C4 \uC810\uAC80 \uC624\uB958: ") + $_.Exception.Message)
    & $u.SetStatus (U "\uD504\uB9B0\uD130 \uC0C1\uD0DC \uC870\uD68C \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4") "Error"
   } finally {
-   if (-not $u.Form.IsDisposed) { $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default }
+   if (-not $u.Form.IsDisposed) {
+    try { & $u.SyncButtonStates } catch {}
+    $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default
+   }
   }
  }.GetNewClosure()
 
@@ -2163,7 +2173,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  # Instant-feedback SID copy button (1.5s visual confirmation)
  $btnCopySid.Add_Click({
   $sidStr = if ($ui.State.PostStatus -and $ui.State.PostStatus.MachineSid) { [string]$ui.State.PostStatus.MachineSid } else { "" }
-  if (-not $sidStr) { return }
+  if (-not $sidStr -or ($sidStr -notmatch '^S-1-5-21-')) { return }
   try {
    [System.Windows.Forms.Clipboard]::SetText($sidStr)
    $ui.BtnCopySid.Text = U "\uBCF5\uC0AC\uB428"
@@ -2546,6 +2556,7 @@ function Show-WinPeEmergencyGui {
  $form.Size = New-Object System.Drawing.Size(920, 520)
  $form.MinimumSize = New-Object System.Drawing.Size(780, 440)
  $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+ $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
  $form.BackColor = $theme.CanvasBg
  $form.Font = $fonts.Base
  $form.Icon = $appIcon
@@ -2643,26 +2654,45 @@ function Show-WinPeEmergencyGui {
  $peUi.LoadPe = {
   $rep = Get-InternalBootloaderReport $true
   $peUi.Dgv.Rows.Clear()
+  $firstActIdx = -1
   foreach ($it in $rep.Items) {
-   $pStr = if ($it.TargetPart -gt 0) { $it.BootType + " #" + $it.TargetPart } else { "-" }
+   $pStr = if ($it.TargetPart -gt 0) {
+    if ($it.BootType -eq "GPT_EFI") { "EFI #" + $it.TargetPart } else { "MBR #" + $it.TargetPart }
+   } else { "-" }
    $guiSt = Format-BootloaderGuiStatus $it
    $rIdx = $peUi.Dgv.Rows.Add(("Disk " + $it.DiskNumber), [string]$it.Model, ([string]$it.SizeGB + " GB"), [string]$it.PartitionStyle, $pStr, $guiSt.Text)
    $row = $peUi.Dgv.Rows[$rIdx]
    $row.Tag = $it
-   Set-AsanCellSemanticStyle $row.Cells[5] $guiSt.Kind $peUi.Theme $peUi.Fonts ($guiSt.Kind -ne "Neutral")
+   if ($it.State -in @("ACTIVE","BOTH","MBR_OS_BLOCKED")) {
+    $row.DefaultCellStyle.BackColor = $peUi.Theme.DangerRedTint
+    $row.DefaultCellStyle.ForeColor = $peUi.Theme.DangerRedDeep
+    $row.DefaultCellStyle.SelectionBackColor = $peUi.Theme.DangerRedTint
+    $row.DefaultCellStyle.SelectionForeColor = $peUi.Theme.DangerRedDeep
+    $row.Cells[5].Style.Font = $peUi.Fonts.Bold
+   } else {
+    Set-AsanCellSemanticStyle $row.Cells[5] $guiSt.Kind $peUi.Theme $peUi.Fonts ($guiSt.Kind -ne "Neutral")
+   }
+   if ($firstActIdx -lt 0 -and $it.State -in @("DISABLED","ACTIVE")) { $firstActIdx = $rIdx }
    foreach ($c in $row.Cells) { $c.ToolTipText = $guiSt.Tip }
   }
+  $peUi.Dgv.ClearSelection()
+  if ($firstActIdx -ge 0) { $peUi.Dgv.Rows[$firstActIdx].Selected = $true }
   & $peUi.SyncPeBtn
  }.GetNewClosure()
 
  $dgv.Add_SelectionChanged({ & $peUi.SyncPeBtn }.GetNewClosure())
+ $dgv.Add_CellDoubleClick({
+  param($sender, $e)
+  if ($e.RowIndex -ge 0 -and $peUi.BtnTog.Enabled) { $peUi.BtnTog.PerformClick() }
+ }.GetNewClosure())
  $btnClose.Add_Click({ $peUi.Form.Close() }.GetNewClosure())
  $btnRef.Add_Click({ & $peUi.LoadPe }.GetNewClosure())
  $btnPeReboot.Add_Click({
   $dr = [System.Windows.Forms.MessageBox]::Show($peUi.Form, (U "PC\uB97C \uC989\uC2DC \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?"), (U "\uC7AC\uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -eq [System.Windows.Forms.DialogResult]::Yes) {
-   $null = Invoke-NativeOem "wpeutil.exe" "reboot"
-   $null = Invoke-SafeRebootCore "/r /f /t 0"
+   $wpeRes = Invoke-NativeOem "wpeutil.exe" "reboot"
+   if ($wpeRes.ExitCode -ne 0) { $null = Invoke-SafeRebootCore "/r /f /t 0" }
+   $peUi.Form.Close()
   }
  }.GetNewClosure())
 

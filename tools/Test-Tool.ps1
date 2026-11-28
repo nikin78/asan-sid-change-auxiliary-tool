@@ -781,6 +781,42 @@ Assert-Eq $sbLegacy.State "Off" "Legacy MBR mode resolves SecureBoot as Off (Leg
 $vSamNoMatch = Resolve-BiosCrossCheckVerdict "Samsung" "Unknown" "" $false $false "" $false 1 0
 Assert-Eq $vSamNoMatch.UsbBootState "SuspectedDisabled" "Samsung with physical USB plugged in & 0 NVRAM matches flags SuspectedDisabled"
 
+# 12g. v2.3.1 Recursive Review Regressions (H0 profile, ghost 'unknown' NVRAM, USB NIC exclusion, token boundaries, Rule #5 HP BootOrder, masking)
+$profH0 = Resolve-HospitalModelProfile "HP" "HP" "Desktop PC" "Intel(R) Core(TM) i5-10500" "C200412H0"
+Assert-Eq $profH0.AssetCode "H0" "Hospital asset code H0 extracted from C200412H0"
+Assert-Eq $profH0.GenFamily "HP_G8_G9" "H0 mapped to modern HP checkbox BIOS family"
+
+$ghostAndNicBcd = @(
+    @{ Identifier = "{a1111111-1111-1111-1111-111111111111}"; Description = "UEFI: SanDisk, Partition 1"; Device = "unknown"; Path = "\EFI\BOOT\BOOTX64.EFI" },
+    @{ Identifier = "{a2222222-2222-2222-2222-222222222222}"; Description = "UEFI: Realtek USB GbE Family Controller"; Device = ""; Path = "" },
+    @{ Identifier = "{a3333333-3333-3333-3333-333333333333}"; Description = "UEFI: FooBAR SSD"; Device = ""; Path = "" }
+)
+$mGhostNic = @(Find-MatchedUsbNvramEntries $ghostAndNicBcd @() @() @("SanDisk", "BAR") @() $true)
+Assert-Eq $mGhostNic.Count 0 "Ghost NVRAM entry (device=unknown), USB GbE NIC, and partial substring 'FooBAR' are all strictly excluded"
+
+$noiseUsb = @([PSCustomObject]@{ Number = 95; FriendlyName = "Samsung BAR Plus 256GB"; Size = 256GB; IsReadOnly = $false })
+$noiseInt = @([PSCustomObject]@{ Number = 0; FriendlyName = "Samsung SSD 980"; Size = 500GB; IsReadOnly = $false })
+$noiseInfo = Get-PhysicalUsbInfo $noiseUsb $noiseInt
+Assert-True ($noiseInfo.UsbStrictModelPatterns -notcontains "Plus" -and $noiseInfo.UsbStrictModelPatterns -notcontains "256GB") "Marketing/capacity noise tokens ('Plus', '256GB') excluded from UsbStrictModelPatterns"
+
+$nonBootDataMatch = @(Find-MatchedUsbNvramEntries $genericEntries @() @() @("DataStick") @() $false)
+Assert-Eq $nonBootDataMatch.Count 0 "Non-bootable data USB (AnyEfiReadyUsb=false) never triggers generic Tier 4 NVRAM match"
+
+$hpOrderOnly = Resolve-HpBiosDiagnostics @() @([PSCustomObject]@{ Name = "UEFI Boot Order"; Value = "OS Boot Manager,USB Flash Drive" })
+Assert-Eq $hpOrderOnly.UsbState "UnverifiableHP" "HP UEFI Boot Order alone stays UnverifiableHP (Rule #5 preserved)"
+
+$hpSemiMock = @([PSCustomObject]@{ Name = "USB Storage Boot"; CurrentValue = ""; Value = "*Checked;Unchecked" })
+Assert-Eq (Resolve-HpBiosDiagnostics $hpSemiMock).UsbState "Enabled" "HP semicolon-delimited '*Checked;Unchecked' parsed as Enabled"
+
+$dellDepMock = @([PSCustomObject]@{ AttributeName = "SecureBoot"; AttributeValue = "DeployedMode" })
+Assert-Eq (Resolve-DellBiosDiagnostics $dellDepMock).SecureBootWmi "On" "Dell SecureBoot='DeployedMode' parsed as On"
+
+$maskAdv = ConvertTo-MaskedDiagnosticText 'password = "My Secret 123" {\"apikey\":\"tok_999\"} net use \\10.1.1.5\ipc$ Pass#123 /user:admin'
+Assert-True ($maskAdv -notmatch "My Secret 123|tok_999|Pass#123") "Enhanced ConvertTo-MaskedDiagnosticText redacts quoted values, escaped JSON, and net use credentials"
+
+$virtGuiSt = Format-BootloaderGuiStatus ([PSCustomObject]@{ State = "VIRTUAL_PROTECTED" })
+Assert-Eq $virtGuiSt.Kind "Info" "VIRTUAL_PROTECTED disk formatted cleanly for GUI"
+
 Write-Host "`n==================================================================" -ForegroundColor Cyan
 if ($script:Failed -eq 0) {
     Write-Host "[TEST SUMMARY] ALL $($script:Passed) TESTS PASSED!" -ForegroundColor Green

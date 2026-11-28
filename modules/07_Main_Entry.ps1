@@ -142,10 +142,11 @@ function Invoke-PreSidWorkflow($sysInfo) {
 }
 
 function Start-ToolConsoleMain($sysInfo) {
+ $venTag = if ($sysInfo.Vendor -ne "Standard") { $sysInfo.Vendor } elseif ($sysInfo.HintVendor) { $sysInfo.HintVendor } else { "Standard" }
  while ($true) {
   Clear-Host
   Write-Host "==================================================================" -ForegroundColor Cyan
-  Write-Host (" " + (U "[SID \uBCC0\uACBD \uBCF4\uC870 \uD234") + " v" + $script:ToolVersion + "] " + (U "\uC2DC\uC2A4\uD15C :") + " [" + $sysInfo.Vendor + "] (" + $sysInfo.ModelName + ")") -ForegroundColor Cyan
+  Write-Host (" " + (U "[SID \uBCC0\uACBD \uBCF4\uC870 \uD234") + " v" + $script:ToolVersion + "] " + (U "\uC2DC\uC2A4\uD15C :") + " [" + $venTag + "] (" + $sysInfo.ModelName + ")") -ForegroundColor Cyan
   Write-Host "==================================================================" -ForegroundColor Cyan
   if ($env:SID_TOOL_STAGED -eq "1" -or ($env:SELF_PATH -and $env:SELF_PATH.StartsWith("\\"))) {
    Write-Host (U " [\uC548\uB0B4] \uACF5\uC720\uD3F4\uB354/\uB124\uD2B8\uC6CC\uD06C \uACBD\uB85C\uC5D0\uC11C \uC2E4\uD589\uB428 -> \uB85C\uCEEC \uBA54\uBAA8\uB9AC \uB85C\uB4DC \uC644\uB8CC (\uC6D0\uBCF8 \uBB34\uBCC0\uACBD)") -ForegroundColor DarkGray

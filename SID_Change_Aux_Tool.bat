@@ -33,9 +33,9 @@ function U([string]$str) {
 }
 
 $ErrorActionPreference = "Continue"
-$script:ToolVersion = "2.3.0"
-$script:BuildDate = "2026-11-27"
-$script:BuildCommit = "b31f36b"
+$script:ToolVersion = "2.3.1"
+$script:BuildDate = "2026-11-28"
+$script:BuildCommit = "ddb7b52"
 $gptEfiGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
 $gptRecoveryGuid = "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}"
 $gptMsrGuid = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
@@ -69,7 +69,8 @@ function Resolve-DosDeviceTarget([string]$dosDeviceName) {
  if (-not $script:DosDevInitAttempted) {
   $script:DosDevInitAttempted = $true
   try {
-   $dynAsm = New-Object System.Reflection.AssemblyName("SidAuxDosDevMapper")
+   $asmName = "SidAuxDosDevMapper_" + [guid]::NewGuid().ToString("N")
+   $dynAsm = New-Object System.Reflection.AssemblyName($asmName)
    $asmBld = [AppDomain]::CurrentDomain.DefineDynamicAssembly($dynAsm, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
    $modBld = $asmBld.DefineDynamicModule("Main")
    $typBld = $modBld.DefineType("NativeDosMapper", "Public,Class")
@@ -93,12 +94,14 @@ function Resolve-DosDeviceTarget([string]$dosDeviceName) {
  try {
   $clean = $dosDeviceName.Trim().TrimEnd('\')
   if ($clean -match '^\\\\\?\\(.+)$') { $clean = $matches[1] }
-  $sb = New-Object System.Text.StringBuilder 512
-  $rc = $script:DosDevQueryType::QueryDosDeviceW($clean, $sb, 512)
-  if ($rc -gt 0) {
-   $val = $sb.ToString().Trim([char]0).Trim()
-   if ($val -match '^(\\Device\\[^\0]+)') { return $matches[1] }
-   return $val
+  foreach ($cap in @(512, 2048)) {
+   $sb = New-Object System.Text.StringBuilder $cap
+   $rc = $script:DosDevQueryType::QueryDosDeviceW($clean, $sb, [uint32]$cap)
+   if ($rc -gt 0) {
+    $val = $sb.ToString().Trim([char]0).Trim()
+    if ($val -match '^(\\Device\\[^\x00\r\n]+)') { return $matches[1] }
+    return $val
+   }
   }
  } catch {}
  return ""
@@ -243,12 +246,14 @@ function Get-ExecutionSourceInfo {
  }
 }
 
-# Mask sensitive credentials/tokens in exported diagnostic reports
+# Mask sensitive credentials/tokens in exported diagnostic reports (handles JSON, escaped JSON, quoted/unquoted key-values, and net use)
 function ConvertTo-MaskedDiagnosticText([string]$raw) {
  if ([string]::IsNullOrEmpty($raw)) { return "" }
- $out = [regex]::Replace($raw, '(?i)(password|passwd|pwd|secret|token|apikey|credential)\s*([:=])\s*([^\r\n\s,;"'']+)', '$1$2[REDACTED]')
- $out = [regex]::Replace($out, '(?i)("?(?:password|passwd|secret|token)"?\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)(")', '$1[REDACTED]$3')
- return $out
+ $masked = [regex]::Replace($raw, '(?i)(\\?"?(?:password|passwd|pwd|secret|token|apikey|api_key|credential)\\?"?\s*:\s*\\?")([^"\\]*(?:\\.[^"\\]*)*)(\\?")', '$1[REDACTED]$3')
+ $masked = [regex]::Replace($masked, '(?i)(\b(?:password|passwd|pwd|secret|token|apikey|api_key|credential)\s*[:=]\s*)(["''])([^"''\r\n]*)\2', '$1$2[REDACTED]$2')
+ $masked = [regex]::Replace($masked, '(?i)(\b(?:password|passwd|pwd|secret|token|apikey|api_key|credential)\s*[:=]\s*)([^\r\n\s,;"'']+)', '$1[REDACTED]')
+ $masked = [regex]::Replace($masked, '(?i)(\bnet\s+use\s+\S+\s+)([^\s/]+)(\s+/user:\S+)', '$1[REDACTED]$3')
+ return $masked
 }
 
 function Get-DiskDebugText {
@@ -289,8 +294,7 @@ function Parse-BcdFirmwareLines([array]$lines) {
    if ($currentEntry -and $currentEntry.Identifier) { $entries += $currentEntry }
    $currentEntry = @{ Identifier = ""; Description = ""; Path = ""; Device = "" }
   } elseif ($currentEntry) {
-   if (-not $currentEntry.Identifier -and $trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
-   elseif ($trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
+   if ($trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
    elseif ($trimmed -match $reDesc) { $currentEntry.Description = $matches[2].Trim() }
    elseif ($trimmed -match $rePath) { $currentEntry.Path = $matches[2].Trim() }
    elseif ($trimmed -match $reDev) { $currentEntry.Device = $matches[2].Trim() }
@@ -497,30 +501,46 @@ function Parse-DiskpartDetailPartition([array]$lines) {
 
 # Inspect PnP Registry + Win32_DiskDrive so UASP external NVMe/SATA enclosures
 # (e.g. Realtek RTL9210B-CG, HSEN 10G-NVME, JMicron JMS583/Generic, ASMedia, FireCuda)
-# are accurately detected as external USB even when Get-Disk reports BusType=SCSI/NVMe and IsRemovable=$false!
+# are accurately detected as external USB even when Get-Disk reports BusType=SCSI/NVMe and IsRemovable=$false,
+# while NEVER misclassifying internal AHCI Hot-Plug SATA/NVMe disks as external USB!
 function Get-UsbPnpDiskLookup {
  $map = @{}
  $baseContainer = "{00000000-0000-0000-ffff-ffffffffffff}"
  $usbContainers = @{}
- try {
-  if (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Enum\USB") {
-   foreach ($vidKey in @(Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Enum\USB" -ErrorAction SilentlyContinue)) {
-    foreach ($instKey in @(Get-ChildItem $vidKey.PSPath -ErrorAction SilentlyContinue)) {
+ foreach ($usbSubPath in @("SYSTEM\CurrentControlSet\Enum\USB", "SYSTEM\CurrentControlSet\Enum\USBSTOR")) {
+  $usbRoot = $null
+  try {
+   $usbRoot = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($usbSubPath)
+   if ($usbRoot) {
+    foreach ($vidName in $usbRoot.GetSubKeyNames()) {
+     $vidKey = $null
      try {
-      $p = Get-ItemProperty $instKey.PSPath -ErrorAction SilentlyContinue
-      if ($p -and $p.ContainerID) {
-       $cid = ([string]$p.ContainerID).Trim().ToLower()
-       if ($cid -and $cid -ne $baseContainer) {
-        $usbContainers[$cid] = [string]$p.Service
+      $vidKey = $usbRoot.OpenSubKey($vidName)
+      if ($vidKey) {
+       foreach ($instName in $vidKey.GetSubKeyNames()) {
+        $instKey = $null
+        try {
+         $instKey = $vidKey.OpenSubKey($instName)
+         if ($instKey) {
+          $cidRaw = $instKey.GetValue("ContainerID")
+          if ($cidRaw) {
+           $cid = ([string]$cidRaw).Trim().ToLower()
+           if ($cid -and $cid -ne $baseContainer) {
+            $usbContainers[$cid] = [string]$instKey.GetValue("Service")
+           }
+          }
+         }
+        } finally { if ($instKey) { $instKey.Dispose() } }
        }
       }
-     } catch {}
+     } finally { if ($vidKey) { $vidKey.Dispose() } }
     }
    }
-  }
- } catch {}
+  } catch {} finally { if ($usbRoot) { $usbRoot.Dispose() } }
+ }
 
  $bridgeRegex = "(?i)(RTL9210|JMS583|JMS578|JMS567|JMicron\s+Generic|ASM236|ASMedia|HSEN\s*10G|10G-NVME|VL716)"
+ $internalPnpBusRe = "^(?i)(IDE\\|PCI\\|NVME\\|STORAGE\\|SCSI\\Disk&Ven_(ATA|NVMe|MSFT|RAID|Intel|AMD|LSI|VMware|Red_Hat|VirtIO)&)"
  try {
   foreach ($dd in @(Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction SilentlyContinue)) {
    if ($null -eq $dd.Index) { continue }
@@ -529,12 +549,13 @@ function Get-UsbPnpDiskLookup {
    $iface = [string]$dd.InterfaceType
    $media = [string]$dd.MediaType
    $model = [string]$dd.Model
+   $matchedUsbContainer = $false
    $isUsb = ($iface -match "^(?i)(USB|1394)$") -or ($pnpId -match "^(?i)(USBSTOR|USB|SD|MMC)\\") -or ($media -match "(?i)External\s+hard\s+disk|Removable\s+media") -or ($model -match $bridgeRegex) -or ($pnpId -match $bridgeRegex)
 
    $pnpTokens = New-Object System.Collections.ArrayList
    if ($pnpId -match "(?i)VEN_([^&\\]+)") {
     $venTok = ($matches[1] -replace "_+", " ").Trim()
-    if ($venTok.Length -ge 3 -and $venTok -notmatch "^(?i)(NVMe|ATA|SCSI|MSFT|USB|Disk|Generic)$") {
+    if ($venTok.Length -ge 3 -and $venTok -notmatch "^(?i)(NVMe|ATA|SCSI|MSFT|USB|Disk|Generic|Realtek)$") {
      [void]$pnpTokens.Add($venTok)
     }
    }
@@ -545,30 +566,38 @@ function Get-UsbPnpDiskLookup {
     }
    }
 
-   if (-not $isUsb -and $pnpId) {
+   if ($pnpId) {
+    $devKey = $null
     try {
-     $enumPath = "HKLM:\SYSTEM\CurrentControlSet\Enum\" + $pnpId
-     if (Test-Path -LiteralPath $enumPath) {
-      $ep = Get-ItemProperty -LiteralPath $enumPath -ErrorAction SilentlyContinue
-      $cid = if ($ep -and $ep.ContainerID) { ([string]$ep.ContainerID).Trim().ToLower() } else { "" }
-      $caps = if ($ep -and $null -ne $ep.Capabilities) { [int]$ep.Capabilities } else { 0 }
-      $remPol = if ($ep -and $null -ne $ep.RemovalPolicy) { [int]$ep.RemovalPolicy } else { 0 }
+     $devKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(("SYSTEM\CurrentControlSet\Enum\" + $pnpId))
+     if ($devKey) {
+      $cidRaw2 = $devKey.GetValue("ContainerID")
+      $cid = if ($cidRaw2) { ([string]$cidRaw2).Trim().ToLower() } else { "" }
+      $capsRaw = $devKey.GetValue("Capabilities")
+      $remRaw = $devKey.GetValue("RemovalPolicy")
+      $caps = if ($null -ne $capsRaw) { [int]$capsRaw } else { 0 }
+      $remPol = if ($null -ne $remRaw) { [int]$remRaw } else { 0 }
       if ($cid -and $cid -ne $baseContainer) {
        if ($usbContainers.ContainsKey($cid)) {
         $isUsb = $true
-       } elseif ((($caps -band 0x84) -ne 0) -or ($remPol -ge 2)) {
-        $isUsb = $true
+        $matchedUsbContainer = $true
+       } elseif (-not $isUsb -and ($pnpId -notmatch $internalPnpBusRe) -and ($iface -notmatch "^(?i)(IDE|HDC)$")) {
+        if ((($caps -band 0x84) -ne 0) -or ($remPol -ge 2)) {
+         $isUsb = $true
+        }
        }
       }
      }
-    } catch {}
+    } catch {} finally { if ($devKey) { $devKey.Dispose() } }
    }
 
    $map[$idx] = [PSCustomObject]@{
-    IsExternalUsb = [bool]$isUsb
-    PnpDeviceId   = $pnpId
-    Model         = $model
-    PnpTokens     = @($pnpTokens | Select-Object -Unique)
+    IsExternalUsb       = [bool]$isUsb
+    MatchedUsbContainer = [bool]$matchedUsbContainer
+    IsBridgeModel       = [bool](($model -match $bridgeRegex) -or ($pnpId -match $bridgeRegex))
+    PnpDeviceId         = $pnpId
+    Model               = $model
+    PnpTokens           = @($pnpTokens | Select-Object -Unique)
    }
   }
  } catch {}
@@ -596,28 +625,35 @@ function Get-ClassifiedDisks([bool]$isWinPE) {
   $allDisks = @(Get-Disk | Where-Object { ([string]$_.OperationalStatus) -match "\bOnline\b" })
   foreach ($d in ($allDisks | Sort-Object Number)) {
    $dNum = [int]$d.Number
+   $busStr = [string]$d.BusType
+   $isVirtualFileDisk = ($busStr -eq "File Backed Virtual")
    $isProtectedOsDisk = (-not $isWinPE) -and ([bool]$d.IsBoot -or [bool]$d.IsSystem -or ($dNum -eq $sysDiskNum))
    $pnpInfo = if ($pnpMap.ContainsKey($dNum)) { $pnpMap[$dNum] } else { $null }
    if ($pnpInfo) {
     try { Add-Member -InputObject $d -NotePropertyName "PnpTokens" -NotePropertyValue $pnpInfo.PnpTokens -Force } catch {}
     try { Add-Member -InputObject $d -NotePropertyName "PnpDeviceId" -NotePropertyValue $pnpInfo.PnpDeviceId -Force } catch {}
    }
+   try { Add-Member -InputObject $d -NotePropertyName "IsVirtualDisk" -NotePropertyValue $isVirtualFileDisk -Force } catch {}
 
-   $isDirectUsb = (-not $isProtectedOsDisk) -and (
-    ($d.BusType -in @('USB','SD','MMC','1394')) -or
-    [bool]$d.IsRemovable -or
+   $isInternalFixedBus = ($busStr -in @('SATA','ATA','RAID','Spaces')) -and
+                         (-not ($null -ne $pnpInfo -and ($pnpInfo.MatchedUsbContainer -or $pnpInfo.IsBridgeModel))) -and
+                         ([string]$d.Path -notmatch "USBSTOR|UASP")
+
+   $isDirectUsb = (-not $isProtectedOsDisk) -and (-not $isVirtualFileDisk) -and (-not $isInternalFixedBus) -and (
+    ($busStr -in @('USB','SD','MMC','1394')) -or
+    ([bool]$d.IsRemovable -and ($busStr -notin @('SATA','ATA','RAID','NVMe','Spaces','File Backed Virtual'))) -or
     ([string]$d.Path -match "USBSTOR|UASP") -or
     ($null -ne $pnpInfo -and [bool]$pnpInfo.IsExternalUsb)
    )
 
    # If a non-OS enclosure still masked its PnP bus, check if its mounted partitions carry explicit WinPE/Ventoy USB markers (without a full Windows OS)
-   if (-not $isDirectUsb -and -not $isWinPE -and -not $isProtectedOsDisk) {
+   if (-not $isDirectUsb -and -not $isWinPE -and -not $isProtectedOsDisk -and -not $isVirtualFileDisk -and -not $isInternalFixedBus) {
     try {
      $dParts = @(Get-DiskPartitionsNormalized $dNum $false)
      if ($dParts.Count -gt 0 -and (Test-SiblingPartitionsForWinPE $dParts)) {
       $hasInstalledOs = $false
       foreach ($dp in $dParts) {
-       if ($dp.DriveLetter -and (Test-Path "$($dp.DriveLetter):\Windows\System32\ntoskrnl.exe")) {
+       if ($dp.DriveLetter -and (Test-FsEntryExists "$($dp.DriveLetter):\Windows\System32\ntoskrnl.exe")) {
         $hasInstalledOs = $true; break
        }
       }
@@ -771,23 +807,33 @@ function Invoke-WithEspMount([int]$diskNum, [int]$partNum, [string]$existingLett
  return $res
 }
 
+# Fast filesystem probe supporting both standard paths (C:\, W:\) and unmounted \\?\Volume{GUID}\ paths
+function Test-FsEntryExists([string]$fullPath) {
+ if ([string]::IsNullOrWhiteSpace($fullPath)) { return $false }
+ try {
+  return ([System.IO.File]::Exists($fullPath) -or [System.IO.Directory]::Exists($fullPath))
+ } catch {
+  return $false
+ }
+}
+
 # Pure helper: Guard against modifying OS partitions or WinPE/installer media
 function Test-PartitionMediaGuard([string]$rootPath) {
  $root = $rootPath.TrimEnd('\')
- $hasOs = Test-Path "$root\Windows\System32\ntoskrnl.exe"
+ $hasOs = Test-FsEntryExists "$root\Windows\System32\ntoskrnl.exe"
  $hasWinPE = $false
  $reason = ""
 
- if ((Test-Path "$root\sources\boot.wim") -or (Test-Path "$root\sources\install.wim") -or (Test-Path "$root\sources\install.esd")) {
+ if ((Test-FsEntryExists "$root\sources\boot.wim") -or (Test-FsEntryExists "$root\sources\install.wim") -or (Test-FsEntryExists "$root\sources\install.esd")) {
   $hasWinPE = $true
   $reason = "sources\boot.wim/install"
- } elseif ((Test-Path "$root\ventoy\ventoy.json") -or (Test-Path "$root\PhoenixPE.cfg") -or (Test-Path "$root\HBCD_PE.ini")) {
+ } elseif ((Test-FsEntryExists "$root\ventoy\ventoy.json") -or (Test-FsEntryExists "$root\PhoenixPE.cfg") -or (Test-FsEntryExists "$root\HBCD_PE.ini")) {
   $hasWinPE = $true
   $reason = "WinPE/Ventoy marker"
- } elseif ((Test-Path "$root\boot\boot.sdi") -and (Test-Path "$root\sources")) {
+ } elseif ((Test-FsEntryExists "$root\boot\boot.sdi") -and (Test-FsEntryExists "$root\sources")) {
   $hasWinPE = $true
   $reason = "WinPE boot.sdi"
- } elseif (((Test-Path "$root\EFI\BOOT\BOOTX64.EFI") -or (Test-Path "$root\EFI\BOOT\BOOTAA64.EFI")) -and (-not (Test-Path "$root\EFI\Microsoft"))) {
+ } elseif (((Test-FsEntryExists "$root\EFI\BOOT\BOOTX64.EFI") -or (Test-FsEntryExists "$root\EFI\BOOT\BOOTAA64.EFI")) -and (-not (Test-FsEntryExists "$root\EFI\Microsoft"))) {
   $hasWinPE = $true
   $reason = "EFI\BOOT without EFI\Microsoft"
  }
@@ -799,7 +845,7 @@ function Test-PartitionMediaGuard([string]$rootPath) {
  }
 }
 
-# Pure helper: Inspect mounted partition root for GPT EFI or MBR bootloader state
+# Pure helper: Inspect partition root (drive letter or \\?\Volume{GUID}\) for GPT EFI or MBR bootloader state
 function Inspect-BootloaderPartition([string]$rootPath, [string]$bootType, [bool]$isActiveFlag) {
  $root = $rootPath.TrimEnd('\')
  $guard = Test-PartitionMediaGuard $root
@@ -807,8 +853,8 @@ function Inspect-BootloaderPartition([string]$rootPath, [string]$bootType, [bool
 
  if ($bootType -eq "GPT_EFI") {
   if ($guard.HasOs) { return "OS_BLOCKED" }
-  $hasEfi = Test-Path "$root\EFI"
-  $hasOld = Test-Path "$root\EFI_OLD"
+  $hasEfi = Test-FsEntryExists "$root\EFI"
+  $hasOld = Test-FsEntryExists "$root\EFI_OLD"
   if ($hasEfi -and $hasOld) { return "BOTH" }
   elseif ($hasEfi) { return "ACTIVE" }
   elseif ($hasOld) { return "DISABLED" }
@@ -816,11 +862,11 @@ function Inspect-BootloaderPartition([string]$rootPath, [string]$bootType, [bool
  }
 
  if ($bootType -eq "MBR_ACTIVE") {
-  $hasBootmgr = Test-Path "$root\bootmgr"
-  $hasBootBcd = Test-Path "$root\Boot\BCD"
+  $hasBootmgr = Test-FsEntryExists "$root\bootmgr"
+  $hasBootBcd = Test-FsEntryExists "$root\Boot\BCD"
   $hasActiveFiles = $hasBootmgr -or $hasBootBcd
-  $hasOldBootmgr = Test-Path "$root\bootmgr_OLD"
-  $hasOldBootDir = Test-Path "$root\Boot_OLD"
+  $hasOldBootmgr = Test-FsEntryExists "$root\bootmgr_OLD"
+  $hasOldBootDir = Test-FsEntryExists "$root\Boot_OLD"
   $hasOldFiles = $hasOldBootmgr -or $hasOldBootDir
 
   if ($guard.HasOs) {
@@ -927,9 +973,18 @@ function Get-DiskPartitionsNormalized([int]$diskNum, [bool]$useDiskpartFallback)
  if (-not $useDiskpartFallback) {
   $parts = @(Get-Partition -DiskNumber $diskNum -ErrorAction SilentlyContinue)
   foreach ($p in $parts) {
+   $volPath = ""
+   if ($p.AccessPaths) {
+    foreach ($ap in @($p.AccessPaths)) {
+     $apStr = ([string]$ap).Trim()
+     if ($apStr -match '^\\\\\?\\Volume\{[^\}]+\}\\?$') { $volPath = $apStr.TrimEnd('\') + "\"; break }
+    }
+   }
+   $dlStr = if ($p.DriveLetter -and ([string]$p.DriveLetter) -match '^[A-Za-z]$') { [string]$p.DriveLetter } else { "" }
    $out += [PSCustomObject]@{
     PartitionNumber = $p.PartitionNumber
-    DriveLetter = if ($p.DriveLetter) { [string]$p.DriveLetter } else { "" }
+    DriveLetter = $dlStr
+    VolumePath = $volPath
     GptType = [string]$p.GptType
     IsEsp = ($p.GptType -eq $gptEfiGuid)
     IsActive = [bool]$p.IsActive
@@ -948,6 +1003,7 @@ function Get-DiskPartitionsNormalized([int]$diskNum, [bool]$useDiskpartFallback)
   $out += [PSCustomObject]@{
    PartitionNumber = $pp.PartitionNumber
    DriveLetter = $det.DriveLetter
+   VolumePath = ""
    GptType = if ($det.IsEspGuid) { $gptEfiGuid } else { "" }
    IsEsp = ($pp.IsEsp -or $det.IsEspGuid)
    IsActive = $det.IsActive
@@ -956,6 +1012,20 @@ function Get-DiskPartitionsNormalized([int]$diskNum, [bool]$useDiskpartFallback)
   }
  }
  return $out
+}
+
+# Helper: Probe bootloader state via fast \\?\Volume{GUID}\ first (zero diskpart mount!), falling back to Invoke-WithEspMount
+function Get-PartitionBootloaderProbeState([int]$diskNum, $partObj, [string]$bootType, [bool]$isActiveFlag) {
+ if ($partObj.DriveLetter -and [System.IO.Directory]::Exists("$($partObj.DriveLetter):\")) {
+  return (Inspect-BootloaderPartition "$($partObj.DriveLetter):\" $bootType $isActiveFlag)
+ }
+ if ($partObj.PSObject.Properties["VolumePath"] -and $partObj.VolumePath -and [System.IO.Directory]::Exists($partObj.VolumePath)) {
+  return (Inspect-BootloaderPartition $partObj.VolumePath $bootType $isActiveFlag)
+ }
+ return (Invoke-WithEspMount $diskNum $partObj.PartitionNumber $partObj.DriveLetter {
+  param($drv)
+  return (Inspect-BootloaderPartition "$($drv):\" $bootType $isActiveFlag)
+ })
 }
 
 # Check mounted sibling partitions on a disk for WinPE/installer media markers
@@ -1022,15 +1092,19 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
   $parts = @($diskPartsMap[$d.Number])
   $isProt = ($protected -contains $d.Number)
   $isDiskReadOnly = [bool]$d.IsReadOnly
-  $isWinPEMediaDisk = (-not $isProt) -and (Test-SiblingPartitionsForWinPE $parts)
+  $isVirtualDisk = ($null -ne $d.PSObject.Properties["IsVirtualDisk"] -and [bool]$d.IsVirtualDisk)
+  $isWinPEMediaDisk = (-not $isProt) -and (-not $isVirtualDisk) -and (Test-SiblingPartitionsForWinPE $parts)
   $style = if ($d.PartitionStyle) { [string]$d.PartitionStyle } else { "Unknown" }
 
   $bootType = "NONE"
   $targetPartNum = 0
   $targetLtr = ""
   $state = "NO_BOOTLOADER"
+  $rankMap = @{ "ACTIVE" = 70; "BOTH" = 60; "MBR_OS_BLOCKED" = 55; "WINPE_BLOCKED" = 50; "OS_BLOCKED" = 45; "DISABLED" = 40; "EMPTY" = 20; "MOUNT_FAIL" = 10; "NO_BOOTLOADER" = 0 }
 
-  if ($isWinPEMediaDisk) {
+  if ($isVirtualDisk -and -not $isProt) {
+   $state = "VIRTUAL_PROTECTED"
+  } elseif ($isWinPEMediaDisk) {
    $state = "WINPE_MEDIA"
   } elseif ($isDiskReadOnly -and -not $isProt) {
    $state = "READONLY_PROTECTED"
@@ -1043,13 +1117,13 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
      $targetLtr = $espParts[0].DriveLetter
      $state = "PROTECTED"
     } else {
-     # Check all ESP partitions on the disk, prioritizing actionable conflicts over empty ESPs
+     # Check all ESP partitions on the disk using deterministic severity priority
+     $bestRank = -1
      foreach ($ep in $espParts) {
-      $probeState = Invoke-WithEspMount $d.Number $ep.PartitionNumber $ep.DriveLetter {
-       param($drv)
-       return (Inspect-BootloaderPartition "$($drv):\" "GPT_EFI" $false)
-      }
-      if ($targetPartNum -eq 0 -or $probeState -in @("ACTIVE","BOTH","WINPE_BLOCKED","OS_BLOCKED") -or ($state -eq "EMPTY" -and $probeState -eq "DISABLED")) {
+      $probeState = Get-PartitionBootloaderProbeState $d.Number $ep "GPT_EFI" $false
+      $curRank = if ($rankMap.ContainsKey($probeState)) { $rankMap[$probeState] } else { 5 }
+      if ($targetPartNum -eq 0 -or $curRank -gt $bestRank) {
+       $bestRank = $curRank
        $bootType = "GPT_EFI"
        $targetPartNum = $ep.PartitionNumber
        $targetLtr = $ep.DriveLetter
@@ -1059,25 +1133,23 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
      }
     }
    } elseif ($style -eq "MBR" -and -not $isProt) {
-    # Check Active MBR partition first, or previously disabled (_OLD) small/mounted primary partitions
-    $mbrCandidates = @($parts | Where-Object { $_.IsActive })
-    if ($mbrCandidates.Count -eq 0) {
-     $mbrCandidates = @($parts | Where-Object {
-      $_.IsPrimary -and ($_.DriveLetter -or ($_.Size -gt 0 -and $_.Size -le 2GB))
-     })
-    }
+    # Check Active MBR partitions plus small/mounted primary partitions (so previously DISABLED _OLD bootloaders are never missed)
+    $mbrCandidates = @($parts | Where-Object { $_.IsActive }) + @($parts | Where-Object {
+     (-not $_.IsActive) -and $_.IsPrimary -and ($_.DriveLetter -or ($_.Size -gt 0 -and $_.Size -le 2GB))
+    })
+    $bestMbrRank = 0
     foreach ($mp in $mbrCandidates) {
-     $probeState = Invoke-WithEspMount $d.Number $mp.PartitionNumber $mp.DriveLetter {
-      param($drv)
-      return (Inspect-BootloaderPartition "$($drv):\" "MBR_ACTIVE" $mp.IsActive)
-     }
-     if ($probeState -in @("ACTIVE","BOTH","DISABLED","MBR_OS_BLOCKED","WINPE_BLOCKED")) {
+     $probeState = Get-PartitionBootloaderProbeState $d.Number $mp "MBR_ACTIVE" $mp.IsActive
+     $curRank = if ($rankMap.ContainsKey($probeState)) { $rankMap[$probeState] } else { 0 }
+     if ($probeState -in @("ACTIVE","BOTH","DISABLED","MBR_OS_BLOCKED","WINPE_BLOCKED") -and $curRank -gt $bestMbrRank) {
+      $bestMbrRank = $curRank
       $bootType = "MBR_ACTIVE"
       $targetPartNum = $mp.PartitionNumber
       $targetLtr = $mp.DriveLetter
       $state = $probeState
-      break
-     } elseif ($mp.IsActive -and $probeState -eq "EMPTY") {
+      if ($state -in @("ACTIVE","BOTH","MBR_OS_BLOCKED","WINPE_BLOCKED")) { break }
+     } elseif ($mp.IsActive -and $probeState -eq "EMPTY" -and $bestMbrRank -eq 0) {
+      $bestMbrRank = 20
       $bootType = "MBR_ACTIVE"
       $targetPartNum = $mp.PartitionNumber
       $targetLtr = $mp.DriveLetter
@@ -1096,7 +1168,7 @@ function Get-InternalBootloaderReport([bool]$isWinPE) {
    Model = $modelLabel
    SizeGB = $sizeGB
    PartitionStyle = $style
-   IsProtected = ($isProt -or $isWinPEMediaDisk -or $isDiskReadOnly)
+   IsProtected = ($isProt -or $isWinPEMediaDisk -or $isDiskReadOnly -or $isVirtualDisk)
    IsWinPEMedia = $isWinPEMediaDisk
    IsReadOnly = $isDiskReadOnly
    BootType = $bootType
@@ -1129,6 +1201,7 @@ function Format-BootloaderStateText($item) {
   "PROTECTED"          { return (U "[\uBCF4\uD638\uB428: \uD604\uC7AC OS/\uBD80\uD305 EFI]") }
   "PROTECTED_OS"       { return (U "[\uBCF4\uD638\uB428: \uD604\uC7AC OS \uB514\uC2A4\uD06C]") }
   "WINPE_MEDIA"        { return (U "[\uBCF4\uD638\uB428: WinPE/\uC124\uCE58 \uB9E4\uCCB4]") }
+  "VIRTUAL_PROTECTED"  { return (U "[\uBCF4\uD638\uB428: \uAC00\uC0C1 \uB514\uC2A4\uD06C]") }
   "READONLY_PROTECTED" { return (U "[\uBCF4\uD638\uB428: \uC77D\uAE30 \uC804\uC6A9(\uC4F0\uAE30 \uAE08\uC9C0) \uB514\uC2A4\uD06C]") }
   "ACTIVE"         {
    if ($item.BootType -eq "MBR_ACTIVE") { return (U "[\uCDA9\uB3CC \uC704\uD5D8: MBR \uD65C\uC131 \uBD80\uD2B8\uB85C\uB354 \uBC1C\uACAC!]") }
@@ -1163,6 +1236,7 @@ function Format-BootloaderGuiStatus($item) {
   "PROTECTED"          { return [PSCustomObject]@{ Text = (U "\uD604\uC7AC Windows \uBCF4\uD638\uB428"); Kind = "OK"; Tip = (U "\uD604\uC7AC Windows\uAC00 \uC2E4\uD589 \uC911\uC778 \uB514\uC2A4\uD06C\uC774\uBBC0\uB85C \uBCC0\uACBD \uB300\uC0C1\uC5D0\uC11C \uC790\uB3D9 \uC81C\uC678\uB429\uB2C8\uB2E4.") } }
   "PROTECTED_OS"       { return [PSCustomObject]@{ Text = (U "\uD604\uC7AC Windows \uBCF4\uD638\uB428"); Kind = "OK"; Tip = (U "\uD604\uC7AC Windows\uAC00 \uC2E4\uD589 \uC911\uC778 \uB514\uC2A4\uD06C\uC774\uBBC0\uB85C \uBCC0\uACBD \uB300\uC0C1\uC5D0\uC11C \uC790\uB3D9 \uC81C\uC678\uB429\uB2C8\uB2E4.") } }
   "WINPE_MEDIA"        { return [PSCustomObject]@{ Text = (U "WinPE \uB9E4\uCCB4 \uBCF4\uD638\uB428"); Kind = "Info"; Tip = (U "WinPE \uB610\uB294 \uC124\uCE58 \uB9E4\uCCB4\uB85C \uAC10\uC9C0\uB418\uC5B4 \uC790\uB3D9\uC73C\uB85C \uBCF4\uD638\uB429\uB2C8\uB2E4.") } }
+  "VIRTUAL_PROTECTED"  { return [PSCustomObject]@{ Text = (U "\uAC00\uC0C1 \uB514\uC2A4\uD06C \uBCF4\uD638\uB428"); Kind = "Info"; Tip = (U "\uB9C8\uC6B4\uD2B8\uB41C \uAC00\uC0C1 \uB514\uC2A4\uD06C \uC774\uBBF8\uC9C0\uC774\uBBC0\uB85C \uBCC0\uACBD \uB300\uC0C1\uC5D0\uC11C \uC790\uB3D9 \uC81C\uC678\uB429\uB2C8\uB2E4.") } }
   "READONLY_PROTECTED" { return [PSCustomObject]@{ Text = (U "\uC77D\uAE30 \uC804\uC6A9 \uBCF4\uD638\uB428"); Kind = "Info"; Tip = (U "\uC4F0\uAE30 \uAE08\uC9C0 \uB514\uC2A4\uD06C\uC774\uBBC0\uB85C \uBCC0\uACBD \uB300\uC0C1\uC5D0\uC11C \uC790\uB3D9\uC73C\uB85C \uBCF4\uD638\uB429\uB2C8\uB2E4.") } }
   "ACTIVE"             {
    if ($item.BootType -eq "MBR_ACTIVE") {
@@ -1205,13 +1279,13 @@ function Invoke-BootloaderAction($item, [string]$mode) {
   return [PSCustomObject]@{ Success = $false; Status = "SKIPPED"; Message = (U "\uB300\uC0C1 \uB514\uC2A4\uD06C \uC5C6\uC74C"); Warning = "" }
  }
  if ($item.IsWinPEMedia) {
-  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "WinPE/\uC124\uCE58 \uB9E4\uCCB4 \uB514\uC2A4\uD06C\uB85C \uAC10\uC9C0\uB418\uC5B4 \uBCF4\uD638\uB429\uB2C8\uB2E4.")); Warning = "" }
+  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "WinPE \uB610\uB294 \uC124\uCE58 \uB9E4\uCCB4 \uB514\uC2A4\uD06C\uB85C \uAC10\uC9C0\uB418\uC5B4 \uBCF4\uD638\uB429\uB2C8\uB2E4.")); Warning = "" }
  }
  if ($item.IsReadOnly) {
-  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uC77D\uAE30 \uC804\uC6A9(\uC4F0\uAE30 \uAE08\uC9C0) \uB514\uC2A4\uD06C\uB85C \uBCF4\uD638\uB429\uB2C8\uB2E4.")); Warning = "" }
+  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uC77D\uAE30 \uC804\uC6A9 \uB514\uC2A4\uD06C\uB85C \uBCF4\uD638\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.")); Warning = "" }
  }
  if ($item.IsProtected) {
-  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " (" + (U "\uD604\uC7AC OS/\uBD80\uD305 \uB514\uC2A4\uD06C") + ") " + (U "\uBCF4\uD638\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.")); Warning = "" }
+  return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uD604\uC7AC Windows \uBD80\uD305 \uB514\uC2A4\uD06C\uB85C \uBCF4\uD638\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.")); Warning = "" }
  }
  if ($item.TargetPart -le 0 -or $item.BootType -eq "NONE") {
   return [PSCustomObject]@{ Success = $false; Status = "SKIPPED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uC870\uCE58 \uB300\uC0C1 \uBD80\uD2B8\uB85C\uB354 \uD30C\uD2F0\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")); Warning = "" }
@@ -1222,24 +1296,24 @@ function Invoke-BootloaderAction($item, [string]$mode) {
   $root = "$($drv):\"
   $guard = Test-PartitionMediaGuard $root
   if ($guard.HasOs) {
-   return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = (U "OS \uD30C\uD2F0\uC158(ntoskrnl.exe)\uC774 \uAC10\uC9C0\uB418\uC5B4 \uC790\uB3D9 \uBCC0\uACBD\uC744 \uC911\uB2E8\uD569\uB2C8\uB2E4."); Warning = "" }
+   return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = (U "Windows \uC2DC\uC2A4\uD158 \uD30C\uC77C\uC774 \uAC10\uC9C0\uB418\uC5B4 \uC790\uB3D9 \uBCC0\uACBD\uC744 \uC911\uB2E8\uD588\uC2B5\uB2C8\uB2E4."); Warning = "" }
   }
   if ($guard.HasWinPE) {
-   return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = (U "WinPE/\uC124\uCE58 \uB9E4\uCCB4(boot.wim/\uC678\uC7A5 \uBD80\uD305 \uAD6C\uC870)\uAC00 \uAC10\uC9C0\uB418\uC5B4 \uC911\uB2E8\uD569\uB2C8\uB2E4."); Warning = "" }
+   return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = (U "WinPE \uB610\uB294 \uC124\uCE58 \uB9E4\uCCB4\uAC00 \uAC10\uC9C0\uB418\uC5B4 \uC790\uB3D9 \uBCC0\uACBD\uC744 \uC911\uB2E8\uD588\uC2B5\uB2C8\uB2E4."); Warning = "" }
   }
 
   if ($item.BootType -eq "GPT_EFI") {
    $hasEfi = Test-Path "$($drv):\EFI"
    $hasOld = Test-Path "$($drv):\EFI_OLD"
    if ($hasEfi -and $hasOld) {
-    return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uD30C\uD2F0\uC158\uC5D0 \uD65C\uC131/\uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uAC00 \uACF5\uC874\uD569\uB2C8\uB2E4. \uC218\uB3D9 \uD655\uC778 \uD544\uC694.")); Warning = "" }
+    return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uC640 \uBE44\uD65C\uC131 \uBC31\uC5C5 \uD3F4\uB354\uAC00 \uD568\uAED8 \uC788\uC5B4 \uC218\uB3D9 \uD655\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.")); Warning = "" }
    }
    $r = Invoke-BootloaderRenameInRoot $root "GPT_EFI" $mode
    if ($r.Success) {
     $msg = if ($mode -eq "DISABLE") {
-     "Disk " + $item.DiskNumber + " EFI -> EFI_OLD " + (U "\uBE44\uD65C\uC131\uD654 \uC644\uB8CC!")
+     "Disk " + $item.DiskNumber + (U "\uC758 \uC794\uC874 EFI \uBD80\uD2B8\uB85C\uB354\uB97C \uBE44\uD65C\uC131\uD654\uD588\uC2B5\uB2C8\uB2E4.")
     } else {
-     "Disk " + $item.DiskNumber + " EFI_OLD -> EFI " + (U "\uBCF5\uAD6C \uC644\uB8CC!")
+     "Disk " + $item.DiskNumber + (U "\uC758 EFI \uBD80\uD2B8\uB85C\uB354\uB97C \uC6D0\uB798\uB300\uB85C \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4.")
     }
     return [PSCustomObject]@{ Success = $true; Status = "CHANGED"; Message = $msg; Warning = "" }
    }
@@ -1250,7 +1324,7 @@ function Invoke-BootloaderAction($item, [string]$mode) {
    $hasActive = (Test-Path "$($drv):\bootmgr") -or (Test-Path "$($drv):\Boot\BCD")
    $hasOld = (Test-Path "$($drv):\bootmgr_OLD") -or (Test-Path "$($drv):\Boot_OLD")
    if ($hasActive -and $hasOld) {
-    return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uD30C\uD2F0\uC158\uC5D0 \uD65C\uC131/\uBE44\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uAC00 \uACF5\uC874\uD569\uB2C8\uB2E4. \uC218\uB3D9 \uD655\uC778 \uD544\uC694.")); Warning = "" }
+    return [PSCustomObject]@{ Success = $false; Status = "BLOCKED"; Message = ("Disk " + $item.DiskNumber + " : " + (U "\uD65C\uC131 \uBD80\uD2B8\uB85C\uB354\uC640 \uBE44\uD65C\uC131 \uBC31\uC5C5 \uD3F4\uB354\uAC00 \uD568\uAED8 \uC788\uC5B4 \uC218\uB3D9 \uD655\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.")); Warning = "" }
    }
    $r = Invoke-BootloaderRenameInRoot $root "MBR_ACTIVE" $mode
    if ($r.Success) {
@@ -1265,19 +1339,19 @@ function Invoke-BootloaderAction($item, [string]$mode) {
      }
     }
     $msg = if ($mode -eq "DISABLE") {
-     "Disk " + $item.DiskNumber + " " + (U "MBR \uBD80\uD2B8\uB85C\uB354 \uBE44\uD65C\uC131\uD654 \uC644\uB8CC! (bootmgr/Boot -> _OLD, inactive)")
+     "Disk " + $item.DiskNumber + (U "\uC758 \uC794\uC874 MBR \uBD80\uD2B8\uB85C\uB354\uB97C \uBE44\uD65C\uC131\uD654\uD588\uC2B5\uB2C8\uB2E4.")
     } else {
-     "Disk " + $item.DiskNumber + " " + (U "MBR \uBD80\uD2B8\uB85C\uB354 \uBCF5\uAD6C \uC644\uB8CC! (_OLD -> \uC6D0\uBCF5, active)")
+     "Disk " + $item.DiskNumber + (U "\uC758 MBR \uBD80\uD2B8\uB85C\uB354\uB97C \uC6D0\uB798\uB300\uB85C \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4.")
     }
     return [PSCustomObject]@{ Success = $true; Status = "CHANGED"; Message = $msg; Warning = $warn }
    }
-   return [PSCustomObject]@{ Success = $false; Status = $r.Status; Message = ((U "MBR \uC870\uCE58 \uC2E4\uD328 (\uAD8C\uD55C/\uC7A0\uAE08 \uD655\uC778): ") + $r.Error); Warning = "" }
+   return [PSCustomObject]@{ Success = $false; Status = $r.Status; Message = ((U "MBR \uBD80\uD2B8\uB85C\uB354 \uC804\uD658 \uC2E4\uD328: ") + $r.Error); Warning = "" }
   }
   return [PSCustomObject]@{ Success = $false; Status = "SKIPPED"; Message = "UNSUPPORTED_TYPE"; Warning = "" }
  }
 
  if ($actRes -eq "MOUNT_FAIL") {
-  return [PSCustomObject]@{ Success = $false; Status = "FAILED"; Message = ("Disk " + $item.DiskNumber + " " + (U "[\uB9C8\uC6B4\uD2B8 \uC2E4\uD328]")); Warning = "" }
+  return [PSCustomObject]@{ Success = $false; Status = "FAILED"; Message = ("Disk " + $item.DiskNumber + (U "\uC758 \uBD80\uD2B8 \uD30C\uD2F0\uC158\uC5D0 \uC811\uADFC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.")); Warning = "" }
  }
  return $actRes
 }
@@ -1380,7 +1454,7 @@ function Show-BootloaderManager([bool]$isWinPE) {
 # Map Asan Hospital fleet asset codes & SMBIOS models (S4/S5/S8/S9, H0/H1/H2/H3/H4/HS/H6/H8, D1/D8)
 function Resolve-HospitalModelProfile([string]$vendor, [string]$hintVendor, [string]$modelName, [string]$cpuName, [string]$compName) {
  $assetCode = ""
- if ($compName -and $compName -match "^(?i)C\d{6}([A-Z0-9]{2})$") {
+ if ($compName -and $compName -match "^(?i)C\d{5,7}([A-Z0-9]{2})$") {
   $assetCode = $matches[1].ToUpper()
  }
  $effVendor = if ($vendor -ne "Standard") { $vendor } elseif ($hintVendor -ne "Standard") { $hintVendor } else { "" }
@@ -1406,10 +1480,16 @@ function Resolve-HospitalModelProfile([string]$vendor, [string]$hintVendor, [str
    $genFamily = "SAMSUNG_DB400T"
   }
  } elseif ($effVendor -eq "HP") {
-  if ($modelName -match "(?i)\bG(8|9|10|11)\b|Elite\s+Tower\s+[68]00|Pro\s+Tower\s+400" -or $assetCode -in @("H1","H2") -or $cpuName -match "i[3579]-1[1-4]\d{3}") {
+  if ($modelName -match "(?i)\bG(6|7|8|9|10|11)\b|Elite\s+Tower\s+[68]00|Pro\s+Tower\s+400" -or $assetCode -in @("H0","H1","H2") -or $cpuName -match "i[3579]-1[0-4]\d{3}|Core\s+Ultra") {
    $genFamily = "HP_G8_G9"
    if ($resolvedModel -eq "Desktop PC") {
-    $resolvedModel = if ($cpuName -match "i[3579]-1[2-4]\d{3}") { "HP Elite Tower 800 G9" } else { "HP EliteDesk 800 G8" }
+    $resolvedModel = if ($assetCode -eq "H0" -or $cpuName -match "i[3579]-10\d{3}") {
+     "HP EliteDesk / ProDesk G6 (H0)"
+    } elseif ($cpuName -match "i[3579]-1[2-4]\d{3}|Core\s+Ultra") {
+     "HP Elite Tower 800 G9"
+    } else {
+     "HP EliteDesk 800 G8"
+    }
    }
   } elseif ($modelName -match "(?i)ProDesk\s+600\s*G[1-5]|EliteDesk\s+800\s*G[1-5]|Compaq\s+(Pro\s+6300|Elite\s+8300)" -or $assetCode -in @("H3","H4","HS","H6","H7","H8")) {
    $genFamily = "HP_PRODESK_G1_G5"
@@ -1511,22 +1591,22 @@ function Get-SystemInfo {
  $vendorBiosHint = switch ($hintVendor) {
   "HP" {
    if ($hospProf.GenFamily -eq "HP_G8_G9") {
-    "HP BIOS (F10 / Boot Menu F9): Advanced -> Boot Options -> USB Storage Boot [Checked] & Fast Boot [Unchecked] / Security -> Secure Boot [Unchecked]"
+    U "HP BIOS F10 \u00B7 \uBD80\uD305 \uBA54\uB274 F9 \u00B7 Advanced > Boot Options\uC5D0\uC11C USB Storage Boot \uCCB4\uD06C, Fast Boot \uCCB4\uD06C \uD574\uC81C"
    } elseif ($hospProf.GenFamily -eq "HP_PRODESK_G1_G5") {
-    "HP BIOS (Esc,F10 / Boot Menu F9): Advanced -> Boot Options -> USB Storage Boot / Removable Media Boot [Enable] & Secure Boot [Disable]"
+    U "HP BIOS Esc/F10 \u00B7 \uBD80\uD305 \uBA54\uB274 F9 \u00B7 Advanced > Boot Options\uC5D0\uC11C USB Storage Boot \uB610\uB294 Removable Media Boot \uD65C\uC131\uD654"
    } else {
-    "HP BIOS (F10 / Boot Menu F9): Advanced -> Boot Options -> USB Storage Boot [Enable/Checked] / Fast Boot [Disable/Unchecked]"
+    U "HP BIOS F10 \u00B7 \uBD80\uD305 \uBA54\uB274 F9 \u00B7 Advanced > Boot Options\uC5D0\uC11C USB Storage Boot \uD65C\uC131\uD654, Fast Boot \uBE44\uD65C\uC131\uD654"
    }
   }
-  "Dell"     { "Dell BIOS (F2 / Boot Menu F12): Boot Configuration -> Enable USB Boot Support [ON] / Secure Boot [OFF] / Fastboot [Thorough]" }
-  "Samsung"  { "Samsung BIOS (F2 / Boot Menu F10,F12): Boot -> Fast BIOS Mode [Disabled] / Secure Boot Control [Disabled]" }
-  "Lenovo"   { "Lenovo BIOS (F1 / Boot Menu F12): Startup -> USB Boot [Enabled] / Security -> Secure Boot [Disabled]" }
-  "LG"       { "LG BIOS (F2 / Boot Menu F10): Boot -> Fast Boot [Disabled] / Security -> Secure Boot [Disabled]" }
-  "ASUS"     { "ASUS BIOS (Del,F2 / Boot Menu F8): Boot -> Fast Boot [Disabled] / Secure Boot -> Other OS" }
-  "ASRock"   { "ASRock BIOS (Del,F2 / Boot Menu F11): Boot -> Fast Boot [Disabled] / Security -> Secure Boot [Disabled]" }
-  "Gigabyte" { "Gigabyte BIOS (Del / Boot Menu F12): Boot -> Fast Boot [Disabled] / Secure Boot [Disabled]" }
-  "MSI"      { "MSI BIOS (Del / Boot Menu F11): Settings -> Boot -> Fast Boot [Disabled] / Secure Boot [Disabled]" }
-  default    { "BIOS Setup (F2/Del): USB Boot [Enabled] / Fast Boot [Disabled] / Secure Boot [Disabled]" }
+  "Dell"     { U "Dell BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F12 \u00B7 Boot Configuration\uC5D0\uC11C Enable USB Boot Support \uCF1C\uAE30, Fastboot\uB294 Thorough \uAD8C\uC7A5" }
+  "Samsung"  { U "\uC0BC\uC131 BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F10/F12 \u00B7 Boot\uC5D0\uC11C Fast BIOS Mode \uB044\uAE30, Secure Boot Control \uB044\uAE30" }
+  "Lenovo"   { U "Lenovo BIOS F1 \u00B7 \uBD80\uD305 \uBA54\uB274 F12 \u00B7 Startup\uC5D0\uC11C USB Boot \uCF1C\uAE30, Security\uC5D0\uC11C Secure Boot \uB044\uAE30" }
+  "LG"       { U "LG BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F10 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Security\uC5D0\uC11C Secure Boot \uB044\uAE30" }
+  "ASUS"     { U "ASUS BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F8 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot\uB294 Other OS \uC120\uD0DD" }
+  "ASRock"   { U "ASRock BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Security\uC5D0\uC11C Secure Boot \uB044\uAE30" }
+  "Gigabyte" { U "Gigabyte BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F12 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot \uB044\uAE30" }
+  "MSI"      { U "MSI BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11 \u00B7 Settings > Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot \uB044\uAE30" }
+  default    { U "BIOS F2/Del \u00B7 USB Boot \uCF1C\uAE30, Fast Boot \uB044\uAE30, \uD544\uC694 \uC2DC Secure Boot \uB044\uAE30" }
  }
 
  $biosGuideShort = switch ($hintVendor) {
@@ -1714,11 +1794,11 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
   $valStr = if ($null -ne $item.Value) { ([string](@($item.Value) -join ",")).Trim() } else { "" }
   $activeVal = ""
   if ($curVal) {
-   $activeVal = if ($curVal -match "\*([^,]+)") { $matches[1].Trim() } else { $curVal }
+   $activeVal = if ($curVal -match "\*([^,;]+)") { $matches[1].Trim() } else { $curVal }
   } elseif ($valStr) {
-   if ($valStr -match "\*([^,]+)") {
+   if ($valStr -match "\*([^,;]+)") {
     $activeVal = $matches[1].Trim()
-   } elseif ($valStr -notmatch ",") {
+   } elseif ($valStr -notmatch "[,;]") {
     $activeVal = $valStr
    }
   }
@@ -1769,14 +1849,12 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
   }
  }
 
- # 5) Also inspect HP_BIOSOrderedList (UEFI Boot Order) when available for supplementary visibility
- $orderedHasUsb = $false
+ # 5) Also inspect HP_BIOSOrderedList (UEFI Boot Order) for diagnostic evidence only (Rule #5: never assume USB Boot=Enabled solely from static Boot Order!)
  foreach ($ol in $hpOrdered) {
   $oName = if ($null -ne $ol.Name) { ([string]$ol.Name).Trim() } else { "" }
   $oVal = if ($null -ne $ol.Value) { ([string](@($ol.Value) -join ",")).Trim() } else { "" }
   if ($oName -match "(?i)UEFI\s*Boot\s*Order|^Boot\s*Order$|" + (U "\uBD80\uD305\s*\uC21C\uC11C")) {
    [void]$evidence.Add(("HP Boot Order (" + $oName + "): " + $oVal))
-   if ($oVal -match "(?i)\bUSB\b") { $orderedHasUsb = $true }
   }
  }
 
@@ -1789,9 +1867,6 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
  } elseif ($primaryEnabled.Count -gt 0) {
   $usbState = "Enabled"
   $usbDetail = "HP WMI: " + ($primaryEnabled -join "; ")
- } elseif ($orderedHasUsb) {
-  $usbState = "Enabled"
-  $usbDetail = "HP WMI UEFI Boot Order: USB included"
  } else {
   $usbState = "UnverifiableHP"
   $usbDetail = ((U "HP WMI \uC5F0\uACB0\uB428 / USB Boot \uD56D\uBAA9 \uBBF8\uBC1C\uACAC (") + $seenKeys.Count + (U "\uAC1C \uC124\uC815 \uC2A4\uCE94)"))
@@ -1903,8 +1978,8 @@ function Resolve-DellBiosDiagnostics([array]$dellSettings) {
   # 4) SecureBoot WMI cross-check signal (SecureBoot / SecBoot / SecureBootEnable)
   if ($name -match "(?i)^(SecureBoot|SecBoot|SecureBootEnable)$") {
    [void]$evidence.Add(("Dell SecureBoot: " + $name + " = " + $val))
-   if ($val -match "(?i)Enable|On|True") { $secWmi = "On" }
-   elseif ($val -match "(?i)Disable|Off|False") { $secWmi = "Off" }
+   if ($val -match "(?i)Enable|On|True|DeployedMode") { $secWmi = "On" }
+   elseif ($val -match "(?i)Disable|Off|False|AuditMode") { $secWmi = "Off" }
   }
 
   # 5) UEFI Boot Path Security (informational evidence on OptiPlex D1/D8)
@@ -2120,7 +2195,8 @@ function Resolve-BiosCrossCheckVerdict(
 function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [int]$matchedNvramCount = -1) {
  $vendor = $sysInfo.Vendor
  $koBootMgr = U "Windows \uBD80\uD305 \uAD00\uB9AC\uC790"
- $excludeDescPattern = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|Hard Drive \(SATA|Hard Drive \(NVMe|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Onboard NIC|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update)"
+ $unknownDevRe = "^(?i)(unknown|" + (U "\uC54C\s*\uC218\s*\uC5C6\uC74C") + ")(\s|$)"
+ $excludeDescPattern = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|Hard Drive \(SATA|Hard Drive \(NVMe|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Onboard NIC|Ethernet|GbE\s+Family|FE\s+Family|\bLAN\b|Wi-?Fi|Bluetooth|Built-in\s+EFI\s+Shell|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update)"
 
  # Build dynamic USB model hints from connected USB disks so enclosures like 'HSEN 10G-NVME' or 'JMicron Generic SATA' are never dropped!
  $connectedUsbHints = New-Object System.Collections.ArrayList
@@ -2132,13 +2208,15 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
  }
  $usbHintRe = if ($connectedUsbHints.Count -gt 0) { ($connectedUsbHints | Select-Object -Unique) -join "|" } else { "" }
 
- # Strict NVRAM USB check (excludes internal SATA/NVMe unless explicitly USB or matching connected USB enclosure)
+ # Strict NVRAM USB check (excludes disconnected 'unknown' ghost entries, USB NICs, and internal SATA/NVMe)
  $nvramUsbEntries = @(
   $bcdEntries | Where-Object {
    $desc = [string]$_.Description
+   $dev = ([string]$_.Device).Trim()
    $matchesConnUsb = ($usbHintRe -and ($desc -match $usbHintRe))
    $isInternalBusOnly = (-not $matchesConnUsb) -and ($desc -match "(?i)\b(SATA\d*|NVMe\d*)\b") -and ($desc -notmatch "(?i)\bUSB\b|External|Removable")
    $_.Identifier -ne "{fwbootmgr}" -and $_.Identifier -ne "{bootmgr}" -and
+   (-not ($dev -and ($dev -match $unknownDevRe))) -and
    ($desc -notmatch $excludeDescPattern) -and
    (-not $isInternalBusOnly) -and
    ($matchesConnUsb -or ($desc -match "(?i)\bUSB\b|Removable|External|Flash|SanDisk|Ventoy|Phoenix|RTL9210|JMicron|HSEN|FireCuda|ADATA|Kingston|JetFlash|PMAP|UDisk"))
@@ -2151,7 +2229,7 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
  $evidence = New-Object System.Collections.ArrayList
  foreach ($bs in $bootModeDiag.Signals) { [void]$evidence.Add(("BootMode: " + $bs)) }
 
- # Query vendor WMI (HP: HP_BIOSSetting + HP_BIOSEnumeration + HPBIOS_BIOSEnumeration + HP_BIOSOrderedList | Dell: DCIM_BIOSEnumeration + biosattributes | Lenovo: Lenovo_BiosSetting)
+ # Query vendor WMI (HP: HP_BIOSEnumeration + HPBIOS_BIOSEnumeration + HP_BIOSSetting + HP_BIOSOrderedList | Dell: DCIM_BIOSEnumeration + biosattributes | Lenovo: Lenovo_BiosSetting)
  $wmiState = "Unknown"
  $wmiDetail = ""
  $fastBootWarn = $false
@@ -2163,7 +2241,7 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
  if ($vendor -eq "HP") {
   $hpRaw = @()
   $hpOrdered = @()
-  foreach ($hpCls in @("HP_BIOSSetting", "HP_BIOSEnumeration", "HPBIOS_BIOSEnumeration")) {
+  foreach ($hpCls in @("HP_BIOSEnumeration", "HPBIOS_BIOSEnumeration", "HP_BIOSSetting")) {
    try {
     $resCls = @(Get-CimInstance -Namespace "root\HP\InstrumentedBIOS" -ClassName $hpCls -ErrorAction Stop)
     if ($resCls.Count -gt 0) { $hpRaw += $resCls }
@@ -2307,7 +2385,8 @@ function Format-BiosCrossCheckReport($sysInfo, $diag, $usbInfo, [array]$matchedE
  [void]$sb.AppendLine("==================================================================")
  [void]$sb.AppendLine(("Tool Version : v" + $script:ToolVersion + " (build " + $script:BuildDate + " / " + $script:BuildCommit + ")"))
  $codeSuffix = if ($sysInfo.PSObject.Properties["AssetCode"] -and $sysInfo.AssetCode) { " (Code: " + $sysInfo.AssetCode + ")" } else { "" }
- [void]$sb.AppendLine(("System       : [" + $sysInfo.Vendor + "] " + $sysInfo.ModelName + $codeSuffix))
+ $venTag = if ($sysInfo.Vendor -ne "Standard") { $sysInfo.Vendor } elseif ($sysInfo.PSObject.Properties["HintVendor"] -and $sysInfo.HintVendor) { $sysInfo.HintVendor } else { "Standard" }
+ [void]$sb.AppendLine(("System       : [" + $venTag + "] " + $sysInfo.ModelName + $codeSuffix))
  if ($sysInfo.PSObject.Properties["CpuName"] -and $sysInfo.CpuName) { [void]$sb.AppendLine(("CPU          : " + $sysInfo.CpuName)) }
  [void]$sb.AppendLine(("Raw Vendor   : " + $sysInfo.RawVendor))
  if ($sysInfo.BiosVersion) { [void]$sb.AppendLine(("BIOS Version : " + $sysInfo.BiosVersion)) }
@@ -2557,8 +2636,8 @@ function Get-PartitionDevicePatterns($partObj) {
  $pats = New-Object System.Collections.ArrayList
  if (-not $partObj) { return @() }
  if ($partObj.DriveLetter) {
-  $dl = ([string]$partObj.DriveLetter).Trim().TrimEnd(':')
-  if ($dl) {
+  $dl = ([string]$partObj.DriveLetter).Trim([char]0).Trim().TrimEnd(':')
+  if ($dl -and ($dl -match '^[A-Za-z]$')) {
    [void]$pats.Add("partition=$($dl):")
    $ntFromLtr = Resolve-DosDeviceTarget "$($dl):"
    if ($ntFromLtr) { [void]$pats.Add(("partition=" + $ntFromLtr)) }
@@ -2609,6 +2688,7 @@ function Test-UsbBootFilesOnRoot([string]$rootPath) {
  }
  try {
   if ([System.IO.File]::Exists(($r + "\bootmgr")) -and [System.IO.File]::Exists(($r + "\Boot\BCD"))) { return $true }
+  if ([System.IO.Directory]::Exists(($r + "\EFI\BOOT")) -or [System.IO.Directory]::Exists(($r + "\ventoy"))) { return $true }
  } catch {}
  return $false
 }
@@ -2632,7 +2712,7 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
   }
  }
 
- $genericNoiseRe = "^(?i)(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|SCSI|SATA|NVMe|PCIE|ATA|3\.0|2\.0|3\.1|3\.2|3\.2Gen1|3\.2Gen2|Gen1|Gen2)$"
+ $genericNoiseRe = "^(?i)(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|SCSI|SATA|NVMe|PCIE|ATA|Realtek|Pro|Plus|Max|Mini|Ultra|Extreme|Evo|Basic|Portable|External|Pocket|Shield|Gaming|Super|Speed|Dual|Type|TypeC|Corp|Inc|Ltd|Tech|3\.0|2\.0|3\.1|3\.2|3\.2Gen1|3\.2Gen2|Gen1|Gen2|Gen3|Gen4|\d+(\.\d+)?|\d+\s*[KMGT]B|\d+G)$"
  $hasStorage = Test-StorageCmdletsAvailable
  foreach ($disk in $usbDisks) {
   $sizeGB = [math]::Round($disk.Size / 1GB, 1)
@@ -2771,7 +2851,8 @@ function Find-MatchedUsbNvramEntries(
  [array]$internalModelPatterns = @()
 ) {
  $koBootMgr = U "Windows \uBD80\uD305 \uAD00\uB9AC\uC790"
- $excludeDesc = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Hard Drive \(SATA|Hard Drive \(NVMe|Onboard NIC|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update|Diagnostics)"
+ $unknownDevRe = "^(?i)(unknown|" + (U "\uC54C\s*\uC218\s*\uC5C6\uC74C") + ")(\s|$)"
+ $excludeDesc = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Hard Drive \(SATA|Hard Drive \(NVMe|Onboard NIC|Ethernet|GbE\s+Family|FE\s+Family|\bLAN\b|Wi-?Fi|Bluetooth|Built-in\s+EFI\s+Shell|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update|Diagnostics)"
  $internalPattern = if ($internalDriveLetters -and $internalDriveLetters.Count -gt 0) {
   (@($internalDriveLetters | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
  } else {
@@ -2780,14 +2861,17 @@ function Find-MatchedUsbNvramEntries(
  $usbDrvRegex = if ($usbDrivePatterns -and $usbDrivePatterns.Count -gt 0) {
   (@($usbDrivePatterns | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
  } else { "" }
- $usbModRegex = if ($usbStrictModelPatterns -and $usbStrictModelPatterns.Count -gt 0) { ($usbStrictModelPatterns | Select-Object -Unique) -join "|" } else { "" }
+ $usbModRegex = if ($usbStrictModelPatterns -and $usbStrictModelPatterns.Count -gt 0) {
+  (@($usbStrictModelPatterns | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { "(?<![A-Za-z0-9])(?:" + $_ + ")(?![A-Za-z0-9])" })) -join "|"
+ } else { "" }
  $intModRegex = if ($internalModelPatterns -and $internalModelPatterns.Count -gt 0) { ($internalModelPatterns | Select-Object -Unique) -join "|" } else { "" }
 
  $candidateEntries = @($bcdEntries | Where-Object {
   $descStr = [string]$_.Description
-  $devStr = [string]$_.Device
-  $matchesUsbDev = ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
-  $matchesUsbMod = ($usbModRegex -and ($descStr -match $usbModRegex))
+  $devStr = ([string]$_.Device).Trim()
+  $isUnknownGhostDev = ($devStr -ne "" -and ($devStr -match $unknownDevRe))
+  $matchesUsbDev = (-not $isUnknownGhostDev) -and ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
+  $matchesUsbMod = (-not $isUnknownGhostDev) -and ($usbModRegex -and ($descStr -match $usbModRegex))
   $isOpticalNonUsb = ($descStr -match "(?i)CD/DVD|CD-ROM|Optical") -and ($descStr -notmatch "(?i)\bUSB\b")
   # Never exclude external enclosures like 'HSEN 10G-NVME' or 'JMicron Generic SATA' when they match a connected USB device/model!
   $isInternalBusWithoutUsb = (-not $matchesUsbDev) -and (-not $matchesUsbMod) -and ($descStr -match "(?i)\b(SATA\d*|NVMe\d*)\b") -and ($descStr -notmatch "(?i)\bUSB\b|External|Removable|Enclosure")
@@ -2795,6 +2879,7 @@ function Find-MatchedUsbNvramEntries(
 
   $_.Identifier -ne "{fwbootmgr}" -and
   $_.Identifier -ne "{bootmgr}" -and
+  (-not $isUnknownGhostDev) -and
   ($descStr -notmatch $excludeDesc) -and
   (-not $isOpticalNonUsb) -and
   (-not $isInternalBusWithoutUsb) -and
@@ -2895,7 +2980,7 @@ function Get-PreSidStep2Snapshot($sysInfo, $preClassifiedDisks = $null) {
  $usbInfo = Get-PhysicalUsbInfo $usbDisks $internalDisks
  $matchedEntries = @()
  if ($usbDisks.Count -gt 0) {
-  $allowGenericFallback = ([bool]$usbInfo.AnyEfiReadyUsb -or ($usbDisks.Count -gt 0))
+  $allowGenericFallback = [bool]$usbInfo.AnyEfiReadyUsb
   $matchedEntries = @(Find-MatchedUsbNvramEntries `
    $entries `
    $internalDrivePatterns `
@@ -2977,11 +3062,18 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
 
   # Gate 2: Physical USB found, but 0 matching NVRAM entries
   if ($matchedEntries.Count -eq 0) {
-   $isLikelyHotPlug = (($diag.UsbBootState -eq "Enabled" -or [bool]$usbInfo.AnyEfiReadyUsb) -and -not $diag.IsConfirmedBlocked -and -not $diag.FastBootWarn)
+   $isLikelyHotPlug = ([bool]$usbInfo.AnyEfiReadyUsb -and -not $diag.IsConfirmedBlocked -and -not $diag.FastBootWarn)
+   $isNonBootUsb = (-not [bool]$usbInfo.AnyEfiReadyUsb)
    $rescanNow = $false
    while ($true) {
     Write-Host "`n==================================================================" -ForegroundColor Yellow
-    if ($isLikelyHotPlug) {
+    if ($isNonBootUsb) {
+     Write-Host (U " [\uC8FC\uC758] \uC5F0\uACB0\uB41C USB\uC5D0\uC11C UEFI/WinPE \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
+     Write-Host (U " - \uC77C\uBC18 \uB370\uC774\uD130 USB\uC774\uAC70\uB098 \uC228\uAE40 \uD30C\uD2F0\uC158\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4. WinPE USB\uAC00 \uB9DE\uC73C\uBA74 [O]\uB97C \uC120\uD0DD\uD558\uC138\uC694.") -ForegroundColor Gray
+     Write-Host ""
+     Write-Host (U " [O] Windows \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9) \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Green
+     Write-Host (U " [B] BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Cyan
+    } elseif ($isLikelyHotPlug) {
      Write-Host (U " [\uC548\uB0B4] \uBB3C\uB9AC USB\uB294 \uC778\uC2DD\uB418\uC5C8\uC73C\uB098 \uD604\uC7AC NVRAM \uBAA9\uB85D\uC5D0 \uB4F1\uB85D\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
      Write-Host (U " - BIOS USB Boot\uAC00 \uCF1C\uC838 \uC788\uC73C\uBBC0\uB85C Windows \uBD80\uD305 \uD6C4 USB\uB97C \uC5F0\uACB0(Hot-Plug)\uD55C \uC0C1\uD0DC\uC77C \uAC00\uB2A5\uC131\uC774 \uB192\uC2B5\uB2C8\uB2E4.") -ForegroundColor Cyan
      Write-Host ""
@@ -3080,17 +3172,20 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
 
 function Get-LocalMachineSid {
  try {
-  $accs = @(Get-CimInstance -ClassName Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop)
-  foreach ($a in $accs) {
-   if ([string]$a.SID -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
-    return $matches[1]
+  if (Get-Command Get-LocalUser -ErrorAction SilentlyContinue) {
+   foreach ($u in @(Get-LocalUser -ErrorAction Stop)) {
+    if ($u -and [string]$u.SID.Value -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
+     return $matches[1]
+    }
    }
   }
  } catch {}
  try {
-  if (Get-Command Get-LocalUser -ErrorAction SilentlyContinue) {
-   $u = Get-LocalUser -ErrorAction Stop | Select-Object -First 1
-   if ($u -and [string]$u.SID.Value -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
+  $dom = ([string]$env:COMPUTERNAME).Replace("'", "''")
+  $flt = if ($dom) { "LocalAccount=True AND Domain='$dom'" } else { "LocalAccount=True" }
+  $accs = @(Get-CimInstance -ClassName Win32_UserAccount -Filter $flt -ErrorAction Stop)
+  foreach ($a in $accs) {
+   if ([string]$a.SID -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
     return $matches[1]
    }
   }
@@ -3156,7 +3251,14 @@ function Clear-SpoolerQueueDirectory([string]$queueDir) {
     $deleted++
     if ($isJob) { $splShdDeleted++ }
    } catch {
-    $failed += $f.Name
+    try {
+     $f.Attributes = [System.IO.FileAttributes]::Normal
+     Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop
+     $deleted++
+     if ($isJob) { $splShdDeleted++ }
+    } catch {
+     $failed += $f.Name
+    }
    }
   }
  }
@@ -3519,8 +3621,12 @@ function Invoke-SpoolerResetCore([scriptblock]$onProgress = $null) {
   }
  }
 
+ if ($stopMode -eq "FAILED" -and -not $startErr) {
+  $startErr = U "Spooler \uD504\uB85C\uC138\uC2A4\uB97C \uC911\uC9C0\uD558\uC9C0 \uBABB\uD574 \uCD08\uAE30\uD654\uB97C \uC644\uB8CC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."
+ }
+
  return [PSCustomObject]@{
-  Success = $isRunning
+  Success = ($isRunning -and ($stopMode -ne "FAILED"))
   ServiceMissing = $false
   StopMode = $stopMode
   QueueResult = $qRes
@@ -3528,7 +3634,7 @@ function Invoke-SpoolerResetCore([scriptblock]$onProgress = $null) {
   StartMode = $curStartMode
   RunningDeps = $runningDeps
   RestartedDeps = $restartedDeps
-  IsRunning = $isRunning
+  IsRunning = ($isRunning -and ($stopMode -ne "FAILED"))
   StartError = $startErr
   LogLines = @($logs)
  }
@@ -4357,7 +4463,7 @@ function New-GuiDiagnosticsDialog($sysInfo, $step2Snap, $postStatus, [string]$lo
  $tabs = New-Object System.Windows.Forms.TabControl
  $tabs.Dock = [System.Windows.Forms.DockStyle]::Fill
  Enable-AsanOwnerDrawTabs $tabs $theme $fonts
- $tabs.ItemSize = New-Object System.Drawing.Size(165, 32)
+ $tabs.ItemSize = New-Object System.Drawing.Size(168, 32)
 
  $addTab = {
   param([string]$tName, [string]$tBody)
@@ -4369,10 +4475,10 @@ function New-GuiDiagnosticsDialog($sysInfo, $step2Snap, $postStatus, [string]$lo
   $tp.Controls.Add($pTb.Panel)
   [void]$tabs.TabPages.Add($tp)
  }
- & $addTab (U "BIOS \uAD50\uCC28 \uAC80\uC99D") $biosText
- & $addTab (U "UEFI NVRAM \uC6D0\uBCF8") $nvramText
- & $addTab (U "\uB514\uC2A4\uD06C \uAD6C\uC131") $diskText
- & $addTab (U "\uC791\uC5C5 \uB85C\uADF8") $safeLog
+ & $addTab (U "1. BIOS \uAD50\uCC28 \uAC80\uC99D") $biosText
+ & $addTab (U "2. UEFI NVRAM \uC6D0\uBCF8") $nvramText
+ & $addTab (U "3. \uB514\uC2A4\uD06C \uAD6C\uC131") $diskText
+ & $addTab (U "4. \uC791\uC5C5 \uB85C\uADF8") $safeLog
  if ($errorSummary) { $tabs.SelectedIndex = 3 }
  $bodyWrap.Controls.Add($tabs)
 
@@ -5090,8 +5196,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $dgvUsb = New-AsanGrid $theme $fonts
  Add-AsanGridColumn $dgvUsb "Kind"   (U "\uAD6C\uBD84") 98 $false 88
  Add-AsanGridColumn $dgvUsb "Match"  (U "\uC77C\uCE58 \uC218\uC900") 118 $false 110
- Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 195 $false 145
- Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 192 $false 130
+ Add-AsanGridColumn $dgvUsb "Name"   (U "USB \uB610\uB294 \uBD80\uD305 \uD56D\uBAA9 \uC774\uB984") 254 $false 160
+ Add-AsanGridColumn $dgvUsb "Device" (U "\uC5F0\uACB0 \uC815\uBCF4") 150 $false 120
  Add-AsanGridColumn $dgvUsb "Guide"  (U "\uC0C1\uD0DC \uC548\uB0B4") 180 $true 150
 
  # Step 2 Bottom Action Bar (46px)
@@ -5277,8 +5383,8 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  $dgvPrinters = New-AsanGrid $theme $fonts
  Add-AsanGridColumn $dgvPrinters "Type"   (U "\uAD6C\uBD84") 94 $false 84
  Add-AsanGridColumn $dgvPrinters "Name"   (U "\uD504\uB9B0\uD130 \uC774\uB984") 230 $false 150
- Add-AsanGridColumn $dgvPrinters "Share"  (U "\uACF5\uC720 \uACBD\uB85C") 190 $false 120
- Add-AsanGridColumn $dgvPrinters "Port"   (U "\uD3EC\uD2B8") 130 $false 90
+ Add-AsanGridColumn $dgvPrinters "Share"  (U "\uACF5\uC720 \uACBD\uB85C") 216 $false 130
+ Add-AsanGridColumn $dgvPrinters "Port"   (U "\uD3EC\uD2B8") 114 $false 90
  Add-AsanGridColumn $dgvPrinters "Driver" (U "\uB4DC\uB77C\uC774\uBC84") 160 $true 130
 
  $cardPrinters.Controls.Add($dgvPrinters)
@@ -5435,6 +5541,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
   Set-AsanButtonState $ui.BtnRescanUsb  (-not $busy) $busyTip $ui "Secondary"
   Set-AsanButtonState $ui.BtnPostRefresh (-not $busy) $busyTip $ui "Secondary"
   Set-AsanButtonState $ui.BtnSpoolerReset (-not $busy) $busyTip $ui "Primary"
+  $hasValidSid = ($null -ne $st.PostStatus -and [string]$st.PostStatus.MachineSid -match '^S-1-5-21-')
+  $sidBtnTip = if ($busy) { $busyTip } else { U "\uD604\uC7AC PC\uC758 Machine SID\uB97C \uD655\uC778\uD560 \uC218 \uC5C6\uC5B4 \uBCF5\uC0AC\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }
+  $sidBtnVar = if ($ui.BtnCopySid.Text -eq (U "\uBCF5\uC0AC\uB428")) { "SoftTeal" } else { "Secondary" }
+  Set-AsanButtonState $ui.BtnCopySid ($hasValidSid -and -not $busy) $sidBtnTip $ui $sidBtnVar
 
   $efiRep = $st.EfiRep
   $snap = $st.Step2Snap
@@ -5677,10 +5787,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    } elseif ($physList.Count -gt 0) {
     foreach ($ud in $physList) {
      $roTag = if ($ud.IsReadOnly) { U " \u00B7 \uC77D\uAE30 \uC804\uC6A9" } else { "" }
-     $drvPrefix = if ($ud.PSObject.Properties["DriveSummary"] -and $ud.DriveSummary) { $ud.DriveSummary + " \u00B7 " } else { "" }
-     $devStr = (U $drvPrefix) + $ud.SizeGB + $roTag
+     $drvPrefix = if ($ud.PSObject.Properties["DriveSummary"] -and $ud.DriveSummary) { [string]$ud.DriveSummary + (U " \u00B7 ") } else { "" }
+     $devStr = $drvPrefix + $ud.SizeGB + $roTag
      if ($ud.IsEfiReady) {
-      $guideTxt = U "\uBD80\uD305 \uD30C\uC77C \uD655\uC778\uB428 \u00B7 \uACE0\uAE09 \uBD80\uD305\uC758 \uC7A5\uCE58 \uC0AC\uC6A9\uC73C\uB85C \uBC14\uB85C \uBD80\uD305\uD569\uB2C8\uB2E4"
+      $guideTxt = U "\uBD80\uD305 \uD30C\uC77C \uD655\uC778\uB428 \u00B7 \uACE0\uAE09 \uBD80\uD305\uC5D0\uC11C \uC7A5\uCE58 \uC0AC\uC6A9 \uC120\uD0DD"
       $rIdx = $u.DgvUsb.Rows.Add((U "\uBD80\uD305 \uB514\uC2A4\uD06C"), (U "\uACE0\uAE09 \uBD80\uD305 \uC900\uBE44"), [string]$ud.Model, $devStr, $guideTxt)
       $row = $u.DgvUsb.Rows[$rIdx]
       $row.Tag = [PSCustomObject]@{ Kind = "HOTPLUG_READY"; Disk = $ud }
@@ -5717,7 +5827,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    & $u.AppendLog ((U "\uC0AC\uC804 \uC810\uAC80 \uC624\uB958: ") + $_.Exception.Message)
    & $u.SetStatus (U "\uC0AC\uC804 \uC810\uAC80 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4") "Error"
   } finally {
-   if (-not $u.Form.IsDisposed) { $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default }
+   if (-not $u.Form.IsDisposed) {
+    try { & $u.SyncButtonStates } catch {}
+    $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default
+   }
   }
  }.GetNewClosure()
 
@@ -5842,7 +5955,10 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
    & $u.AppendLog ((U "\uC0AC\uD6C4 \uC810\uAC80 \uC624\uB958: ") + $_.Exception.Message)
    & $u.SetStatus (U "\uD504\uB9B0\uD130 \uC0C1\uD0DC \uC870\uD68C \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4") "Error"
   } finally {
-   if (-not $u.Form.IsDisposed) { $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default }
+   if (-not $u.Form.IsDisposed) {
+    try { & $u.SyncButtonStates } catch {}
+    $u.Form.Cursor = [System.Windows.Forms.Cursors]::Default
+   }
   }
  }.GetNewClosure()
 
@@ -5862,7 +5978,7 @@ function New-SidAuxMainForm($sysInfo, [bool]$autoPopulate = $true) {
  # Instant-feedback SID copy button (1.5s visual confirmation)
  $btnCopySid.Add_Click({
   $sidStr = if ($ui.State.PostStatus -and $ui.State.PostStatus.MachineSid) { [string]$ui.State.PostStatus.MachineSid } else { "" }
-  if (-not $sidStr) { return }
+  if (-not $sidStr -or ($sidStr -notmatch '^S-1-5-21-')) { return }
   try {
    [System.Windows.Forms.Clipboard]::SetText($sidStr)
    $ui.BtnCopySid.Text = U "\uBCF5\uC0AC\uB428"
@@ -6245,6 +6361,7 @@ function Show-WinPeEmergencyGui {
  $form.Size = New-Object System.Drawing.Size(920, 520)
  $form.MinimumSize = New-Object System.Drawing.Size(780, 440)
  $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+ $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
  $form.BackColor = $theme.CanvasBg
  $form.Font = $fonts.Base
  $form.Icon = $appIcon
@@ -6342,26 +6459,45 @@ function Show-WinPeEmergencyGui {
  $peUi.LoadPe = {
   $rep = Get-InternalBootloaderReport $true
   $peUi.Dgv.Rows.Clear()
+  $firstActIdx = -1
   foreach ($it in $rep.Items) {
-   $pStr = if ($it.TargetPart -gt 0) { $it.BootType + " #" + $it.TargetPart } else { "-" }
+   $pStr = if ($it.TargetPart -gt 0) {
+    if ($it.BootType -eq "GPT_EFI") { "EFI #" + $it.TargetPart } else { "MBR #" + $it.TargetPart }
+   } else { "-" }
    $guiSt = Format-BootloaderGuiStatus $it
    $rIdx = $peUi.Dgv.Rows.Add(("Disk " + $it.DiskNumber), [string]$it.Model, ([string]$it.SizeGB + " GB"), [string]$it.PartitionStyle, $pStr, $guiSt.Text)
    $row = $peUi.Dgv.Rows[$rIdx]
    $row.Tag = $it
-   Set-AsanCellSemanticStyle $row.Cells[5] $guiSt.Kind $peUi.Theme $peUi.Fonts ($guiSt.Kind -ne "Neutral")
+   if ($it.State -in @("ACTIVE","BOTH","MBR_OS_BLOCKED")) {
+    $row.DefaultCellStyle.BackColor = $peUi.Theme.DangerRedTint
+    $row.DefaultCellStyle.ForeColor = $peUi.Theme.DangerRedDeep
+    $row.DefaultCellStyle.SelectionBackColor = $peUi.Theme.DangerRedTint
+    $row.DefaultCellStyle.SelectionForeColor = $peUi.Theme.DangerRedDeep
+    $row.Cells[5].Style.Font = $peUi.Fonts.Bold
+   } else {
+    Set-AsanCellSemanticStyle $row.Cells[5] $guiSt.Kind $peUi.Theme $peUi.Fonts ($guiSt.Kind -ne "Neutral")
+   }
+   if ($firstActIdx -lt 0 -and $it.State -in @("DISABLED","ACTIVE")) { $firstActIdx = $rIdx }
    foreach ($c in $row.Cells) { $c.ToolTipText = $guiSt.Tip }
   }
+  $peUi.Dgv.ClearSelection()
+  if ($firstActIdx -ge 0) { $peUi.Dgv.Rows[$firstActIdx].Selected = $true }
   & $peUi.SyncPeBtn
  }.GetNewClosure()
 
  $dgv.Add_SelectionChanged({ & $peUi.SyncPeBtn }.GetNewClosure())
+ $dgv.Add_CellDoubleClick({
+  param($sender, $e)
+  if ($e.RowIndex -ge 0 -and $peUi.BtnTog.Enabled) { $peUi.BtnTog.PerformClick() }
+ }.GetNewClosure())
  $btnClose.Add_Click({ $peUi.Form.Close() }.GetNewClosure())
  $btnRef.Add_Click({ & $peUi.LoadPe }.GetNewClosure())
  $btnPeReboot.Add_Click({
   $dr = [System.Windows.Forms.MessageBox]::Show($peUi.Form, (U "PC\uB97C \uC989\uC2DC \uC7AC\uBD80\uD305\uD560\uAE4C\uC694?"), (U "\uC7AC\uBD80\uD305 \uD655\uC778"), [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
   if ($dr -eq [System.Windows.Forms.DialogResult]::Yes) {
-   $null = Invoke-NativeOem "wpeutil.exe" "reboot"
-   $null = Invoke-SafeRebootCore "/r /f /t 0"
+   $wpeRes = Invoke-NativeOem "wpeutil.exe" "reboot"
+   if ($wpeRes.ExitCode -ne 0) { $null = Invoke-SafeRebootCore "/r /f /t 0" }
+   $peUi.Form.Close()
   }
  }.GetNewClosure())
 
@@ -6555,10 +6691,11 @@ function Invoke-PreSidWorkflow($sysInfo) {
 }
 
 function Start-ToolConsoleMain($sysInfo) {
+ $venTag = if ($sysInfo.Vendor -ne "Standard") { $sysInfo.Vendor } elseif ($sysInfo.HintVendor) { $sysInfo.HintVendor } else { "Standard" }
  while ($true) {
   Clear-Host
   Write-Host "==================================================================" -ForegroundColor Cyan
-  Write-Host (" " + (U "[SID \uBCC0\uACBD \uBCF4\uC870 \uD234") + " v" + $script:ToolVersion + "] " + (U "\uC2DC\uC2A4\uD15C :") + " [" + $sysInfo.Vendor + "] (" + $sysInfo.ModelName + ")") -ForegroundColor Cyan
+  Write-Host (" " + (U "[SID \uBCC0\uACBD \uBCF4\uC870 \uD234") + " v" + $script:ToolVersion + "] " + (U "\uC2DC\uC2A4\uD15C :") + " [" + $venTag + "] (" + $sysInfo.ModelName + ")") -ForegroundColor Cyan
   Write-Host "==================================================================" -ForegroundColor Cyan
   if ($env:SID_TOOL_STAGED -eq "1" -or ($env:SELF_PATH -and $env:SELF_PATH.StartsWith("\\"))) {
    Write-Host (U " [\uC548\uB0B4] \uACF5\uC720\uD3F4\uB354/\uB124\uD2B8\uC6CC\uD06C \uACBD\uB85C\uC5D0\uC11C \uC2E4\uD589\uB428 -> \uB85C\uCEEC \uBA54\uBAA8\uB9AC \uB85C\uB4DC \uC644\uB8CC (\uC6D0\uBCF8 \uBB34\uBCC0\uACBD)") -ForegroundColor DarkGray

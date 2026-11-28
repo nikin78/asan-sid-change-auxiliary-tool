@@ -9,6 +9,25 @@
 
 ---
 
+## [v2.3.1] - 2026-11-28
+
+### 버그 수정 및 안정화 (Fixed / Hardened)
+* **내장 AHCI 핫플러그 SATA 디스크 및 마운트된 가상 디스크(`.vhdx`) 분류 안전장치 강화 (`modules/02_Bootloader_Conflict_Module.ps1`):**
+  * BIOS에서 SATA Hot-Plug가 켜진 보조 내장 HDD/SSD가 `Capabilities`/`RemovalPolicy`만으로 외장 USB로 오분류되어 1단계 잔존 부트로더 점검에서 누락되던 문제를 해결(`Enum\USB`·`Enum\USBSTOR` 실제 `ContainerID` 일치 및 내장 버스 제외 가드 적용).
+  * `Get-UsbPnpDiskLookup`을 직접 `.NET Registry` 조회 방식으로 전환해 PnP 인스턴스 ID 내 특수문자(`[`, `]`, `*`) 와일드카드 오류를 차단하고 스캔 속도를 개선.
+  * 탐색기에 마운트된 `.vhd`/`.vhdx` 파일(`BusType = File Backed Virtual`)을 `VIRTUAL_PROTECTED`(`가상 디스크 보호됨`)로 자동 보호하고, 미마운트 부트 파티션 점검 시 `\\?\Volume{GUID}\` 직접 탐색을 우선 수행해 불필요한 임시 문자 할당(`diskpart`)과 탐색기 자동 실행 창을 최소화.
+* **USB NVRAM 매칭 오탐 및 유령(`unknown`) 항목 원천 차단 (`modules/03`, `04`):**
+  * 일반 데이터용 비부팅 USB(`AnyEfiReadyUsb = $false`) 연결 시에도 4단계 범용 NVRAM 매칭이 무조건 허용되던 조건식 결함을 수정.
+  * 과거 연결 이력만 남은 끊어진 NVRAM 유령 항목(`device = unknown`)과 USB 유선랜 어댑터(`Realtek USB GbE Family Controller`, `Ethernet`, `LAN` 등)가 부팅 USB로 오매칭되지 않도록 차단.
+  * 모델명 단일 토큰에서 용량·수식어(`Plus`, `Pro`, `256GB`, `10G`, 단독 `Realtek` 등) 노이즈를 제외하고 영숫자 경계(`(?<![A-Za-z0-9])...(?![A-Za-z0-9])`)를 적용해 부분 문자열 오탐 차단.
+* **BIOS 진단 정확도, 도메인 PC 응답성 및 GUI 마감 보강 (`modules/01`, `02`, `03`, `05`, `06`, `07`):**
+  * HP `HP_BIOSOrderedList`(`UEFI Boot Order`) 단독으로 `USB Boot = Enabled`로 단정하지 않도록 보정(절대 규칙 #5 준수), `HP_BIOSEnumeration` 우선 조회 및 세미콜론(`;`) 구분자·`H0` 자산 코드·Dell `DeployedMode` 지원 추가.
+  * `Get-LocalMachineSid`에서 로컬 SAM(`Get-LocalUser`)을 우선 조회하고 `Win32_UserAccount`에 로컬 `Domain` 필터를 추가해 망분리/도메인 PC에서의 WMI 지연 방지.
+  * 진단 리포트 마스킹(`ConvertTo-MaskedDiagnosticText`)을 따옴표 값·이스케이프 JSON·`net use` 자격증명까지 확장하고, GUI 팝업/상태 동기화(`finally` 내 `SyncButtonStates`, 유효 SID 검증, WinPE 비상 창 DPI·더블클릭·충돌 행 강조, 한국어 BIOS 안내 문구)를 다듬음.
+* **문서 개편 (`README.md`):** 현장 작업자가 바로 읽고 따라 하기 쉽도록 안내서 문체와 구성을 자연스러운 한국어 중심으로 전면 재작성.
+
+---
+
 ## [v2.3.0] - 2026-11-27
 
 ### 추가 및 고도화 (Added / Enhanced)

@@ -1,14 +1,30 @@
 # [인수인계서] SID 변경 사전·사후 보조 툴 (`SID_Change_Aux_Tool.bat`)
 
 > [!IMPORTANT]
-> **현재 버전: `v2.3.0` (2026-11-27 작업 기준 — 실장비 인벤토리 반영 및 부팅 디스크·BIOS 탐지 고도화 완료):**
-> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **병원 전체 PC 인벤토리(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 세대별 프로필, UASP 외장 NVMe/SSD 인클로저(`RTL9210B-CG`·`HSEN 10G-NVME`·`JMicron`·`FireCuda`) PnP `ContainerID` 분류, 무파일 인메모리 `QueryDosDeviceW` 숨김 EFI 커널 볼륨 매핑, HP G8/G9 체크박스(`Checked`/`Unchecked`)·한글 BIOS·Dell `AttributeValue`·Lenovo WMI·4중 신호(`Win32_DeviceGuard` 포함) Secure Boot 교차 검증, Hot-Plug 부팅 디스크 UX 및 178개 자동/레이아웃 테스트**까지 완료했습니다.
+> **현재 버전: `v2.3.1` (2026-11-28 작업 기준 — `v2.3.0` 전체 재귀 코드 리뷰·결함 수정, `README.md` 현장 친화 개편 및 GitHub Release 최신화 완료):**
+> 기존 `USB_Reboot.bat`을 **WinPE 기반 SID 변경 작업의 사전·사후 보조 툴(`SID_Change_Aux_Tool.bat`)**로 확장하고, **병원 전체 PC 인벤토리(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 세대별 프로필, UASP 외장 NVMe/SSD 인클로저 PnP `ContainerID` 분류(내장 AHCI 핫플러그 SATA 오분류 방지 포함), 무파일 인메모리 `QueryDosDeviceW` 및 `\\?\Volume{GUID}\` 무마운트 부트 파티션 점검, 유령(`unknown`) NVRAM 및 USB 랜카드 오탐 차단, HP/Dell/Lenovo·4중 신호 Secure Boot 교차 검증, 도메인 PC 로컬 SID 즉시 조회 및 188개 자동/레이아웃 테스트**까지 완료했습니다.
 > 사용자 안내서는 [README.md](README.md), 변경 이력은 [CHANGELOG.md](CHANGELOG.md), 상세 의사결정 배경은 [docs/DIRECTION_AND_DECISIONS.md](docs/DIRECTION_AND_DECISIONS.md)를 참고하세요.
-> **다음에 해야 할 일:** 개선된 `v2.3.0` 빌드로 **5단계 실장비 재검증(Samsung `S8/S9`, HP `H1/H2/H6/H8`, Dell `D1/D8`, 실제 WinPE, 공유 프린터)** 후 최종 확정.
+> **다음에 해야 할 일:** 개선된 `v2.3.1` 빌드로 **5단계 실장비 재검증(Samsung `S8/S9`, HP `H0/H1/H2/H6/H8`, Dell `D1/D8`, 실제 WinPE, 공유 프린터)** 후 최종 확정.
 
 ---
 
-## 0. 최근 작업 세션 인수인계 요약 (2026-11-27 `v2.3.0` 업데이트)
+## 0. 최근 작업 세션 인수인계 요약 (2026-11-28 `v2.3.1` 재귀 코드 리뷰 및 안정화)
+
+### 2026-11-28 완료한 작업 (`v2.3.0` → `v2.3.1` — 전 모듈 재귀 코드 리뷰, 엣지 케이스 수정, 사용자용 `README.md` 개편, GitHub Release 배포)
+1. **내장 AHCI 핫플러그 디스크 오분류 차단 및 무마운트 볼륨 점검 (`modules/02_Bootloader_Conflict_Module.ps1`):**
+   * BIOS에서 SATA Hot-Plug가 켜진 내장 보조 HDD/SSD가 `Capabilities`/`RemovalPolicy`만으로 외장 USB로 빠져 1단계 부트로더 점검에서 누락되던 결함을 수정(`Enum\USB`·`Enum\USBSTOR` 실제 `ContainerID` 일치 시에만 USB로 인정하고 고정 내장 버스는 보존).
+   * `Get-UsbPnpDiskLookup`을 `.NET Registry` 직접 조회로 개편해 PnP 경로 내 `[` `]` `*` 와일드카드 버그를 없애고 조회 속도를 단축.
+   * 마운트된 `.vhd`/`.vhdx` 가상 디스크(`File Backed Virtual`)를 `VIRTUAL_PROTECTED`로 보호하고, 1단계 읽기 전용 점검 시 `\\?\Volume{GUID}\` 직접 탐색을 우선 수행해 불필요한 `diskpart` 임시 문자 마운트와 탐색기 자동 실행 팝업을 제거.
+2. **NVRAM 유령 항목·USB 랜카드·비부팅 데이터 USB 오매칭 차단 (`modules/03`, `04`):**
+   * `Get-PreSidStep2Snapshot`에서 비부팅 일반 데이터 USB(`AnyEfiReadyUsb = $false`)까지 4단계 범용 NVRAM 매칭을 허용하던 항상 참(`-or ($usbDisks.Count -gt 0)`) 버그 수정.
+   * 이전 작업자의 분리된 USB/디스크에서 남은 `device = unknown` 유령 NVRAM 항목 및 USB 유선랜 동글(`Realtek USB GbE Family Controller`, `Ethernet`, `LAN`)을 후보에서 원천 제외.
+   * 모델명 토큰에서 `Plus`, `Pro`, `256GB`, `10G`, 단독 `Realtek` 등 범용 노이즈를 걸러내고 영숫자 경계(`(?<![A-Za-z0-9])...(?![A-Za-z0-9])`)를 적용.
+3. **BIOS 교차 검증(Rule #5), 도메인 PC SID 지연 방지, 보안 마스킹 및 GUI 마감 (`modules/01`, `03`, `05`, `06`, `07`):**
+   * HP `HP_BIOSOrderedList` 단독으로 `Enabled`를 추정하던 분기를 제거해 Rule #5를 엄격히 유지하고, `HP_BIOSEnumeration` 우선 조회·세미콜론(`;`) 구분자·누락된 `H0` 자산 코드·Dell `DeployedMode` 지원 및 한국어 BIOS 안내 문구 정돈.
+   * `Get-LocalMachineSid`에서 `Get-LocalUser`를 1순위로 호출하고 `Win32_UserAccount`에 로컬 도메인 조건을 부여해 AD 도메인/망분리 환경의 WMI 타임아웃을 예방.
+   * `ConvertTo-MaskedDiagnosticText` 마스킹 범위 확장(따옴표 값·이스케이프 JSON·`net use`), `RefreshPreSid`/`RefreshPostSid` `finally` 버튼 동기화 보장, `WinPE` 비상 창 DPI/더블클릭/충돌 색상 통일.
+4. **일반 사용자 눈높이 `README.md` 전면 재작성 및 GitHub Release `v2.3.1` 배포:**
+   * 개발자 배지·복잡한 다이어그램·내부 API 용어를 걷어내고 현장 담당자가 바로 읽고 따라 할 수 있는 자연스러운 안내서로 [`README.md`](README.md)를 개편(관리자/개발자용 상세 명세는 하단 `<details>`에 수록).
 
 ### 2026-11-27 완료한 작업 (`v2.2.0` → `v2.3.0` — 실장비 피드백 반영 및 전반적 코드 리뷰 개선)
 1. **병원 망분리/교체 대상 PC 전체 인벤토리(9,803대 + 신규 교체분) 기종 매핑 반영 (`modules/03_Vendor_Bios_Diagnostics.ps1`):**

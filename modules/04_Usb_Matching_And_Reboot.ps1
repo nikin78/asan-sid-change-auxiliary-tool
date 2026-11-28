@@ -18,8 +18,8 @@ function Get-PartitionDevicePatterns($partObj) {
  $pats = New-Object System.Collections.ArrayList
  if (-not $partObj) { return @() }
  if ($partObj.DriveLetter) {
-  $dl = ([string]$partObj.DriveLetter).Trim().TrimEnd(':')
-  if ($dl) {
+  $dl = ([string]$partObj.DriveLetter).Trim([char]0).Trim().TrimEnd(':')
+  if ($dl -and ($dl -match '^[A-Za-z]$')) {
    [void]$pats.Add("partition=$($dl):")
    $ntFromLtr = Resolve-DosDeviceTarget "$($dl):"
    if ($ntFromLtr) { [void]$pats.Add(("partition=" + $ntFromLtr)) }
@@ -70,6 +70,7 @@ function Test-UsbBootFilesOnRoot([string]$rootPath) {
  }
  try {
   if ([System.IO.File]::Exists(($r + "\bootmgr")) -and [System.IO.File]::Exists(($r + "\Boot\BCD"))) { return $true }
+  if ([System.IO.Directory]::Exists(($r + "\EFI\BOOT")) -or [System.IO.Directory]::Exists(($r + "\ventoy"))) { return $true }
  } catch {}
  return $false
 }
@@ -93,7 +94,7 @@ function Get-PhysicalUsbInfo([array]$usbDisks, [array]$internalDisks = @()) {
   }
  }
 
- $genericNoiseRe = "^(?i)(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|SCSI|SATA|NVMe|PCIE|ATA|3\.0|2\.0|3\.1|3\.2|3\.2Gen1|3\.2Gen2|Gen1|Gen2)$"
+ $genericNoiseRe = "^(?i)(USB|SSD|HDD|Disk|Drive|Device|General|Generic|Flash|Storage|Media|Mass|UFD|SCSI|SATA|NVMe|PCIE|ATA|Realtek|Pro|Plus|Max|Mini|Ultra|Extreme|Evo|Basic|Portable|External|Pocket|Shield|Gaming|Super|Speed|Dual|Type|TypeC|Corp|Inc|Ltd|Tech|3\.0|2\.0|3\.1|3\.2|3\.2Gen1|3\.2Gen2|Gen1|Gen2|Gen3|Gen4|\d+(\.\d+)?|\d+\s*[KMGT]B|\d+G)$"
  $hasStorage = Test-StorageCmdletsAvailable
  foreach ($disk in $usbDisks) {
   $sizeGB = [math]::Round($disk.Size / 1GB, 1)
@@ -232,7 +233,8 @@ function Find-MatchedUsbNvramEntries(
  [array]$internalModelPatterns = @()
 ) {
  $koBootMgr = U "Windows \uBD80\uD305 \uAD00\uB9AC\uC790"
- $excludeDesc = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Hard Drive \(SATA|Hard Drive \(NVMe|Onboard NIC|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update|Diagnostics)"
+ $unknownDevRe = "^(?i)(unknown|" + (U "\uC54C\s*\uC218\s*\uC5C6\uC74C") + ")(\s|$)"
+ $excludeDesc = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Hard Drive \(SATA|Hard Drive \(NVMe|Onboard NIC|Ethernet|GbE\s+Family|FE\s+Family|\bLAN\b|Wi-?Fi|Bluetooth|Built-in\s+EFI\s+Shell|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update|Diagnostics)"
  $internalPattern = if ($internalDriveLetters -and $internalDriveLetters.Count -gt 0) {
   (@($internalDriveLetters | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
  } else {
@@ -241,14 +243,17 @@ function Find-MatchedUsbNvramEntries(
  $usbDrvRegex = if ($usbDrivePatterns -and $usbDrivePatterns.Count -gt 0) {
   (@($usbDrivePatterns | ForEach-Object { ConvertTo-SafeDeviceRegex ([string]$_) } | Where-Object { $_ }) | Select-Object -Unique) -join "|"
  } else { "" }
- $usbModRegex = if ($usbStrictModelPatterns -and $usbStrictModelPatterns.Count -gt 0) { ($usbStrictModelPatterns | Select-Object -Unique) -join "|" } else { "" }
+ $usbModRegex = if ($usbStrictModelPatterns -and $usbStrictModelPatterns.Count -gt 0) {
+  (@($usbStrictModelPatterns | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { "(?<![A-Za-z0-9])(?:" + $_ + ")(?![A-Za-z0-9])" })) -join "|"
+ } else { "" }
  $intModRegex = if ($internalModelPatterns -and $internalModelPatterns.Count -gt 0) { ($internalModelPatterns | Select-Object -Unique) -join "|" } else { "" }
 
  $candidateEntries = @($bcdEntries | Where-Object {
   $descStr = [string]$_.Description
-  $devStr = [string]$_.Device
-  $matchesUsbDev = ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
-  $matchesUsbMod = ($usbModRegex -and ($descStr -match $usbModRegex))
+  $devStr = ([string]$_.Device).Trim()
+  $isUnknownGhostDev = ($devStr -ne "" -and ($devStr -match $unknownDevRe))
+  $matchesUsbDev = (-not $isUnknownGhostDev) -and ($usbDrvRegex -and ($devStr -match $usbDrvRegex))
+  $matchesUsbMod = (-not $isUnknownGhostDev) -and ($usbModRegex -and ($descStr -match $usbModRegex))
   $isOpticalNonUsb = ($descStr -match "(?i)CD/DVD|CD-ROM|Optical") -and ($descStr -notmatch "(?i)\bUSB\b")
   # Never exclude external enclosures like 'HSEN 10G-NVME' or 'JMicron Generic SATA' when they match a connected USB device/model!
   $isInternalBusWithoutUsb = (-not $matchesUsbDev) -and (-not $matchesUsbMod) -and ($descStr -match "(?i)\b(SATA\d*|NVMe\d*)\b") -and ($descStr -notmatch "(?i)\bUSB\b|External|Removable|Enclosure")
@@ -256,6 +261,7 @@ function Find-MatchedUsbNvramEntries(
 
   $_.Identifier -ne "{fwbootmgr}" -and
   $_.Identifier -ne "{bootmgr}" -and
+  (-not $isUnknownGhostDev) -and
   ($descStr -notmatch $excludeDesc) -and
   (-not $isOpticalNonUsb) -and
   (-not $isInternalBusWithoutUsb) -and
@@ -356,7 +362,7 @@ function Get-PreSidStep2Snapshot($sysInfo, $preClassifiedDisks = $null) {
  $usbInfo = Get-PhysicalUsbInfo $usbDisks $internalDisks
  $matchedEntries = @()
  if ($usbDisks.Count -gt 0) {
-  $allowGenericFallback = ([bool]$usbInfo.AnyEfiReadyUsb -or ($usbDisks.Count -gt 0))
+  $allowGenericFallback = [bool]$usbInfo.AnyEfiReadyUsb
   $matchedEntries = @(Find-MatchedUsbNvramEntries `
    $entries `
    $internalDrivePatterns `
@@ -438,11 +444,18 @@ function Invoke-PreSidUsbBootStep($sysInfo, [bool]$step1Bypassed) {
 
   # Gate 2: Physical USB found, but 0 matching NVRAM entries
   if ($matchedEntries.Count -eq 0) {
-   $isLikelyHotPlug = (($diag.UsbBootState -eq "Enabled" -or [bool]$usbInfo.AnyEfiReadyUsb) -and -not $diag.IsConfirmedBlocked -and -not $diag.FastBootWarn)
+   $isLikelyHotPlug = ([bool]$usbInfo.AnyEfiReadyUsb -and -not $diag.IsConfirmedBlocked -and -not $diag.FastBootWarn)
+   $isNonBootUsb = (-not [bool]$usbInfo.AnyEfiReadyUsb)
    $rescanNow = $false
    while ($true) {
     Write-Host "`n==================================================================" -ForegroundColor Yellow
-    if ($isLikelyHotPlug) {
+    if ($isNonBootUsb) {
+     Write-Host (U " [\uC8FC\uC758] \uC5F0\uACB0\uB41C USB\uC5D0\uC11C UEFI/WinPE \uBD80\uD305 \uD30C\uC77C\uC774 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
+     Write-Host (U " - \uC77C\uBC18 \uB370\uC774\uD130 USB\uC774\uAC70\uB098 \uC228\uAE40 \uD30C\uD2F0\uC158\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4. WinPE USB\uAC00 \uB9DE\uC73C\uBA74 [O]\uB97C \uC120\uD0DD\uD558\uC138\uC694.") -ForegroundColor Gray
+     Write-Host ""
+     Write-Host (U " [O] Windows \uACE0\uAE09 \uBD80\uD305(\uC7A5\uCE58 \uC0AC\uC6A9) \uD654\uBA74\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Green
+     Write-Host (U " [B] BIOS \uD38C\uC6E8\uC5B4 \uC124\uC815\uC73C\uB85C \uC7AC\uBD80\uD305") -ForegroundColor Cyan
+    } elseif ($isLikelyHotPlug) {
      Write-Host (U " [\uC548\uB0B4] \uBB3C\uB9AC USB\uB294 \uC778\uC2DD\uB418\uC5C8\uC73C\uB098 \uD604\uC7AC NVRAM \uBAA9\uB85D\uC5D0 \uB4F1\uB85D\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") -ForegroundColor Yellow
      Write-Host (U " - BIOS USB Boot\uAC00 \uCF1C\uC838 \uC788\uC73C\uBBC0\uB85C Windows \uBD80\uD305 \uD6C4 USB\uB97C \uC5F0\uACB0(Hot-Plug)\uD55C \uC0C1\uD0DC\uC77C \uAC00\uB2A5\uC131\uC774 \uB192\uC2B5\uB2C8\uB2E4.") -ForegroundColor Cyan
      Write-Host ""

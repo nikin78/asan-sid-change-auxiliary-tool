@@ -69,7 +69,8 @@ function Resolve-DosDeviceTarget([string]$dosDeviceName) {
  if (-not $script:DosDevInitAttempted) {
   $script:DosDevInitAttempted = $true
   try {
-   $dynAsm = New-Object System.Reflection.AssemblyName("SidAuxDosDevMapper")
+   $asmName = "SidAuxDosDevMapper_" + [guid]::NewGuid().ToString("N")
+   $dynAsm = New-Object System.Reflection.AssemblyName($asmName)
    $asmBld = [AppDomain]::CurrentDomain.DefineDynamicAssembly($dynAsm, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
    $modBld = $asmBld.DefineDynamicModule("Main")
    $typBld = $modBld.DefineType("NativeDosMapper", "Public,Class")
@@ -93,12 +94,14 @@ function Resolve-DosDeviceTarget([string]$dosDeviceName) {
  try {
   $clean = $dosDeviceName.Trim().TrimEnd('\')
   if ($clean -match '^\\\\\?\\(.+)$') { $clean = $matches[1] }
-  $sb = New-Object System.Text.StringBuilder 512
-  $rc = $script:DosDevQueryType::QueryDosDeviceW($clean, $sb, 512)
-  if ($rc -gt 0) {
-   $val = $sb.ToString().Trim([char]0).Trim()
-   if ($val -match '^(\\Device\\[^\0]+)') { return $matches[1] }
-   return $val
+  foreach ($cap in @(512, 2048)) {
+   $sb = New-Object System.Text.StringBuilder $cap
+   $rc = $script:DosDevQueryType::QueryDosDeviceW($clean, $sb, [uint32]$cap)
+   if ($rc -gt 0) {
+    $val = $sb.ToString().Trim([char]0).Trim()
+    if ($val -match '^(\\Device\\[^\x00\r\n]+)') { return $matches[1] }
+    return $val
+   }
   }
  } catch {}
  return ""
@@ -243,12 +246,14 @@ function Get-ExecutionSourceInfo {
  }
 }
 
-# Mask sensitive credentials/tokens in exported diagnostic reports
+# Mask sensitive credentials/tokens in exported diagnostic reports (handles JSON, escaped JSON, quoted/unquoted key-values, and net use)
 function ConvertTo-MaskedDiagnosticText([string]$raw) {
  if ([string]::IsNullOrEmpty($raw)) { return "" }
- $out = [regex]::Replace($raw, '(?i)(password|passwd|pwd|secret|token|apikey|credential)\s*([:=])\s*([^\r\n\s,;"'']+)', '$1$2[REDACTED]')
- $out = [regex]::Replace($out, '(?i)("?(?:password|passwd|secret|token)"?\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)(")', '$1[REDACTED]$3')
- return $out
+ $masked = [regex]::Replace($raw, '(?i)(\\?"?(?:password|passwd|pwd|secret|token|apikey|api_key|credential)\\?"?\s*:\s*\\?")([^"\\]*(?:\\.[^"\\]*)*)(\\?")', '$1[REDACTED]$3')
+ $masked = [regex]::Replace($masked, '(?i)(\b(?:password|passwd|pwd|secret|token|apikey|api_key|credential)\s*[:=]\s*)(["''])([^"''\r\n]*)\2', '$1$2[REDACTED]$2')
+ $masked = [regex]::Replace($masked, '(?i)(\b(?:password|passwd|pwd|secret|token|apikey|api_key|credential)\s*[:=]\s*)([^\r\n\s,;"'']+)', '$1[REDACTED]')
+ $masked = [regex]::Replace($masked, '(?i)(\bnet\s+use\s+\S+\s+)([^\s/]+)(\s+/user:\S+)', '$1[REDACTED]$3')
+ return $masked
 }
 
 function Get-DiskDebugText {
@@ -289,8 +294,7 @@ function Parse-BcdFirmwareLines([array]$lines) {
    if ($currentEntry -and $currentEntry.Identifier) { $entries += $currentEntry }
    $currentEntry = @{ Identifier = ""; Description = ""; Path = ""; Device = "" }
   } elseif ($currentEntry) {
-   if (-not $currentEntry.Identifier -and $trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
-   elseif ($trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
+   if ($trimmed -match $reId) { $currentEntry.Identifier = $matches[2].Trim() }
    elseif ($trimmed -match $reDesc) { $currentEntry.Description = $matches[2].Trim() }
    elseif ($trimmed -match $rePath) { $currentEntry.Path = $matches[2].Trim() }
    elseif ($trimmed -match $reDev) { $currentEntry.Device = $matches[2].Trim() }

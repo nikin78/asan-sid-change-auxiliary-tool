@@ -4,17 +4,20 @@
 
 function Get-LocalMachineSid {
  try {
-  $accs = @(Get-CimInstance -ClassName Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop)
-  foreach ($a in $accs) {
-   if ([string]$a.SID -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
-    return $matches[1]
+  if (Get-Command Get-LocalUser -ErrorAction SilentlyContinue) {
+   foreach ($u in @(Get-LocalUser -ErrorAction Stop)) {
+    if ($u -and [string]$u.SID.Value -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
+     return $matches[1]
+    }
    }
   }
  } catch {}
  try {
-  if (Get-Command Get-LocalUser -ErrorAction SilentlyContinue) {
-   $u = Get-LocalUser -ErrorAction Stop | Select-Object -First 1
-   if ($u -and [string]$u.SID.Value -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
+  $dom = ([string]$env:COMPUTERNAME).Replace("'", "''")
+  $flt = if ($dom) { "LocalAccount=True AND Domain='$dom'" } else { "LocalAccount=True" }
+  $accs = @(Get-CimInstance -ClassName Win32_UserAccount -Filter $flt -ErrorAction Stop)
+  foreach ($a in $accs) {
+   if ([string]$a.SID -match "^(S-1-5-21-\d+-\d+-\d+)-\d+$") {
     return $matches[1]
    }
   }
@@ -80,7 +83,14 @@ function Clear-SpoolerQueueDirectory([string]$queueDir) {
     $deleted++
     if ($isJob) { $splShdDeleted++ }
    } catch {
-    $failed += $f.Name
+    try {
+     $f.Attributes = [System.IO.FileAttributes]::Normal
+     Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop
+     $deleted++
+     if ($isJob) { $splShdDeleted++ }
+    } catch {
+     $failed += $f.Name
+    }
    }
   }
  }
@@ -443,8 +453,12 @@ function Invoke-SpoolerResetCore([scriptblock]$onProgress = $null) {
   }
  }
 
+ if ($stopMode -eq "FAILED" -and -not $startErr) {
+  $startErr = U "Spooler \uD504\uB85C\uC138\uC2A4\uB97C \uC911\uC9C0\uD558\uC9C0 \uBABB\uD574 \uCD08\uAE30\uD654\uB97C \uC644\uB8CC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."
+ }
+
  return [PSCustomObject]@{
-  Success = $isRunning
+  Success = ($isRunning -and ($stopMode -ne "FAILED"))
   ServiceMissing = $false
   StopMode = $stopMode
   QueueResult = $qRes
@@ -452,7 +466,7 @@ function Invoke-SpoolerResetCore([scriptblock]$onProgress = $null) {
   StartMode = $curStartMode
   RunningDeps = $runningDeps
   RestartedDeps = $restartedDeps
-  IsRunning = $isRunning
+  IsRunning = ($isRunning -and ($stopMode -ne "FAILED"))
   StartError = $startErr
   LogLines = @($logs)
  }

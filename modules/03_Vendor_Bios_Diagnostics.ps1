@@ -6,7 +6,7 @@
 # Map Asan Hospital fleet asset codes & SMBIOS models (S4/S5/S8/S9, H0/H1/H2/H3/H4/HS/H6/H8, D1/D8)
 function Resolve-HospitalModelProfile([string]$vendor, [string]$hintVendor, [string]$modelName, [string]$cpuName, [string]$compName) {
  $assetCode = ""
- if ($compName -and $compName -match "^(?i)C\d{6}([A-Z0-9]{2})$") {
+ if ($compName -and $compName -match "^(?i)C\d{5,7}([A-Z0-9]{2})$") {
   $assetCode = $matches[1].ToUpper()
  }
  $effVendor = if ($vendor -ne "Standard") { $vendor } elseif ($hintVendor -ne "Standard") { $hintVendor } else { "" }
@@ -32,10 +32,16 @@ function Resolve-HospitalModelProfile([string]$vendor, [string]$hintVendor, [str
    $genFamily = "SAMSUNG_DB400T"
   }
  } elseif ($effVendor -eq "HP") {
-  if ($modelName -match "(?i)\bG(8|9|10|11)\b|Elite\s+Tower\s+[68]00|Pro\s+Tower\s+400" -or $assetCode -in @("H1","H2") -or $cpuName -match "i[3579]-1[1-4]\d{3}") {
+  if ($modelName -match "(?i)\bG(6|7|8|9|10|11)\b|Elite\s+Tower\s+[68]00|Pro\s+Tower\s+400" -or $assetCode -in @("H0","H1","H2") -or $cpuName -match "i[3579]-1[0-4]\d{3}|Core\s+Ultra") {
    $genFamily = "HP_G8_G9"
    if ($resolvedModel -eq "Desktop PC") {
-    $resolvedModel = if ($cpuName -match "i[3579]-1[2-4]\d{3}") { "HP Elite Tower 800 G9" } else { "HP EliteDesk 800 G8" }
+    $resolvedModel = if ($assetCode -eq "H0" -or $cpuName -match "i[3579]-10\d{3}") {
+     "HP EliteDesk / ProDesk G6 (H0)"
+    } elseif ($cpuName -match "i[3579]-1[2-4]\d{3}|Core\s+Ultra") {
+     "HP Elite Tower 800 G9"
+    } else {
+     "HP EliteDesk 800 G8"
+    }
    }
   } elseif ($modelName -match "(?i)ProDesk\s+600\s*G[1-5]|EliteDesk\s+800\s*G[1-5]|Compaq\s+(Pro\s+6300|Elite\s+8300)" -or $assetCode -in @("H3","H4","HS","H6","H7","H8")) {
    $genFamily = "HP_PRODESK_G1_G5"
@@ -137,22 +143,22 @@ function Get-SystemInfo {
  $vendorBiosHint = switch ($hintVendor) {
   "HP" {
    if ($hospProf.GenFamily -eq "HP_G8_G9") {
-    "HP BIOS (F10 / Boot Menu F9): Advanced -> Boot Options -> USB Storage Boot [Checked] & Fast Boot [Unchecked] / Security -> Secure Boot [Unchecked]"
+    U "HP BIOS F10 \u00B7 \uBD80\uD305 \uBA54\uB274 F9 \u00B7 Advanced > Boot Options\uC5D0\uC11C USB Storage Boot \uCCB4\uD06C, Fast Boot \uCCB4\uD06C \uD574\uC81C"
    } elseif ($hospProf.GenFamily -eq "HP_PRODESK_G1_G5") {
-    "HP BIOS (Esc,F10 / Boot Menu F9): Advanced -> Boot Options -> USB Storage Boot / Removable Media Boot [Enable] & Secure Boot [Disable]"
+    U "HP BIOS Esc/F10 \u00B7 \uBD80\uD305 \uBA54\uB274 F9 \u00B7 Advanced > Boot Options\uC5D0\uC11C USB Storage Boot \uB610\uB294 Removable Media Boot \uD65C\uC131\uD654"
    } else {
-    "HP BIOS (F10 / Boot Menu F9): Advanced -> Boot Options -> USB Storage Boot [Enable/Checked] / Fast Boot [Disable/Unchecked]"
+    U "HP BIOS F10 \u00B7 \uBD80\uD305 \uBA54\uB274 F9 \u00B7 Advanced > Boot Options\uC5D0\uC11C USB Storage Boot \uD65C\uC131\uD654, Fast Boot \uBE44\uD65C\uC131\uD654"
    }
   }
-  "Dell"     { "Dell BIOS (F2 / Boot Menu F12): Boot Configuration -> Enable USB Boot Support [ON] / Secure Boot [OFF] / Fastboot [Thorough]" }
-  "Samsung"  { "Samsung BIOS (F2 / Boot Menu F10,F12): Boot -> Fast BIOS Mode [Disabled] / Secure Boot Control [Disabled]" }
-  "Lenovo"   { "Lenovo BIOS (F1 / Boot Menu F12): Startup -> USB Boot [Enabled] / Security -> Secure Boot [Disabled]" }
-  "LG"       { "LG BIOS (F2 / Boot Menu F10): Boot -> Fast Boot [Disabled] / Security -> Secure Boot [Disabled]" }
-  "ASUS"     { "ASUS BIOS (Del,F2 / Boot Menu F8): Boot -> Fast Boot [Disabled] / Secure Boot -> Other OS" }
-  "ASRock"   { "ASRock BIOS (Del,F2 / Boot Menu F11): Boot -> Fast Boot [Disabled] / Security -> Secure Boot [Disabled]" }
-  "Gigabyte" { "Gigabyte BIOS (Del / Boot Menu F12): Boot -> Fast Boot [Disabled] / Secure Boot [Disabled]" }
-  "MSI"      { "MSI BIOS (Del / Boot Menu F11): Settings -> Boot -> Fast Boot [Disabled] / Secure Boot [Disabled]" }
-  default    { "BIOS Setup (F2/Del): USB Boot [Enabled] / Fast Boot [Disabled] / Secure Boot [Disabled]" }
+  "Dell"     { U "Dell BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F12 \u00B7 Boot Configuration\uC5D0\uC11C Enable USB Boot Support \uCF1C\uAE30, Fastboot\uB294 Thorough \uAD8C\uC7A5" }
+  "Samsung"  { U "\uC0BC\uC131 BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F10/F12 \u00B7 Boot\uC5D0\uC11C Fast BIOS Mode \uB044\uAE30, Secure Boot Control \uB044\uAE30" }
+  "Lenovo"   { U "Lenovo BIOS F1 \u00B7 \uBD80\uD305 \uBA54\uB274 F12 \u00B7 Startup\uC5D0\uC11C USB Boot \uCF1C\uAE30, Security\uC5D0\uC11C Secure Boot \uB044\uAE30" }
+  "LG"       { U "LG BIOS F2 \u00B7 \uBD80\uD305 \uBA54\uB274 F10 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Security\uC5D0\uC11C Secure Boot \uB044\uAE30" }
+  "ASUS"     { U "ASUS BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F8 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot\uB294 Other OS \uC120\uD0DD" }
+  "ASRock"   { U "ASRock BIOS F2/Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Security\uC5D0\uC11C Secure Boot \uB044\uAE30" }
+  "Gigabyte" { U "Gigabyte BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F12 \u00B7 Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot \uB044\uAE30" }
+  "MSI"      { U "MSI BIOS Del \u00B7 \uBD80\uD305 \uBA54\uB274 F11 \u00B7 Settings > Boot\uC5D0\uC11C Fast Boot \uB044\uAE30, Secure Boot \uB044\uAE30" }
+  default    { U "BIOS F2/Del \u00B7 USB Boot \uCF1C\uAE30, Fast Boot \uB044\uAE30, \uD544\uC694 \uC2DC Secure Boot \uB044\uAE30" }
  }
 
  $biosGuideShort = switch ($hintVendor) {
@@ -340,11 +346,11 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
   $valStr = if ($null -ne $item.Value) { ([string](@($item.Value) -join ",")).Trim() } else { "" }
   $activeVal = ""
   if ($curVal) {
-   $activeVal = if ($curVal -match "\*([^,]+)") { $matches[1].Trim() } else { $curVal }
+   $activeVal = if ($curVal -match "\*([^,;]+)") { $matches[1].Trim() } else { $curVal }
   } elseif ($valStr) {
-   if ($valStr -match "\*([^,]+)") {
+   if ($valStr -match "\*([^,;]+)") {
     $activeVal = $matches[1].Trim()
-   } elseif ($valStr -notmatch ",") {
+   } elseif ($valStr -notmatch "[,;]") {
     $activeVal = $valStr
    }
   }
@@ -395,14 +401,12 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
   }
  }
 
- # 5) Also inspect HP_BIOSOrderedList (UEFI Boot Order) when available for supplementary visibility
- $orderedHasUsb = $false
+ # 5) Also inspect HP_BIOSOrderedList (UEFI Boot Order) for diagnostic evidence only (Rule #5: never assume USB Boot=Enabled solely from static Boot Order!)
  foreach ($ol in $hpOrdered) {
   $oName = if ($null -ne $ol.Name) { ([string]$ol.Name).Trim() } else { "" }
   $oVal = if ($null -ne $ol.Value) { ([string](@($ol.Value) -join ",")).Trim() } else { "" }
   if ($oName -match "(?i)UEFI\s*Boot\s*Order|^Boot\s*Order$|" + (U "\uBD80\uD305\s*\uC21C\uC11C")) {
    [void]$evidence.Add(("HP Boot Order (" + $oName + "): " + $oVal))
-   if ($oVal -match "(?i)\bUSB\b") { $orderedHasUsb = $true }
   }
  }
 
@@ -415,9 +419,6 @@ function Resolve-HpBiosDiagnostics([array]$hpSettings, [array]$hpOrdered = @()) 
  } elseif ($primaryEnabled.Count -gt 0) {
   $usbState = "Enabled"
   $usbDetail = "HP WMI: " + ($primaryEnabled -join "; ")
- } elseif ($orderedHasUsb) {
-  $usbState = "Enabled"
-  $usbDetail = "HP WMI UEFI Boot Order: USB included"
  } else {
   $usbState = "UnverifiableHP"
   $usbDetail = ((U "HP WMI \uC5F0\uACB0\uB428 / USB Boot \uD56D\uBAA9 \uBBF8\uBC1C\uACAC (") + $seenKeys.Count + (U "\uAC1C \uC124\uC815 \uC2A4\uCE94)"))
@@ -529,8 +530,8 @@ function Resolve-DellBiosDiagnostics([array]$dellSettings) {
   # 4) SecureBoot WMI cross-check signal (SecureBoot / SecBoot / SecureBootEnable)
   if ($name -match "(?i)^(SecureBoot|SecBoot|SecureBootEnable)$") {
    [void]$evidence.Add(("Dell SecureBoot: " + $name + " = " + $val))
-   if ($val -match "(?i)Enable|On|True") { $secWmi = "On" }
-   elseif ($val -match "(?i)Disable|Off|False") { $secWmi = "Off" }
+   if ($val -match "(?i)Enable|On|True|DeployedMode") { $secWmi = "On" }
+   elseif ($val -match "(?i)Disable|Off|False|AuditMode") { $secWmi = "Off" }
   }
 
   # 5) UEFI Boot Path Security (informational evidence on OptiPlex D1/D8)
@@ -746,7 +747,8 @@ function Resolve-BiosCrossCheckVerdict(
 function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [int]$matchedNvramCount = -1) {
  $vendor = $sysInfo.Vendor
  $koBootMgr = U "Windows \uBD80\uD305 \uAD00\uB9AC\uC790"
- $excludeDescPattern = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|Hard Drive \(SATA|Hard Drive \(NVMe|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Onboard NIC|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update)"
+ $unknownDevRe = "^(?i)(unknown|" + (U "\uC54C\s*\uC218\s*\uC5C6\uC74C") + ")(\s|$)"
+ $excludeDescPattern = "(?i)(Windows Boot Manager|" + [regex]::Escape($koBootMgr) + "|Hard Drive \(SATA|Hard Drive \(NVMe|PXE|IPV4|IPV6|IP4|IP6|HTTPs?\s*Boot|Network|Onboard NIC|Ethernet|GbE\s+Family|FE\s+Family|\bLAN\b|Wi-?Fi|Bluetooth|Built-in\s+EFI\s+Shell|SupportAssist|Sure\s*Recover|BIOS\s*Connect|Firmware\s*Update)"
 
  # Build dynamic USB model hints from connected USB disks so enclosures like 'HSEN 10G-NVME' or 'JMicron Generic SATA' are never dropped!
  $connectedUsbHints = New-Object System.Collections.ArrayList
@@ -758,13 +760,15 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
  }
  $usbHintRe = if ($connectedUsbHints.Count -gt 0) { ($connectedUsbHints | Select-Object -Unique) -join "|" } else { "" }
 
- # Strict NVRAM USB check (excludes internal SATA/NVMe unless explicitly USB or matching connected USB enclosure)
+ # Strict NVRAM USB check (excludes disconnected 'unknown' ghost entries, USB NICs, and internal SATA/NVMe)
  $nvramUsbEntries = @(
   $bcdEntries | Where-Object {
    $desc = [string]$_.Description
+   $dev = ([string]$_.Device).Trim()
    $matchesConnUsb = ($usbHintRe -and ($desc -match $usbHintRe))
    $isInternalBusOnly = (-not $matchesConnUsb) -and ($desc -match "(?i)\b(SATA\d*|NVMe\d*)\b") -and ($desc -notmatch "(?i)\bUSB\b|External|Removable")
    $_.Identifier -ne "{fwbootmgr}" -and $_.Identifier -ne "{bootmgr}" -and
+   (-not ($dev -and ($dev -match $unknownDevRe))) -and
    ($desc -notmatch $excludeDescPattern) -and
    (-not $isInternalBusOnly) -and
    ($matchesConnUsb -or ($desc -match "(?i)\bUSB\b|Removable|External|Flash|SanDisk|Ventoy|Phoenix|RTL9210|JMicron|HSEN|FireCuda|ADATA|Kingston|JetFlash|PMAP|UDisk"))
@@ -777,7 +781,7 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
  $evidence = New-Object System.Collections.ArrayList
  foreach ($bs in $bootModeDiag.Signals) { [void]$evidence.Add(("BootMode: " + $bs)) }
 
- # Query vendor WMI (HP: HP_BIOSSetting + HP_BIOSEnumeration + HPBIOS_BIOSEnumeration + HP_BIOSOrderedList | Dell: DCIM_BIOSEnumeration + biosattributes | Lenovo: Lenovo_BiosSetting)
+ # Query vendor WMI (HP: HP_BIOSEnumeration + HPBIOS_BIOSEnumeration + HP_BIOSSetting + HP_BIOSOrderedList | Dell: DCIM_BIOSEnumeration + biosattributes | Lenovo: Lenovo_BiosSetting)
  $wmiState = "Unknown"
  $wmiDetail = ""
  $fastBootWarn = $false
@@ -789,7 +793,7 @@ function Get-BiosDiagnostics($sysInfo, [array]$usbDisks, [array]$bcdEntries, [in
  if ($vendor -eq "HP") {
   $hpRaw = @()
   $hpOrdered = @()
-  foreach ($hpCls in @("HP_BIOSSetting", "HP_BIOSEnumeration", "HPBIOS_BIOSEnumeration")) {
+  foreach ($hpCls in @("HP_BIOSEnumeration", "HPBIOS_BIOSEnumeration", "HP_BIOSSetting")) {
    try {
     $resCls = @(Get-CimInstance -Namespace "root\HP\InstrumentedBIOS" -ClassName $hpCls -ErrorAction Stop)
     if ($resCls.Count -gt 0) { $hpRaw += $resCls }
@@ -933,7 +937,8 @@ function Format-BiosCrossCheckReport($sysInfo, $diag, $usbInfo, [array]$matchedE
  [void]$sb.AppendLine("==================================================================")
  [void]$sb.AppendLine(("Tool Version : v" + $script:ToolVersion + " (build " + $script:BuildDate + " / " + $script:BuildCommit + ")"))
  $codeSuffix = if ($sysInfo.PSObject.Properties["AssetCode"] -and $sysInfo.AssetCode) { " (Code: " + $sysInfo.AssetCode + ")" } else { "" }
- [void]$sb.AppendLine(("System       : [" + $sysInfo.Vendor + "] " + $sysInfo.ModelName + $codeSuffix))
+ $venTag = if ($sysInfo.Vendor -ne "Standard") { $sysInfo.Vendor } elseif ($sysInfo.PSObject.Properties["HintVendor"] -and $sysInfo.HintVendor) { $sysInfo.HintVendor } else { "Standard" }
+ [void]$sb.AppendLine(("System       : [" + $venTag + "] " + $sysInfo.ModelName + $codeSuffix))
  if ($sysInfo.PSObject.Properties["CpuName"] -and $sysInfo.CpuName) { [void]$sb.AppendLine(("CPU          : " + $sysInfo.CpuName)) }
  [void]$sb.AppendLine(("Raw Vendor   : " + $sysInfo.RawVendor))
  if ($sysInfo.BiosVersion) { [void]$sb.AppendLine(("BIOS Version : " + $sysInfo.BiosVersion)) }

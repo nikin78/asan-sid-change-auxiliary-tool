@@ -1,149 +1,121 @@
-# SID 변경 사전·사후 보조 도구 (`SID_Change_Aux_Tool.bat`)
+# SID 변경 보조 도구 (`SID_Change_Aux_Tool.bat`)
 
-![Version](https://img.shields.io/badge/version-v2.3.0-006769?style=flat-square)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%2F%20WinPE-0B4F51?style=flat-square)
-![Delivery](https://img.shields.io/badge/delivery-Single%20ASCII%20.bat-F68B1F?style=flat-square)
-![Tests](https://img.shields.io/badge/automated%20tests-178%20passed-148A5E?style=flat-square)
+복제한 PC에서 WinPE USB로 윈도우 SID를 바꿀 때, 작업 전·후로 자주 겪는 두 가지 문제를 해결해 주는 도구입니다.
 
-골든 이미지 복제 PC에서 **WinPE 부팅 USB로 C 드라이브의 Windows SID를 변경할 때, 작업 전·후에 반복되는 부팅 충돌과 공유 프린터 먹통 문제를 한 번에 예방·해결하는 단일 실행 파일 도구**입니다.
+1. **SID 바꾸기 전:** PC 안에 보조 하드디스크나 SSD가 더 달려 있으면, 거기에 남아 있던 예전 부팅 정보 때문에 SID 변경 후 윈도우가 안 켜지거나 자동 복구 화면에 빠지는 일이 생깁니다. 이 도구가 충돌 위험을 미리 찾아 정리해 주고, 이어서 WinPE USB로 바로 재부팅할 수 있게 도와줍니다.
+2. **SID 바꾼 뒤:** SID 변경을 마치고 나면 공유폴더는 잘 열리는데 **공유 프린터 인쇄만 안 되는 현상**이 자주 나타납니다. 버튼 한 번으로 인쇄 대기열과 스풀러 서비스를 다시 정리해 인쇄가 되도록 복구합니다.
 
-별도 설치나 외부 프로그램 없이 **[`SID_Change_Aux_Tool.bat`](SID_Change_Aux_Tool.bat) 파일 1개만** 복사해 바로 실행할 수 있으며, 쓰기 금지 USB·로컬 PC·사내 공유폴더 환경 모두에서 원본 파일 변경 없이 안전하게 동작합니다.
+별도 설치 없이 **`SID_Change_Aux_Tool.bat` 파일 하나만** 받아서 더블클릭하면 바로 열립니다.
 
 ---
 
-## 전체 작업 흐름
+## 다운로드 및 실행하기
 
-```mermaid
-flowchart LR
-    A["1. SID 변경 전 준비<br/>(정상 Windows)"] --> B{"보조 디스크에<br/>잔존 부트로더 있음?"}
-    B -- "발견됨" --> C["1단계: 비파괴 정리<br/>(EFI → EFI_OLD / MBR _OLD)"]
-    C --> D["2단계: BIOS 교차 검증<br/>& WinPE USB 선택"]
-    B -- "이상 없음" --> D
-    D --> E["확인 후 1회성 재부팅<br/>또는 고급 부팅 이동"]
-    E --> F["WinPE 환경에서<br/>C: Windows SID 변경"]
-    F --> G["Windows 재부팅 후<br/>2. SID 변경 후 프린터 복구"]
-    G --> H["메인 프린터 PC 및<br/>각 클라이언트 PC에서<br/>스풀러 초기화 1회 실행"]
-    H --> I["공유 프린터<br/>테스트 인쇄 완료"]
-
-    F -. "부팅 오류 시<br/>WinPE에서 실행" .-> J["WinPE 비상 복구 모드<br/>(부트로더 원상 복구)"]
-```
+* **다운로드:** 오른쪽(또는 상단) **[Releases](../../releases/latest)** 메뉴에서 최신 버전의 `SID_Change_Aux_Tool.bat` 파일을 내려받으세요.
+* **실행 방법:** 내려받은 `SID_Change_Aux_Tool.bat` 파일을 **더블클릭**하면 관리자 권한 확인 창이 뜬 뒤 프로그램 화면이 열립니다.
+* **어디에 두고 실행해도 안전합니다:**
+  * 바탕화면이나 로컬 폴더, **쓰기 금지(읽기 전용) USB**, **공유폴더** 어디에서 실행하든 원본 파일이나 USB에는 아무것도 기록하지 않습니다.
+  * **공유폴더나 네트워크 드라이브(`Z:` 등)에서 실행할 때:** 마우스 우클릭 `관리자 권한으로 실행` 대신 **그냥 더블클릭**해 주세요. 우클릭으로 관리자 실행을 하면 윈도우 보안 구조상 공유폴더 연결이 끊어질 수 있는데, 그냥 더블클릭하면 알아서 안전하게 권한을 올려 실행합니다.
 
 ---
 
-## 화면 미리보기
+## 순서대로 따라 하기
 
-### 1. SID 변경 전 준비 — 정상 준비 완료
+### 1. SID 바꾸기 전에 (`1. SID 변경 전 준비` 탭)
 
-내장 디스크 점검을 통과하고 WinPE USB가 UEFI 펌웨어 목록과 매칭되면, 상단 안내 배너가 녹색으로 바뀌며 **선택한 USB로 재부팅** 버튼이 활성화됩니다.
+프로그램을 실행하면 먼저 `1. SID 변경 전 준비` 화면이 열리고 PC 상태를 자동으로 확인합니다.
 
-![SID 변경 전 준비 정상 화면](docs/images/01_pre_sid_ready.png)
+#### ① 내장 디스크 점검 확인하기 (1단계)
 
-### 2. SID 변경 전 준비 — 보조 디스크 잔존 부트로더 감지 및 2단계 자동 잠금
+* **이상 없음**이라고 표시되면 손댈 것 없이 바로 아래 2단계로 내려가면 됩니다.
+* 만약 보조 디스크에 **`충돌 위험 · 잔존 EFI`** 또는 **`충돌 위험 · 잔존 MBR`**이 빨갛게 표시되면, 오른쪽 위의 **`잔존 부트로더 정리`** 버튼을 먼저 눌러 주세요.
+  * 디스크를 포맷하거나 내 파일을 지우지 않고, 문제가 되는 부팅 폴더 이름만 잠시 바꿔 두기 때문에 데이터는 그대로 보존됩니다.
+  * 정리가 끝난 뒤 *"현재 Windows 디스크를 UEFI 부팅 1순위로 등록할까요?"* 창이 뜨면 **`예`**를 눌러 주세요.
 
-C 드라이브 외 보조 HDD/SSD에 이전 Windows의 EFI 또는 MBR 부트로더가 남아 있으면 **1단계에서 충돌 위험을 경고**하고, 정리하기 전까지 **2단계 USB 재부팅 버튼을 자동으로 잠급니다**(점선 비활성 버튼에 마우스를 올리면 잠금 사유와 해결 방법이 표시됩니다).
+![보조 디스크 충돌 감지 시 화면](docs/images/02_pre_sid_conflict.png)
 
-![SID 변경 전 준비 충돌 감지 및 잠금 화면](docs/images/02_pre_sid_conflict.png)
+#### ② WinPE USB 고르고 재부팅하기 (2단계)
 
-### 3. SID 변경 후 프린터 복구 — 메인 PC / 클라이언트 자동 판별 및 스풀러 초기화
+1단계 점검이 끝났다면 WinPE 부팅 USB(또는 외장 SSD)를 PC에 꽂고 **`USB 다시 찾기`**를 누릅니다. 목록에 나타난 상태에 따라 아래 버튼만 누르면 됩니다.
 
-PC가 공유 프린터를 호스팅하는 **메인 프린터 PC**인지 **클라이언트 PC**인지 자동으로 판별해 핵심 상태를 4개 카드로 보여 줍니다. **프린터 스풀러 초기화**는 백그라운드에서 실행되어 창이 멈추지 않으며, 하단 상세 로그에서 4단계 진행 과정을 실시간으로 확인할 수 있습니다.
+* **`부팅 대상`으로 표시될 때:** 목록에 뜬 USB 이름이 맞는지 확인하고 **`선택한 USB로 재부팅`**을 누릅니다. 이번 한 번만 해당 USB로 부팅되고, 작업이 끝나면 원래대로 윈도우로 켜집니다.
+* **`부팅 디스크` (`고급 부팅 준비`)로 표시될 때:** 윈도우가 이미 켜진 상태에서 방금 꽂은 USB라 메인보드 목록에 아직 안 올라온 상태입니다. **`선택한 USB로 재부팅`** 또는 **`고급 부팅으로 이동`**을 누른 뒤, 파란 화면이 나오면 **`장치 사용`**을 눌러 USB를 골라 주세요.
+* **`BIOS에서 USB 부팅이 차단됨`이 뜰 때:** **`BIOS 설정 열기`**를 눌러 USB 부팅 허용으로 바꾼 뒤 다시 시도해 주세요.
 
-![SID 변경 후 프린터 복구 화면](docs/images/03_post_sid_spooler.png)
-
----
-
-## 핵심 기능 명세
-
-| 영역 | 주요 기능 | 안전·편의 설계 |
-| :--- | :--- | :--- |
-| **사전 1단계**<br/>내장 디스크 부트로더 점검 | C 드라이브 외 내장 디스크의 잔존 **GPT EFI** 및 **MBR 활성 부트로더** 탐지·비파괴 비활성화 | 파티션 삭제·포맷 금지(`EFI ↔ EFI_OLD`, `bootmgr/Boot ↔ _OLD` + `inactive/active`). 현재 Windows·외장 USB·WinPE 매체·읽기 전용 디스크 자동 보호 |
-| **사전 2단계**<br/>BIOS 교차 검증 & USB 부팅 | 부팅 방식·보안 부팅 4중 신호(`Confirm-SecureBootUEFI` + 커널 레지스트리 + `Win32_DeviceGuard` + 제조사 WMI), HP G8/G9 체크박스(`Checked`)·한글 BIOS·Dell·Lenovo 정밀 진단, 외장 UASP NVMe/SSD 인클로저(`RTL9210B`/`HSEN`/`JMicron`) 및 숨김 EFI(`\Device\HarddiskVolumeX`) 4단계 매칭 | WMI 미지원 보드(삼성 AMI 등) `허용` 오추정 금지, HP `Legacy USB Boot` 및 복합 보안 부팅 오탐 차단, Windows 실행 중 연결(Hot-Plug) 부팅 디스크 즉시 인식, 반드시 사용자 확인 후 1회성 재부팅(`bootsequence`) |
-| **사후 복구**<br/>프린터 스풀러 초기화 | `Spooler` 및 의존 서비스 중지 → `PRINTERS` 대기열 정리 → `Disabled` 시작 유형 자동 복구 → 서비스 재시작 | 기존 프린터·드라이버·공유 설정 비삭제, 호스트(방화벽·네트워크 프로필) / 클라이언트(원격 SMB 응답) 상태 진단, 비동기 실행으로 UI 멈춤 방지 |
-| **WinPE 비상 복구**<br/>(`X:` 환경 자동 진입) | WinPE에서 실행 시 자동으로 비상 복구 창 진입, 내장 디스크 GPT EFI / MBR 부트로더 즉시 복구·전환 | Storage 모듈이 없는 경량 WinPE에서도 `diskpart`(영문·한글) 파서로 자동 폴백 |
-| **진단 리포트 & 폴백** | BIOS 교차 검증 근거·NVRAM 원본·디스크 구성·작업 로그 통합 조회 및 파일 저장·클립보드 복사 | 오류 시 민감정보 자동 마스킹(`[REDACTED]`) 후 로컬 폴더 저장 안내, GUI 불가 환경 또는 `--cli` 실행 시 콘솔 모드 자동 전환 |
+![USB 부팅 준비 완료 화면](docs/images/01_pre_sid_ready.png)
 
 ---
 
-## 실행 방법
+### 2. SID 바꾼 뒤에 (`2. SID 변경 후 프린터 복구` 탭)
 
-### 1. 실행 매체별 권장 방법
+WinPE에서 SID 변경 작업을 마치고 윈도우로 정상 부팅했다면, 공유 프린터가 먹통이 되지 않도록 스풀러를 한 번 비워 줍니다.
 
-| 실행 위치 | 실행 방법 | 참고 사항 |
-| :--- | :--- | :--- |
-| **로컬 PC** | `SID_Change_Aux_Tool.bat` 더블클릭 | 관리자 권한(UAC) 자동 요청 후 GUI 실행 |
-| **쓰기 금지 USB** | USB 내 `SID_Change_Aux_Tool.bat` 더블클릭 | USB에 파일을 전혀 쓰지 않고 메모리에서 실행 |
-| **공유폴더 / 네트워크 드라이브 (`Z:\`)** | **일반 더블클릭 권장** | 우클릭 `관리자 권한으로 실행` 대신 일반 더블클릭하면 로컬 임시 스테이징 후 메모리로 로드되며 임시 파일은 즉시 자동 삭제됨 |
-| **콘솔 전용 모드** | `SID_Change_Aux_Tool.bat --cli` | GUI 없이 텍스트 메뉴로 실행해야 할 때 사용 |
+1. 프로그램을 실행하고 위쪽의 **`2. SID 변경 후 프린터 복구`** 탭을 누릅니다.
+2. 이 PC가 프린터가 직접 꽂혀 있는 **메인 프린터 PC**인지, 받아 쓰는 **클라이언트 PC**인지 화면에 자동으로 표시됩니다.
+3. 아래쪽의 **`프린터 스풀러 초기화`** 버튼을 누르고 잠시 기다립니다.
+4. **메인 프린터 PC에서 한 번, 프린터를 연결해 쓰는 각 자리(클라이언트 PC)에서도 한 번씩** 실행한 뒤 테스트 인쇄를 해 보세요.
 
-> **USB 상대 경로 바로가기 팁:** USB 루트에 바로가기(`.lnk`)를 둘 때는 대상에 `cmd.exe /c start "" "\유틸리티\SID_Change_Aux_Tool.bat"`, 시작 위치에 `\`, 실행 옵션에 `최소화`를 지정하면 드라이브 문자가 바뀌어도 항상 동작합니다.
+> 기존에 설치해 둔 프린터 목록이나 드라이버, 공유 설정은 지워지지 않으니 안심하고 실행하셔도 됩니다.
 
-### 2. 단축키
-
-* `F5`: 전체 상태(디스크·USB·BIOS·프린터) 새로고침
-* `Alt + 1`: **1. SID 변경 전 준비** 탭으로 이동
-* `Alt + 2`: **2. SID 변경 후 프린터 복구** 탭으로 이동
+![프린터 스풀러 복구 화면](docs/images/03_post_sid_spooler.png)
 
 ---
 
-## 단계별 사용 가이드
+### 3. 혹시 작업 후 윈도우가 안 켜질 때 (비상 복구)
 
-### A. SID 변경 전 준비 (1번 탭)
+만약 작업 도중 부팅 순서가 꼬여 윈도우가 바로 켜지지 않는다면, **WinPE USB로 부팅한 상태에서 똑같은 `SID_Change_Aux_Tool.bat` 파일을 실행**해 보세요.
 
-1. **1단계 — 내장 디스크 부트로더 점검**
-   * `이상 없음`으로 표시되면 별도 조치 없이 바로 2단계로 진행합니다.
-   * 보조 디스크에 `충돌 위험 · 잔존 EFI` 또는 `충돌 위험 · 잔존 MBR`이 표시되면 **잔존 부트로더 정리** 버튼을 눌러 비활성화해 주세요.
-   * 정리 후 나타나는 `UEFI 부팅 1순위 등록` 확인 창에서 `예`를 누르면 현재 Windows SSD가 1순위로 재등록됩니다.
-2. **2단계 — WinPE USB 선택 및 재부팅**
-   * WinPE 부팅 USB를 연결한 뒤 **USB 다시 찾기**를 누릅니다.
-   * 목록에 `부팅 대상`으로 표시되면 항목을 확인하고 **선택한 USB로 재부팅**을 눌러 1회성 재부팅을 진행합니다.
-   * Windows 부팅 이후 USB를 꽂아 `NVRAM 미등록`으로 표시되면 **고급 부팅으로 이동**을 눌러 파란 화면의 `장치 사용`에서 USB를 선택해 주세요.
-   * BIOS에서 USB 부팅이 차단되었거나 보안 부팅이 켜져 있다면 **BIOS 설정 열기**를 눌러 설정을 변경해 주세요.
+윈도우가 아닌 WinPE 환경임을 자동으로 알아채고 **WinPE 비상 복구 창**이 열립니다. 여기서 디스크를 선택해 **`선택 디스크 전환`**을 누르면 앞서 정리했던 부팅 폴더를 원래 상태 그대로 되돌릴 수 있습니다.
 
-### B. SID 변경 후 프린터 복구 (2번 탭)
+---
 
-1. WinPE에서 SID 변경을 마치고 Windows로 정상 부팅한 뒤 도구를 실행해 **2. SID 변경 후 프린터 복구** 탭을 엽니다.
-2. **프린터 스풀러 초기화** 버튼을 눌러 대기열을 비우고 서비스를 재시작합니다.
-3. 공유 프린터를 연결해 쓰는 **메인 프린터 PC**와 **각 클라이언트 PC**에서 각각 한 번씩 실행한 뒤 테스트 인쇄로 정상 동작을 확인합니다.
+## 자주 막히는 상황 해결하기
 
-> 기존에 설치된 프린터, 드라이버, 공유 설정은 삭제되지 않습니다.
-
-### C. 부팅 이상 시 WinPE 비상 복구
-
-* 만약 SID 작업 후 Windows 부팅이 꼬였다면 WinPE로 부팅한 상태에서 동일한 `SID_Change_Aux_Tool.bat`를 실행하세요.
-* 자동으로 **WinPE 비상 복구 모드**가 열리며, 비활성화했던 디스크를 선택해 **선택 디스크 전환**으로 즉시 원상 복구할 수 있습니다.
+* **Q. 부팅 USB를 꽂았는데 `일반 USB (부팅 파일 없음)`이라고 뜹니다.**
+  * WinPE 부팅 파일이 없는 일반 자료용 USB일 수 있습니다. 부팅용으로 만든 USB가 확실하다면 **`고급 부팅으로 이동`**을 눌러 `장치 사용` 메뉴에서 직접 선택해 보세요.
+* **Q. 스풀러 초기화를 양쪽 PC에서 다 했는데도 공유 프린터가 안 됩니다.**
+  * 2번 탭의 네 번째 카드(`공유 보안 상태` 또는 `메인 PC 연결`)를 확인해 보세요. 메인 PC 네트워크가 **`공용 네트워크`**로 잡혀 있거나 방화벽 공유 규칙이 꺼져 있으면 다른 자리에서 프린터에 접속할 수 없습니다. 윈도우 네트워크 설정에서 `개인 네트워크`로 바꿔 주세요.
+* **Q. 작업 중 오류 창이 뜨거나 담당자에게 상태를 전달해야 합니다.**
+  * 화면 오른쪽 위의 **`진단 리포트`** 버튼을 누른 뒤 **`로컬 폴더에 저장`** 또는 **`클립보드에 복사`**를 누르면 PC 모델, BIOS 상태, 디스크 구성, 작업 기록이 텍스트 파일 하나로 정리됩니다(비밀번호 등 민감 정보는 자동으로 가려집니다).
+* **Q. 화면 단축키가 있나요?**
+  * `F5`를 누르면 디스크·USB·프린터 상태를 새로고침하고, `Alt + 1` / `Alt + 2`로 상단 탭을 바로 오갈 수 있습니다.
 
 ---
 
 ## 제조사별 BIOS 진입 및 부팅 메뉴 단축키
 
-| 제조사 | BIOS 설정 진입 | 부팅 메뉴 (1회 선택) | 주요 확인 항목 |
+전원을 켜자마자 로고가 뜨기 전에 아래 키를 여러 번 눌러 진입할 수 있습니다.
+
+| 제조사 | BIOS 설정 | 부팅 메뉴 (1회 선택) | USB 부팅이 안 될 때 확인할 메뉴 |
 | :--- | :---: | :---: | :--- |
-| **HP** | `F10` | `F9` | `Advanced → Boot Options → USB Storage Boot (Enable)`, `Fast Boot (Disable)` |
-| **Dell** | `F2` | `F12` | `Boot / USB Config → Enable USB Boot Support (On)`, `Fastboot (Thorough)` |
-| **Samsung** | `F2` | `F10` / `F12` | `Boot → Fast BIOS Mode (Disabled)`, `Secure Boot Control (Disabled)` |
-| **Lenovo** | `F1` | `F12` | `Startup → USB Boot (Enabled)`, `Security → Secure Boot (Disabled)` |
-| **LG** | `F2` | `F10` | `Boot → Fast Boot (Disabled)`, `Security → Secure Boot (Disabled)` |
-| **ASUS / ASRock** | `F2` / `Del` | `F8` / `F11` | `Boot → Fast Boot (Disabled)`, `Secure Boot (Disabled / Other OS)` |
-| **Gigabyte / MSI** | `Del` | `F12` / `F11` | `Boot → Fast Boot (Disabled)`, `Secure Boot (Disabled)` |
+| **HP** | `F10` (구형 `Esc`) | `F9` | `Advanced > Boot Options`에서 `USB Storage Boot`(또는 `Removable Media Boot`) 켜기, `Fast Boot` 끄기 |
+| **Dell** | `F2` | `F12` | `Boot Configuration`에서 `Enable USB Boot Support` 켜기, `Fastboot`는 `Thorough` 권장 |
+| **삼성 (Samsung)** | `F2` | `F10` 또는 `F12` | `Boot`에서 `Fast BIOS Mode` 끄기, 필요 시 `Secure Boot Control` 끄기 |
+| **레노버 (Lenovo)** | `F1` | `F12` | `Startup`에서 `USB Boot` 켜기, 필요 시 `Security > Secure Boot` 끄기 |
+| **LG** | `F2` | `F10` | `Boot`에서 `Fast Boot` 끄기, 필요 시 `Security > Secure Boot` 끄기 |
+| **ASUS / ASRock** | `F2` / `Del` | `F8` / `F11` | `Boot`에서 `Fast Boot` 끄기, `Secure Boot` 끄기(ASUS는 `Other OS`) |
+| **Gigabyte / MSI** | `Del` | `F12` / `F11` | `Boot`에서 `Fast Boot` 끄기, `Secure Boot` 끄기 |
 
 ---
 
-## 지원 환경 및 안전 원칙
+<details>
+<summary><strong>관리자 및 개발자 참고 사항 (지원 환경 · 내부 동작 · 빌드 방법)</strong></summary>
 
-* **지원 OS:** Windows 10 / 11 (UEFI 및 Legacy MBR — 사후 프린터 복구는 Legacy 환경에서도 정상 동작), WinPE (`X:`)
-* **필수 권한:** 관리자 권한 (미보유 시 자동 UAC 상승)
-* **외부 의존성:** 없음 (Windows 기본 내장 PowerShell 5.1, `diskpart`, `bcdedit`, `bcdboot`, `mountvol`, `shutdown`, GAC WinForms만 사용)
-* **절대 안전 원칙:**
-  1. `SID_Change_Aux_Tool.bat`는 100% 순수 ASCII·CRLF 단일 파일로 한글 Windows/영문 WinPE 어디서나 코드페이지 깨짐 없이 실행됩니다.
-  2. 파티션 삭제(`delete partition`)·포맷(`format`)은 일절 수행하지 않으며, 모든 부트로더 조치는 언제든 되돌릴 수 있습니다.
-  3. USB가 1개만 감지되어도 절대 자동 재부팅하지 않고 반드시 사용자 확인을 거칩니다.
-  4. WMI로 확인할 수 없는 보드(삼성 AMI 등)의 USB 부팅 옵션을 임의로 `허용`으로 추정하지 않습니다.
+### 1. 지원 환경 및 주요 기술 사양 (`v2.3.1`)
 
----
+* **지원 OS:** Windows 10 / 11 (UEFI 및 Legacy MBR — 사후 프린터 복구는 Legacy PC에서도 지원), WinPE (`X:`)
+* **외부 의존성:** 없음 (Windows 기본 내장 PowerShell 5.1, GAC `System.Windows.Forms`, `diskpart`, `bcdedit`, `bcdboot`, `mountvol`, `shutdown`만 사용하며 임시 DLL·`csc.exe` 컴파일을 발생시키지 않음)
+* **현장 장비 및 외장 매체 대응:**
+  * 병원 내 주요 데스크톱 자산 코드(`S4/S5/S8/S9`, `H0/H1/H2/H3/H4/HS/H6/H8`, `D1/D8`) 및 CPU 세대 교차 식별
+  * UASP 외장 NVMe/SATA 인클로저(`Realtek RTL9210B-CG`, `HSEN 10G-NVME`, `JMicron`, `ASMedia`, `FireCuda` 등)를 PnP `ContainerID` 기준으로 정확히 분류하되, 내장 AHCI 핫플러그 SATA 디스크나 마운트된 `.vhdx` 가상 디스크는 외장 USB로 오분류하지 않도록 보호
+  * 드라이브 문자가 없는 숨김 EFI/Ventoy(`VTOYEFI`)/Rufus 파티션을 인메모리 `QueryDosDeviceW`(`\Device\HarddiskVolumeX`) 및 `\\?\Volume{GUID}\` 무마운트 탐색으로 매칭하고, 분리된 예전 장치가 남긴 `device = unknown` 유령 NVRAM 항목 및 USB 유선랜(PXE) 항목 오매칭을 차단
+  * 부팅 방식 3중 신호 및 보안 부팅 4중 신호(`Confirm-SecureBootUEFI` + 커널 레지스트리 + `Win32_DeviceGuard` + HP/Dell/Lenovo WMI) 교차 검증 지원 (삼성 AMI 등 WMI 미지원 보드는 임의로 `허용`으로 추정하지 않음)
+* **콘솔 전용 실행:** GUI를 띄울 수 없는 환경에서는 자동으로 텍스트 메뉴로 전환되며, 강제로 콘솔 모드를 열 때는 `SID_Change_Aux_Tool.bat --cli`로 실행합니다.
+* **USB 루트 바로가기(`.lnk`) 만들기 팁:** USB 최상위에 바로가기를 둘 때 대상에 `cmd.exe /c start "" "\유틸리티\SID_Change_Aux_Tool.bat"`, 시작 위치에 `\`, 실행 크기에 `최소화`를 넣으면 드라이브 문자가 바뀌어도 동작합니다.
 
-## 개발 및 유지보수 안내
+### 2. 소스 빌드 및 자동 테스트
 
-배포 파일 [`SID_Change_Aux_Tool.bat`](SID_Change_Aux_Tool.bat)를 직접 수정하지 않고, `modules/`의 소스 모듈을 수정한 뒤 빌드·검증 스크립트로 재생성합니다.
+배포 파일인 [`SID_Change_Aux_Tool.bat`](SID_Change_Aux_Tool.bat)는 직접 수정하지 않고, `modules/` 폴더의 모듈을 수정한 뒤 빌드 스크립트로 생성·검증합니다(`100% 순수 ASCII` 및 `CRLF` 강제).
 
 ```powershell
 # 현재 VERSION 기준 빌드 및 무결성 검증
@@ -152,11 +124,13 @@ powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1
 # 버전 자동 증가(Patch / Minor / Major) 후 빌드
 powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Build-Tool.ps1 -Bump Patch
 
-# 전체 자동 테스트 (178개: 단위 + 병원 기종/UASP/숨김 ESP + BIOS 교차 검증 + WinForms GUI 레이아웃 감사 + 버전 정합성)
+# 전체 자동 테스트 (단위 + 기종/UASP/숨김 ESP/유령 NVRAM + BIOS 교차 검증 + GUI 레이아웃 감사 + 버전 정합성)
 powershell -STA -NoProfile -ExecutionPolicy Bypass -File tools\Test-Tool.ps1
 ```
 
-* 버전 기준 파일: [`VERSION`](VERSION)
+* 버전 원본: [`VERSION`](VERSION)
 * 전체 변경 이력: [`CHANGELOG.md`](CHANGELOG.md)
-* 기술 인수인계 및 실장비 검증 체크리스트: [`HANDOVER.md`](HANDOVER.md)
-* 설계 방향 및 의사결정 기록: [`docs/DIRECTION_AND_DECISIONS.md`](docs/DIRECTION_AND_DECISIONS.md)
+* 상세 기술 인수인계서: [`HANDOVER.md`](HANDOVER.md)
+* 설계 의사결정 기록: [`docs/DIRECTION_AND_DECISIONS.md`](docs/DIRECTION_AND_DECISIONS.md)
+
+</details>
